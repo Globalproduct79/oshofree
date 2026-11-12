@@ -1,6 +1,6 @@
 # OshoFree — Slice 1 design: the loop you can show
 
-Date: 2026-11-12 · Status: draft for approval · Written by Claude with Jide Olatunji
+Date: 2026-11-12 · Status: revised after the builder check, awaiting approval · Written by Claude with Jide Olatunji
 
 ## 1. Intent
 
@@ -184,9 +184,14 @@ and the home hero, so all four always agree.
   (Approve | Reject | Decline), reason?, byUserId, at.
 - ShareLink: id, code (unique, 8 chars, Crockford base32 so there is no 0/O or
   1/I confusion), campaignId, channelId, parentId?, depth, sharerType (Root |
-  Channel | Consumer), sharerSessionId?, consumerId?, createdAt. Exactly one Root
-  link per (campaign, channel), minted on approval. Channel links are minted by
-  POST /v1/share. Consumer links are minted by the landing page's details form.
+  Channel | Consumer), sharerSessionId?, consumerId?, via? (whatsapp | sms | x |
+  copy | other), createdAt. Exactly one Root link per (campaign, channel), minted
+  on approval; it is the offer's canonical landing and the CTA's click-through
+  target, and it is never handed out as a share link, so an open on a Root link
+  is a "direct" open, not a friend open. Channel links (depth 1) are minted by
+  POST /v1/share with the medium in `via`. Consumer links (depth ≥ 2) are minted
+  by the landing page's details form; their `via` is set when the consumer taps
+  one of the share buttons (see 6.8).
 - Consumer: id, phone (E.164, unique), country, name?, createdAt. Not verified
   in slice 1.
 - LinkEvent: id, linkId, type (Open | Claim | DetailsLeft), visitorId (cookie),
@@ -208,14 +213,19 @@ All under `/api/v1`, bearer channel key, JSON. Rate limiting and SLOs are later.
   Only delivering campaigns (6.5), ordered by placement then start date. Each
   offer: id, placement, brand, headline, description, category,
   creative { image, color }, cta { label, type: code | link, url },
-  share { enabled: true, reward_label, url }, ends_at.
-  `share.url` is this channel's Root link as `https://<host>/o/<code>`.
-  `cta.url` for link offers is tracked too: `https://<host>/o/<code>?go=claim`
-  logs a Claim then redirects to the brand's link. For code offers, cta.label is
-  the code and the channel posts the Claim event.
+  share { enabled: true, reward_label }, ends_at.
+  No share URL is returned here. Phoenix calls POST /share at the moment a user
+  taps Share and puts the returned URL in the share sheet; that is what makes
+  every friend open attributable to one sharer. The Root link is used only as
+  `cta.url` for link offers: `https://<host>/o/<code>?go=claim` logs a Claim
+  (and no Open) then redirects to the brand's link, so the click-through is
+  counted by OshoFree and Phoenix must not post a Claim for link offers. For
+  code offers, cta.label is the code and Phoenix posts the Claim event when it
+  shows it.
 - POST /share `{ offer_id, session_id, via }` → `{ code, url }`. Mints a Channel
-  ShareLink under the Root with that session as sharer. Phoenix puts `url` in
-  its share sheet.
+  ShareLink (depth 1) under the Root with that session as sharer and `via`
+  stored. Phoenix puts `url` in its share sheet. Phoenix may also post a Share
+  event; it is kept for reconciliation and never counted as a share.
 - POST /events `{ channel, events: [...] }` with an `Idempotency-Key` header.
   Types Impression | Open | Claim | Share; batch ≤ 500; responds 202 with
   `{ accepted, deduped }`.
@@ -227,34 +237,64 @@ in development, the seeded key the demo wall uses.
 
 ### 6.8 Consumer landing `/o/[code]`
 
-Server-rendered. One image, system font, ≤ 60 KB transferred excluding the
-image, no analytics scripts. Shows brand, headline, description, image or colour
-tile, reward label, "Offer ends <date>", and two actions:
+Served by a route handler that renders React components to static markup, so the
+page ships no client JavaScript at all: the Next runtime never loads here, forms
+are native `<form method="post">`, and every action is a request to a sibling
+route handler. The ≤ 60 KB transferred budget (excluding the image) is a hard
+gate with a test behind it. One image, system font, no analytics scripts. Shows
+brand, headline, description, image or colour tile, reward label, "Offer ends
+<date>", and two actions:
 
-- Claim: a code offer shows the code; a link offer logs a Claim and redirects.
+- Claim. A code offer shows a "Show my code" button; submitting it logs a Claim
+  and re-renders with the code revealed. A link offer's button logs a Claim and
+  redirects to the brand's link. Either way "friend claimed" is a real event.
 - Share and earn: an inline form, name (optional) and phone (required, Nigerian
   format first, stored as E.164). Submitting upserts the Consumer by phone, mints
   a Consumer ShareLink with this link as parent, and shows their link with
-  WhatsApp, SMS, X and copy buttons built from plain share URLs, no SDKs.
+  WhatsApp, SMS, X and copy buttons. Each button is a redirect-through link
+  (`/o/<code>/share?via=whatsapp`) that stores `via` on the new link and then
+  forwards to the plain share URL (`wa.me`, `sms:`, the X intent URL). Copy
+  shows the URL in a selectable field; no clipboard script.
 
-An Open event is logged on render, deduped per visitor cookie per day. An unknown
-or ended code shows "This offer has ended" with the brand name, HTTP 410.
-Copy is English in slice 1; the model carries country so language can follow.
+An Open event is logged on render, deduped per visitor cookie per day; `?go=claim`
+requests log only a Claim. An unknown or ended code shows "This offer has ended"
+with the brand name, HTTP 410. Copy is English in slice 1; the model carries
+country so language can follow.
 
 ### 6.9 Advertiser home (C8) and campaign report (C9, part of G5)
 
-Home: hero = the first live campaign, else paused, else in review. Four numbers:
-impressions today, unique link opens, shares, claims. A pace line computed from
-days elapsed against the flight. Other campaigns as cards; status filter pills.
+Home: hero = the first live campaign, else paused, else in review. Four numbers,
+all flight to date: impressions (with today's count as a second line), unique
+link opens, shares, claims. A pace line computed from days elapsed against the
+flight. Other campaigns as cards; status filter pills.
 
 Campaign page: the card, status and actions (Pause / Resume, Edit and resubmit
 when rejected, Preview on Phoenix); a 14-day daily chart of impressions, link
 opens and claims; the funnel saw → opened → claimed → shared → friend opened →
 friend claimed, by channel; a Sharing section with shares, friend opens, friend
-claims, details left, deepest chain, and channel breakdown. Viral coefficient =
-friend claims ÷ shares (Claude's call; revisit in slice 3).
+claims, details left, deepest chain, a breakdown by channel (Phoenix, Boomplay)
+and a breakdown by medium (WhatsApp, SMS, X, copy). Viral coefficient = friend
+claims ÷ shares (Claude's call; revisit in slice 3).
 
 Growth › Sharing: the same measures aggregated across the workspace.
+
+Where each number comes from. Channel facts and OshoFree facts are never summed
+into one figure without saying so. In the UI, channel facts carry the channel's
+name ("on Phoenix") and OshoFree facts carry "via link".
+
+| Number | Source | Note |
+|---|---|---|
+| Saw (impressions) | ChannelEvent Impression | by campaign, channel, day |
+| Opened on Phoenix | ChannelEvent Open | same |
+| Claimed | ChannelEvent Claim (code offers, shown on Phoenix) plus LinkEvent Claim (any offer, on the landing page or via `?go=claim`) | two columns; the funnel step is their sum, which cannot double count because Phoenix never posts Claim for link offers |
+| Shares | ShareLink rows with sharerType Channel or Consumer | ChannelEvent Share is reconciliation only |
+| Direct link opens | LinkEvent Open, deduped, on depth-0 links | rare, since CTA click-throughs log no Open |
+| Friend opened | LinkEvent Open, deduped, on depth ≥ 1 links | |
+| Friend claimed | LinkEvent Claim on depth ≥ 1 links | |
+| Details left | LinkEvent DetailsLeft | |
+| Deepest chain | max(depth) over the campaign's links | |
+| Viral coefficient | friend claimed ÷ shares | both OshoFree facts |
+| 14-day chart | impressions (channel), unique link opens (all depths), claims (both sources, stacked) | per day, in the workspace country's timezone |
 
 ### 6.10 Global console
 
@@ -345,7 +385,25 @@ have something to show. All dev passwords are `password`.
 - Playwright test structure and seed specifics beyond 6.14.
 - A small set of lint rules beyond "no raw hex".
 
-## 9. Open questions for later slices (not blocking slice 1)
+## 9. Calls made after the builder check (12 Nov 2026)
+
+A reviewer read this document as the builder would and asked five questions.
+All five were settled here as Claude's calls rather than sent back:
+
+1. Every report number now has a named source and filter (6.9), and channel
+   facts and OshoFree facts are never silently summed.
+2. The 60 KB landing-page budget is a hard gate, met by rendering React to
+   static markup from a route handler with no client runtime (6.8).
+3. GET /offers no longer returns a share URL; Phoenix mints a per-sharer link
+   with POST /share at share time, and the Root link serves only the CTA
+   click-through, which logs a Claim and no Open (6.6, 6.7).
+4. Code offers log a Claim on the landing page through a "Show my code" step,
+   so "friend claimed" is real for the seeded campaign (6.8).
+5. Sharing is broken down both by channel (Phoenix) and by medium (WhatsApp,
+   SMS, X, copy); `via` is stored on ShareLink and set by redirect-through
+   share buttons, keeping the landing page free of client JavaScript (6.6, 6.8).
+
+## 10. Open questions for later slices (not blocking slice 1)
 
 - Who verifies a sharer's phone when the sharer is inside Phoenix: OTP in Phoenix
   posting a hash, or an OshoFree page? Slice 3.
