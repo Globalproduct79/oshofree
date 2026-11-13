@@ -25,7 +25,7 @@ const eslintConfig = [
   },
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/lib/tokens.ts"],
+    ignores: ["src/lib/tokens.ts", "src/styles/**"],
     rules: {
       "no-restricted-syntax": [
         "error",
