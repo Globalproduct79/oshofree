@@ -13,4 +13,21 @@ export const COPY = {
     toSignUp: 'New to OshoFree? Create an account',
     toSignIn: 'Already have an account? Sign in',
   },
+  workspace: {
+    newTitle: 'Create your workspace',
+    newSubtitle: 'Global checks every new advertiser before campaigns can go live, usually within a working day.',
+    title: 'Workspace',
+    subtitle: 'The name, type and billing country Global sees. Invoices will use the billing country.',
+    pendingBanner:
+      "Your workspace is waiting for Global's approval. You can draft campaigns now; they go live once both are approved.",
+    nameLabel: 'Workspace name',
+    typeLabel: 'Type',
+    countryLabel: 'Billing country',
+    createAction: 'Create workspace',
+    saveAction: 'Save changes',
+    saved: 'Saved.',
+    invalid: 'Enter a name of 2 to 80 characters, a type and a billing country.',
+    ownerOnly: 'Only the workspace Owner can change these details.',
+    types: { Brand: 'Brand', Agency: 'Agency' },
+  },
 } as const
