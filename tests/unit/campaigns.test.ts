@@ -44,6 +44,11 @@ describe('campaignInput', () => {
   it('accepts only the card placement', () => {
     expect(campaignInput.safeParse({ ...valid, placement: 'video' }).success).toBe(false)
   })
+  it('accepts only an image key putImage could have made', () => {
+    const key = '0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.png'
+    expect(campaignInput.safeParse({ ...valid, creativeImageKey: key }).success).toBe(true)
+    expect(campaignInput.safeParse({ ...valid, creativeImageKey: '../x.png' }).success).toBe(false)
+  })
 })
 
 describe('validateCampaign', () => {

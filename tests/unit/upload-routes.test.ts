@@ -13,10 +13,14 @@ const png = () => {
   b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   return b
 }
-const upload = (file: File) => {
-  const body = new FormData()
-  body.set('file', file)
-  return POST(new Request('http://localhost/api/upload', { method: 'POST', body }))
+// A real browser request carries Content-Length; a Request built from FormData does not, so add it.
+async function upload(file: File) {
+  const form = new FormData()
+  form.set('file', file)
+  const draft = new Request('http://localhost/api/upload', { method: 'POST', body: form })
+  const body = await draft.arrayBuffer()
+  const headers = { 'content-type': draft.headers.get('content-type')!, 'content-length': String(body.byteLength) }
+  return POST(new Request('http://localhost/api/upload', { method: 'POST', body, headers }))
 }
 const fetchImage = (key: string) =>
   GET(new Request(`http://localhost/uploads/${key}`), { params: Promise.resolve({ key }) })
@@ -46,6 +50,29 @@ describe('POST /api/upload then GET /uploads/[key]', () => {
     const res = await upload(new File(['<svg/>'], 'x.svg', { type: 'image/svg+xml' }))
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: 'BAD_IMAGE' })
+  })
+
+  it('answers 413 for an oversized or unsized body without reading it', async () => {
+    let pulled = false
+    // highWaterMark 0: the stream is pulled only when someone reads the body.
+    const body = () =>
+      new ReadableStream(
+        {
+          pull() {
+            pulled = true
+            throw new Error('the body was read')
+          },
+        },
+        { highWaterMark: 0 },
+      )
+    const send = (headers: Record<string, string>) =>
+      POST(new Request('http://localhost/api/upload', { method: 'POST', body: body(), headers, duplex: 'half' } as RequestInit))
+    for (const length of ['50000000', 'lots', undefined]) {
+      const res = await send(length === undefined ? {} : { 'content-length': length })
+      expect(res.status).toBe(413)
+      expect(await res.json()).toEqual({ error: 'BAD_IMAGE' })
+    }
+    expect(pulled).toBe(false)
   })
 
   it('refuses keys that are not ours, including path tricks', async () => {

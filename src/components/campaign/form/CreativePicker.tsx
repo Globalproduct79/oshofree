@@ -33,7 +33,7 @@ export function CreativePicker({ imageUrl, onImage }: { imageUrl: string | null;
       body.set('file', file)
       const res = await fetch('/api/upload', { method: 'POST', body })
       const json: { key?: string; url?: string } | null = await res.json().catch(() => null)
-      if (!res.ok || !json?.key || !json.url) return setError(res.status === 400 ? C.image.bad : C.image.failed)
+      if (!res.ok || !json?.key || !json.url) return setError(res.status === 400 || res.status === 413 ? C.image.bad : C.image.failed)
       setKey(json.key)
       onImage(json.url)
     } catch {

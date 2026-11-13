@@ -4,7 +4,7 @@ import { createReadStream } from 'node:fs'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
-import { acceptableImage } from '@/lib/image-rules'
+import { acceptableImage, IMAGE_KEY_RE } from '@/lib/image-rules'
 
 // Local disk in slice 1; an S3-compatible bucket replaces the body of these three functions later.
 
@@ -15,7 +15,6 @@ const TYPES = {
 } as const
 
 const CONTENT_TYPE: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }
-const KEY = /^[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$/
 
 function ascii(b: Uint8Array, from: number, to: number) {
   return String.fromCharCode(...b.subarray(from, to))
@@ -43,7 +42,7 @@ export function imageUrl(key: string): string {
 
 // Null for a key that is not ours to serve (bad shape, path tricks) or a missing file.
 export async function openImage(key: string) {
-  const match = KEY.exec(key)
+  const match = IMAGE_KEY_RE.exec(key)
   if (!match) return null
   const file = path.join(uploadDir(), key)
   const info = await stat(file).catch(() => null)
