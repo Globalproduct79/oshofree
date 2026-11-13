@@ -13,11 +13,17 @@ export function apiError(error: string, status: number): Response {
   return json({ error }, status)
 }
 
-// Runs the handler for the authenticated channel; 401 without a known bearer key.
+// Runs the handler for the authenticated channel; 401 without a live channel's key.
+// A failure is logged here and still answers in the contract's { error } shape, uncached.
 export async function withChannel(req: Request, handler: (channel: Channel) => Promise<Response>): Promise<Response> {
-  const channel = await channelFromRequest(req)
-  if (!channel) return json({ error: 'unauthorized' }, 401, { 'www-authenticate': 'Bearer' })
-  return handler(channel)
+  try {
+    const channel = await channelFromRequest(req)
+    if (!channel) return json({ error: 'unauthorized' }, 401, { 'www-authenticate': 'Bearer' })
+    return await handler(channel)
+  } catch (e) {
+    console.error(`channel API ${req.method} ${new URL(req.url).pathname} failed`, e)
+    return apiError('server_error', 500)
+  }
 }
 
 // The parsed JSON body, or undefined when it is not JSON.

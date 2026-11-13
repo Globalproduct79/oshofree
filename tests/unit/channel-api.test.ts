@@ -4,6 +4,7 @@ import { GET as getOffers } from '@/app/api/v1/offers/route'
 import { POST as postShare } from '@/app/api/v1/share/route'
 import { POST as postEvents } from '@/app/api/v1/events/route'
 import { GET as getStats } from '@/app/api/v1/links/[code]/stats/route'
+import { withChannel } from '@/lib/api-responses'
 import { hashKey } from '@/lib/channels'
 import { db } from '@/lib/db'
 import { type EventInput, ingestEvents } from '@/lib/events'
@@ -15,8 +16,8 @@ const DAY = 86_400_000
 const auth = { authorization: `Bearer ${KEY}` }
 type Handler = (req: Request) => Promise<Response>
 
-const seedChannel = (key = 'phoenix', apiKey = KEY) =>
-  db.channel.create({ data: { key, name: key, apiKeyHash: hashKey(apiKey), isLive: true } })
+const seedChannel = (key = 'phoenix', apiKey = KEY, isLive = true) =>
+  db.channel.create({ data: { key, name: key, apiKeyHash: hashKey(apiKey), isLive } })
 
 async function seedCampaign(over: Partial<Prisma.CampaignUncheckedCreateInput> = {}, ws: WorkspaceStatus = 'approved') {
   const workspace = await db.workspace.create({ data: { name: 'Kola Bright', type: 'Brand', country: 'NG', status: ws } })
@@ -65,6 +66,32 @@ describe('channel key', () => {
     await expectError(await share({}, none), 401, 'unauthorized')
     await expectError(await events({}, 'k', none), 401, 'unauthorized')
     await expectError(await stats('ABCDEFGH', {}), 401, 'unauthorized')
+  })
+
+  it('answers 401 on every route for the key of a channel that is not live', async () => {
+    const dark = await seedChannel('boomplay', 'bmp_key', false)
+    const c = await seedCampaign()
+    const link = await mintChannelLink(c.id, dark.id, 's', 'sms')
+    const bmp = { authorization: 'Bearer bmp_key' }
+    await expectError(await offers('country=NG', bmp), 401, 'unauthorized')
+    await expectError(await share({ offer_id: c.id, session_id: 's', via: 'sms' }, bmp), 401, 'unauthorized')
+    await expectError(await events({ channel: 'boomplay', events: [ev(c.id)] }, 'k', bmp), 401, 'unauthorized')
+    await expectError(await stats(link.code, bmp), 401, 'unauthorized')
+    expect(await db.shareLink.count()).toBe(2)
+    expect(await db.channelEvent.count()).toBe(0)
+  })
+
+  it('answers 500 server_error, uncached, when a handler throws, and logs it', async () => {
+    await seedChannel()
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await withChannel(new Request('http://localhost/api/v1/x', { headers: auth }), async () => {
+      throw new Error('boom')
+    })
+    const logged = log.mock.calls.length
+    log.mockRestore()
+    expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8')
+    await expectError(res, 500, 'server_error')
+    expect(logged).toBe(1)
   })
 })
 
@@ -242,5 +269,14 @@ describe('GET /api/v1/links/{code}/stats', () => {
     expect(res.headers.get('cache-control')).toBe('no-store')
     expect(await res.json()).toEqual({ opens_unique: 1, opens_all: 1, details_left: 0, claims: 0, children: 0 })
     await expectError(await stats('NOPE0000'), 404, 'unknown_link')
+  })
+
+  it("answers 404 for another channel's link", async () => {
+    await seedChannel()
+    const other = await seedChannel('boomplay', 'other_key')
+    const c = await seedCampaign()
+    const link = await mintChannelLink(c.id, other.id, 's', 'copy')
+    await expectError(await stats(link.code), 404, 'unknown_link')
+    expect((await stats(link.code, { authorization: 'Bearer other_key' })).status).toBe(200)
   })
 })
