@@ -86,10 +86,10 @@ describe('requireWorkspace', () => {
   const signIn = (u: { id: string }, admin: boolean, ogWs?: string) => {
     vi.mocked(requireUser).mockResolvedValue({ id: u.id, email: '', name: '', isGlobalAdmin: admin })
     vi.mocked(isAdminInDb).mockResolvedValue(admin)
-    cookieGet.mockImplementation((k: string) => (k === 'og_ws' && ogWs ? { value: ogWs } : undefined))
+    cookieGet.mockImplementation((k: string) => (k === 'of_ws' && ogWs ? { value: ogWs } : undefined))
   }
 
-  it('gives an admin the workspace named by og_ws', async () => {
+  it('gives an admin the workspace named by of_ws', async () => {
     const admin = await user('admin@x.com')
     const owner = await user('o@x.com')
     const adminWs = await createWorkspace(admin.id, input)
@@ -99,7 +99,7 @@ describe('requireWorkspace', () => {
     expect(target.id).not.toBe(adminWs.id)
   })
 
-  it('never honours og_ws for a non-admin', async () => {
+  it('never honours of_ws for a non-admin', async () => {
     const u = await user()
     const owner = await user('o@x.com')
     const own = await createWorkspace(u.id, input)
@@ -108,7 +108,7 @@ describe('requireWorkspace', () => {
     expect((await requireWorkspace()).id).toBe(own.id)
   })
 
-  it('falls back to the admin\'s own workspace when og_ws names nothing', async () => {
+  it('falls back to the admin\'s own workspace when of_ws names nothing', async () => {
     const admin = await user('admin@x.com')
     const own = await createWorkspace(admin.id, input)
     signIn(admin, true, 'does-not-exist')

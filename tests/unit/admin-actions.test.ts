@@ -43,12 +43,12 @@ describe('openWorkspace / exitWorkspace', () => {
   it('sets a session cookie and goes to /app for an admin', async () => {
     const ws = await setup(true)
     await expect(openWorkspace(ws.id)).rejects.toThrow('REDIRECT:/app')
-    expect(jar.set).toHaveBeenCalledWith('og_ws', ws.id, { httpOnly: true, sameSite: 'lax', path: '/' })
+    expect(jar.set).toHaveBeenCalledWith('of_ws', ws.id, { httpOnly: true, sameSite: 'lax', path: '/' })
   })
 
   it('exit clears the cookie and goes back to the list', async () => {
     await setup(true)
     await expect(exitWorkspace()).rejects.toThrow('REDIRECT:/admin/advertisers')
-    expect(jar.delete).toHaveBeenCalledWith('og_ws')
+    expect(jar.delete).toHaveBeenCalledWith('of_ws')
   })
 })

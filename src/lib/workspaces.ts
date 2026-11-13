@@ -1,10 +1,8 @@
 import 'server-only'
 import type { Workspace, WorkspaceType } from '@prisma/client'
-import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
 import { db, type Tx } from '@/lib/db'
 import type { Country } from '@/lib/markets'
-import { isAdminInDb, requireUser } from '@/lib/session'
+import { requireMember } from '@/lib/permissions'
 
 export type WorkspaceInput = { name: string; type: WorkspaceType; country: Country }
 
@@ -27,19 +25,9 @@ export async function workspaceForUser(userId: string): Promise<Workspace | null
   return m?.workspace ?? null
 }
 
-// A Global admin may look at any workspace via the og_ws cookie; nobody else may.
+// The active workspace for any signed-in member (see requireMember).
 export async function requireWorkspace(): Promise<Workspace> {
-  const user = await requireUser()
-  if (await isAdminInDb(user.id)) {
-    const id = (await cookies()).get('og_ws')?.value
-    if (id) {
-      const picked = await db.workspace.findUnique({ where: { id } })
-      if (picked) return picked
-    }
-  }
-  const ws = await workspaceForUser(user.id)
-  if (!ws) redirect('/app/new-workspace')
-  return ws
+  return (await requireMember('view')).workspace
 }
 
 export async function updateWorkspace(id: string, input: WorkspaceInput): Promise<Workspace> {
@@ -63,10 +51,10 @@ export async function setupChecklist(workspaceId: string) {
   }
 }
 
-// True when the user is looking at a workspace they do not own (a Global admin).
+// True when the user is looking at a workspace as Global rather than as a member.
 export async function isImpersonating(userId: string, workspaceId: string): Promise<boolean> {
-  const m = await db.workspaceMember.findFirst({ where: { userId, workspaceId, role: 'Owner' } })
-  return m === null
+  const m = await requireMember('view')
+  return m.user.id === userId && m.workspace.id === workspaceId && m.role === 'Global'
 }
 
 async function decide(tx: Tx, id: string, data: { status: 'approved' | 'declined'; declineReason?: string }) {

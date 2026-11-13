@@ -1,6 +1,6 @@
 'use server'
 
-import { cookies } from 'next/headers'
+import { clearActiveWorkspace, setActiveWorkspace } from '@/lib/active-workspace'
 import { redirect } from 'next/navigation'
 import { db } from '@/lib/db'
 import { requireAdmin } from '@/lib/session'
@@ -8,13 +8,12 @@ import { requireAdmin } from '@/lib/session'
 export async function openWorkspace(id: string): Promise<void> {
   await requireAdmin()
   if (!(await db.workspace.findUnique({ where: { id }, select: { id: true } }))) throw 'UNKNOWN_WORKSPACE'
-  // No maxAge: a session cookie, gone when the browser closes.
-  ;(await cookies()).set('og_ws', id, { httpOnly: true, sameSite: 'lax', path: '/' })
+  await setActiveWorkspace(id)
   redirect('/app')
 }
 
 export async function exitWorkspace(): Promise<void> {
   await requireAdmin()
-  ;(await cookies()).delete('og_ws')
+  await clearActiveWorkspace()
   redirect('/admin/advertisers')
 }
