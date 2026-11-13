@@ -33,6 +33,15 @@ export function ipHash(req: Request): string {
   return createHash('sha256').update(clientIp(req) + salt()).digest('hex')
 }
 
+// Chat apps, social sites and search engines fetch a shared link to draw its preview card. They get
+// the page, but they are not a friend opening it.
+const PREVIEW_FETCHERS =
+  /WhatsApp|facebookexternalhit|Facebot|Twitterbot|TelegramBot|Slackbot|Slack-ImgProxy|Discordbot|LinkedInBot|Googlebot|bingbot|Applebot|iMessageLinkPreview|Pinterest|Embedly|vkShare|redditbot|SkypeUriPreview/i
+
+export function isPreviewFetcher(userAgent: string | null | undefined): boolean {
+  return PREVIEW_FETCHERS.test(userAgent ?? '')
+}
+
 // Who is asking: the og_v cookie (minted when missing or malformed), hashed IP and user agent.
 export function visitor(req: Request): Visitor {
   const existing = readCookie(req, COOKIE)

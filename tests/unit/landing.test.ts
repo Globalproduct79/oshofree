@@ -9,7 +9,7 @@ import { db } from '@/lib/db'
 import { COPY } from '@/lib/copy'
 import { type LandingView, renderLanding } from '@/lib/landing/render'
 import { landingRoute } from '@/lib/landing/respond'
-import { ipHash } from '@/lib/landing/visitor'
+import { ipHash, isPreviewFetcher } from '@/lib/landing/visitor'
 import { shareTargets } from '@/lib/landing/share-targets'
 import { linkUrl, mintChannelLink } from '@/lib/links'
 
@@ -194,6 +194,19 @@ describe('GET /o/[code]', () => {
     expect(await events('Claim')).toHaveLength(2)
   })
 
+  it("renders the page for a chat app's link preview without a cookie or any event", async () => {
+    const link = await seed()
+    const res = await page(link.code, '', { 'user-agent': 'WhatsApp/2.23.20.0 A' })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('set-cookie')).toBeNull()
+    expect(await res.text()).toContain('Buy 2 Kola Bright, get 1 free')
+    const viaClaim = await seed(linkOffer)
+    const sent = await page(viaClaim.code, '?go=claim', { 'user-agent': 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)' })
+    expect(sent.status).toBe(302)
+    expect(sent.headers.get('set-cookie')).toBeNull()
+    expect(await db.linkEvent.count()).toBe(0)
+  })
+
   it('answers HEAD with an empty 204: no cookie, no Open, no Claim', async () => {
     const link = await seed(linkOffer)
     for (const query of ['', '?go=claim']) {
@@ -204,6 +217,21 @@ describe('GET /o/[code]', () => {
       expect(await res.text()).toBe('')
     }
     expect(await db.linkEvent.count()).toBe(0)
+  })
+})
+
+describe('isPreviewFetcher', () => {
+  it('knows the link-preview fetchers chat apps and search engines send', () => {
+    expect(isPreviewFetcher('WhatsApp/2.23.20.0 A')).toBe(true)
+    expect(isPreviewFetcher('facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)')).toBe(true)
+    expect(isPreviewFetcher('Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)')).toBe(true)
+  })
+
+  it('treats a phone browser, and a request with no user agent, as a person', () => {
+    const chrome =
+      'Mozilla/5.0 (Linux; Android 13; TECNO KJ5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.82 Mobile Safari/537.36'
+    expect(isPreviewFetcher(chrome)).toBe(false)
+    expect(isPreviewFetcher('')).toBe(false)
   })
 })
 
