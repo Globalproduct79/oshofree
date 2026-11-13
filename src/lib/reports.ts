@@ -98,11 +98,11 @@ export async function campaignDaily(campaignId: string, days = 14, now: Date = n
   const since = new Date(now.getTime() - (days + 1) * DAY_MS)
   const [channel, link] = await Promise.all([
     db.$queryRaw<{ day: string; type: string; n: number }[]>`
-      SELECT to_char(date_trunc('day', "at" AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS day, "type"::text AS type, count(*)::int AS n
+      SELECT to_char(date_trunc('day', ("at" AT TIME ZONE 'UTC') AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS day, "type"::text AS type, count(*)::int AS n
       FROM "ChannelEvent" WHERE "campaignId" = ${campaignId} AND "at" >= ${since} AND "type" IN ('Impression', 'Claim')
       GROUP BY 1, 2`,
     db.$queryRaw<{ day: string; type: string; n: number }[]>`
-      SELECT to_char(date_trunc('day', e."at" AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS day, e."type"::text AS type, count(*)::int AS n
+      SELECT to_char(date_trunc('day', (e."at" AT TIME ZONE 'UTC') AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS day, e."type"::text AS type, count(*)::int AS n
       FROM "LinkEvent" e JOIN "ShareLink" l ON l."id" = e."linkId"
       WHERE l."campaignId" = ${campaignId} AND e."at" >= ${since}
         AND ((e."type" = 'Open' AND e."deduped" = false) OR e."type" = 'Claim')
@@ -178,7 +178,7 @@ export async function homeNumbers(campaignId: string, now: Date) {
     db.$queryRaw<{ n: number }[]>`
       SELECT count(*)::int AS n FROM "ChannelEvent"
       WHERE "campaignId" = ${campaignId} AND "type" = 'Impression'
-        AND to_char(date_trunc('day', "at" AT TIME ZONE ${tz}), 'YYYY-MM-DD') = ${today}`,
+        AND to_char(date_trunc('day', ("at" AT TIME ZONE 'UTC') AT TIME ZONE ${tz}), 'YYYY-MM-DD') = ${today}`,
     db.channelEvent.count({ where: { campaignId, type: 'Claim' } }),
     linkEventTally([campaignId]),
     db.shareLink.count({ where: { campaignId, sharerType: { not: 'Root' } } }),

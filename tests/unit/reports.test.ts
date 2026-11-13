@@ -24,7 +24,7 @@ async function fixture() {
   const friend = await db.shareLink.create({
     data: { code: 'FRIEND01', campaignId: campaign.id, channelId: channel.id, depth: 2, sharerType: 'Consumer', parentId: wa.id, consumerId: consumer.id },
   })
-  const at = new Date()
+  const at = NOW
   const ev = (type: 'Impression' | 'Open' | 'Claim', i: number) =>
     ({ channelId: channel.id, campaignId: campaign.id, type, sessionId: `s${i}`, at, dedupeKey: `${type}${i}` })
   await db.channelEvent.createMany({
@@ -82,8 +82,8 @@ describe('reports', () => {
 
   it('zero-fills the daily series in the market timezone', async () => {
     const { campaign } = await fixture()
-    const d = await campaignDaily(campaign.id)
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date())
+    const d = await campaignDaily(campaign.id, 14, NOW)
+    const today = '2026-12-03'
     expect(d).toHaveLength(14)
     expect(d[13].day).toBe(today)
     expect(d.reduce((n, p) => n + p.impressions, 0)).toBe(10)
@@ -91,9 +91,22 @@ describe('reports', () => {
     expect(d[0]).toMatchObject({ impressions: 0, linkOpens: 0, claimsOnChannel: 0, claimsViaLink: 0 })
   })
 
+  it('buckets naive-UTC timestamps by the market day, not the UTC day', async () => {
+    const { campaign, channel } = await fixture()
+    await db.channelEvent.deleteMany({ where: { campaignId: campaign.id } })
+    await db.channelEvent.create({
+      data: { channelId: channel.id, campaignId: campaign.id, type: 'Impression', sessionId: 's', at: new Date('2026-12-03T23:30:00Z'), dedupeKey: 'late' },
+    })
+    const now = new Date('2026-12-04T00:45:00Z')
+    const d = await campaignDaily(campaign.id, 14, now)
+    expect(d[13]).toMatchObject({ day: '2026-12-04', impressions: 1 })
+    expect(d[12]).toMatchObject({ day: '2026-12-03', impressions: 0 })
+    expect((await homeNumbers(campaign.id, now)).impressionsToday).toBe(1)
+  })
+
   it('computes the Home numbers', async () => {
     const { campaign } = await fixture()
-    const h = await homeNumbers(campaign.id, new Date())
+    const h = await homeNumbers(campaign.id, NOW)
     expect(h).toMatchObject({ impressions: 10, impressionsToday: 10, uniqueLinkOpens: 1, shares: 3, claims: 2, daysTotal: 7 })
     const early = await homeNumbers(campaign.id, new Date('2026-11-01'))
     const late = await homeNumbers(campaign.id, new Date('2027-01-01'))
@@ -110,9 +123,8 @@ describe('reports', () => {
     expect((await heroCampaign(ws.id, NOW))?.id).toBe(paused.id)
     await mkCampaign(ws.id, 'live', '2026-11-01', '2026-11-20') // ended
     expect((await heroCampaign(ws.id, NOW))?.id).toBe(paused.id)
-    const old = await mkCampaign(ws.id, 'live', '2026-12-01', '2026-12-09')
+    await mkCampaign(ws.id, 'live', '2026-12-01', '2026-12-09')
     const newer = await mkCampaign(ws.id, 'live', '2026-12-02', '2026-12-09')
     expect((await heroCampaign(ws.id, NOW))?.id).toBe(newer.id)
-    expect(old.id).not.toBe(newer.id)
   })
 })
