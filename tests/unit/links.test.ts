@@ -75,4 +75,20 @@ describe('events', () => {
     })
     expect(await linkStats('NOPE0000')).toBeNull()
   })
+
+  it('counts exactly one unique open when the same visitor opens concurrently', async () => {
+    const { campaign, channel } = await setup()
+    const link = await mintChannelLink(campaign.id, channel.id, 's', 'x')
+    const now = new Date('2026-11-13T10:00:00Z')
+    await Promise.all(Array.from({ length: 10 }, () => recordOpen(link.id, 'v1', 'h', 'ua', now)))
+    expect(await db.linkEvent.count({ where: { linkId: link.id, deduped: false } })).toBe(1)
+    expect(await db.linkEvent.count({ where: { linkId: link.id } })).toBe(10)
+  })
+
+  it('does not let a later-day row dedupe an earlier-day open', async () => {
+    const { campaign, channel } = await setup()
+    const link = await mintChannelLink(campaign.id, channel.id, 's', 'x')
+    await recordOpen(link.id, 'v1', 'h', 'ua', new Date('2026-11-14T09:00:00Z'))
+    expect(await recordOpen(link.id, 'v1', 'h', 'ua', new Date('2026-11-13T09:00:00Z'))).toEqual({ deduped: false })
+  })
 })

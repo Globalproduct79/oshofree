@@ -18,11 +18,19 @@ export async function recordOpen(
   userAgent: string,
   now: Date = new Date(),
 ): Promise<{ deduped: boolean }> {
-  const counted = await db.linkEvent.count({
-    where: { linkId, visitorId, type: 'Open', deduped: false, at: { gte: startOfUtcDay(now) } },
+  const dayStart = startOfUtcDay(now)
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+  // Serialise per (link, visitor) so concurrent opens cannot both count as first.
+  const deduped = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${linkId} || ':' || ${visitorId}))`
+    const counted = await tx.linkEvent.count({
+      where: { linkId, visitorId, type: 'Open', deduped: false, at: { gte: dayStart, lt: dayEnd } },
+    })
+    await tx.linkEvent.create({
+      data: { linkId, type: 'Open', visitorId, ipHash, userAgent, deduped: counted > 0, at: now },
+    })
+    return counted > 0
   })
-  const deduped = counted > 0
-  await write('Open', linkId, visitorId, ipHash, userAgent, deduped, now)
   return { deduped }
 }
 
