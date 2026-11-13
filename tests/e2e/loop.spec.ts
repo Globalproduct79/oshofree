@@ -56,7 +56,7 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
     await brand.getByLabel('Type').selectOption('Brand')
     await brand.getByLabel('Billing country').selectOption('NG')
     await brand.getByRole('button', { name: 'Create workspace' }).click()
-    await expect(brand.getByText("Your workspace is waiting for Global's approval")).toBeVisible()
+    await expect(brand.getByText('Global checks new advertisers within one working day')).toBeVisible()
   })
 
   await test.step('Global approves the new advertiser', async () => {

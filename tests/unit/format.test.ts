@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { daysLeft, fd, fmt, initials, loc, maskPhone, pct, usd, usdFromDollars } from '@/lib/format'
+import { ageLabel, daysLeft, fd, fmt, initials, loc, maskPhone, pct, usd, usdFromDollars } from '@/lib/format'
 
 describe('prototype formatting', () => {
   it('fmt abbreviates counts', () => {
@@ -41,4 +41,20 @@ describe('prototype formatting', () => {
     expect(maskPhone('+254712345678')).toBe('+254 71• ••• 5678')
     expect(maskPhone('+441234567890')).toBe('+441 23• ••• 7890')
   })
+})
+
+describe('ageLabel', () => {
+  const now = new Date('2026-11-13T12:00:00Z')
+  const ago = (ms: number) => new Date(now.getTime() - ms)
+  it('says now under a minute, then minutes, hours and days', () => {
+    expect(ageLabel(ago(0), now)).toBe('now')
+    expect(ageLabel(ago(59_000), now)).toBe('now')
+    expect(ageLabel(ago(60_000), now)).toBe('1m ago')
+    expect(ageLabel(ago(59 * 60_000), now)).toBe('59m ago')
+    expect(ageLabel(ago(2 * 3_600_000), now)).toBe('2h ago')
+    expect(ageLabel(ago(23 * 3_600_000 + 59 * 60_000), now)).toBe('23h ago')
+    expect(ageLabel(ago(24 * 3_600_000), now)).toBe('1d ago')
+    expect(ageLabel(ago(9 * 86_400_000), now)).toBe('9d ago')
+  })
+  it('treats a future date as now', () => expect(ageLabel(new Date(now.getTime() + 5_000), now)).toBe('now'))
 })

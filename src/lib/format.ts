@@ -72,3 +72,12 @@ export const maskPhone = (e164: string): string => {
   const rest = digits.slice(code.length)
   return `+${code} ${rest.slice(0, 2)}• ••• ${digits.slice(-4)}`
 }
+
+// How long ago, for the bell: 'now' under a minute, then '5m ago', '2h ago', '9d ago'.
+export const ageLabel = (at: Date, now: Date): string => {
+  const s = Math.floor((now.getTime() - at.getTime()) / 1000)
+  if (s < 60) return 'now'
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86_400)}d ago`
+}
