@@ -68,3 +68,25 @@ export async function isImpersonating(userId: string, workspaceId: string): Prom
   const m = await db.workspaceMember.findFirst({ where: { userId, workspaceId, role: 'Owner' } })
   return m === null
 }
+
+async function decide(id: string, data: { status: 'approved' | 'declined'; declineReason?: string }) {
+  const { count } = await db.workspace.updateMany({ where: { id, status: 'pending' }, data })
+  if (count === 0) throw 'INVALID_TRANSITION'
+  return db.workspace.findUniqueOrThrow({ where: { id } })
+}
+
+export async function approveWorkspace(id: string, byUserId: string): Promise<Workspace> {
+  const ws = await decide(id, { status: 'approved' })
+  await db.reviewAction.create({ data: { targetType: 'Workspace', targetId: id, action: 'Approve', byUserId } })
+  return ws
+}
+
+export async function declineWorkspace(id: string, byUserId: string, reason: string): Promise<Workspace> {
+  const why = reason.trim()
+  if (!why) throw 'REASON_REQUIRED'
+  const ws = await decide(id, { status: 'declined', declineReason: why })
+  await db.reviewAction.create({
+    data: { targetType: 'Workspace', targetId: id, action: 'Decline', reason: why, byUserId },
+  })
+  return ws
+}

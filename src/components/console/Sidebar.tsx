@@ -7,7 +7,9 @@ import { useState } from 'react'
 import { COPY } from '@/lib/copy'
 import { tokens } from '@/lib/tokens'
 
-const groups = [
+export type NavGroup = { label: string; items: { label: string; href: string }[] }
+
+const advertiserGroups: NavGroup[] = [
   { label: COPY.nav.groups.campaigns, items: [
     { label: COPY.nav.items.campaigns, href: '/app' },
     { label: COPY.nav.items.newCampaign, href: '/app/campaigns/new' },
@@ -17,10 +19,10 @@ const groups = [
 ]
 
 function isActive(pathname: string, href: string) {
-  return href === '/app' ? pathname === '/app' : pathname === href || pathname.startsWith(`${href}/`)
+  return href === '/app' || href === '/admin' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)
 }
 
-export function Sidebar({ children }: { children?: React.ReactNode }) {
+export function Sidebar({ children, groups = advertiserGroups }: { children?: React.ReactNode; groups?: NavGroup[] }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   return (
