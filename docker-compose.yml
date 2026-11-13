@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: oshofree
+      POSTGRES_PASSWORD: oshofree
+      POSTGRES_DB: oshofree
+    volumes:
+      - oshofree_pgdata:/var/lib/postgresql/data
+
+volumes:
+  oshofree_pgdata:
