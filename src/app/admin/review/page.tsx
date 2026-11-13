@@ -1,12 +1,13 @@
 import { OfferCard } from '@/components/campaign/OfferCard'
+import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { PageHead } from '@/components/console/PageHead'
+import { campaignCard } from '@/lib/campaign-card'
 import { checkLink } from '@/lib/link-check'
 import { COPY } from '@/lib/copy'
 import { db } from '@/lib/db'
-import { imageUrl } from '@/lib/storage'
 import { tokens } from '@/lib/tokens'
 import {
-  approveCampaignAction, approveWorkspaceAction, declineWorkspaceAction, rejectCampaignAction,
+  approveCampaignAction, approveWorkspaceAction, declineWorkspaceAction, previewOffersAction, rejectCampaignAction,
 } from './actions'
 import { DecisionButtons } from './decision-buttons'
 
@@ -84,19 +85,10 @@ export default async function ReviewPage() {
         {campaigns.map((c, i) => {
           const link = links[i]
           const licence = needsLicence(c) ? LICENCE_WORDS.test(c.description) : null
+          const card = campaignCard(c)
           return (
             <div key={c.id} className="grid gap-4 border p-4 sm:grid-cols-[220px_1fr]" style={rowStyle}>
-              <OfferCard
-                offer={{
-                  brand: c.brand,
-                  headline: c.headline,
-                  description: c.description,
-                  imageUrl: c.creativeImageKey ? imageUrl(c.creativeImageKey) : null,
-                  color: c.tileColor,
-                  rewardLabel: c.shareRewardLabel,
-                  endsAt: c.endsAt,
-                }}
-              />
+              <OfferCard offer={card} />
               <div className="flex flex-col gap-3">
                 <div>
                   <p className="font-semibold" style={{ color: tokens.ink }}>{c.name}</p>
@@ -129,15 +121,13 @@ export default async function ReviewPage() {
                   confirmLabel={COPY.review.confirmReject}
                   hideApprove={c.workspace.status !== 'approved'}
                   extra={
-                    <button
-                      type="button"
-                      disabled
-                      title="Arrives with the Phoenix preview"
-                      className="rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                      style={{ border: `1px solid ${tokens.line}`, color: tokens.ink2 }}
-                    >
-                      {COPY.review.preview}
-                    </button>
+                    <PreviewButton
+                      size="default"
+                      className="px-3"
+                      label={COPY.review.preview}
+                      mine={card}
+                      load={previewOffersAction.bind(null, c.country)}
+                    />
                   }
                 />
               </div>

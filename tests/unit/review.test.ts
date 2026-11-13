@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { previewOffersAction } from '@/app/admin/review/actions'
+import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { approveCampaign, createCampaign, rejectCampaign, submitCampaign, type CampaignInput } from '@/lib/campaigns'
 import { checkLink } from '@/lib/link-check'
@@ -122,5 +124,25 @@ describe('checkLink', () => {
   it('is broken for 404 and for a thrown error', async () => {
     expect(await checkLink('https://a.test', res(404))).toBe('broken')
     expect(await checkLink('https://a.test', (async () => { throw new Error('down') }) as typeof fetch)).toBe('broken')
+  })
+})
+
+describe('previewOffersAction', () => {
+  const signIn = (u: { id: string; email: string; name: string; isGlobalAdmin: boolean }) =>
+    vi.mocked(auth).mockResolvedValue({ user: u, expires: '2099-01-01' } as never)
+
+  it('is for Global admins only', async () => {
+    const u = await db.user.create({ data: { email: 'b@x.test', name: 'B', passwordHash: 'x' } })
+    signIn({ ...u, isGlobalAdmin: true })
+    await expect(previewOffersAction('NG')).rejects.toThrow('NEXT_HTTP_ERROR_FALLBACK;404')
+  })
+
+  it('lists the live offers in the campaign country for an admin', async () => {
+    const { admin, c } = await setup()
+    await approveCampaign(c.id, admin.id)
+    await db.campaign.update({ where: { id: c.id }, data: { startsAt: new Date(Date.now() - 86_400_000) } })
+    signIn(admin)
+    expect((await previewOffersAction('NG')).map((o) => o.id)).toEqual([c.id])
+    expect(await previewOffersAction('KE')).toEqual([])
   })
 })

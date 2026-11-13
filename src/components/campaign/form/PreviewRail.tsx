@@ -1,15 +1,27 @@
 'use client'
 
+import { previewOffers } from '@/app/app/(console)/campaigns/actions'
 import { OfferCard } from '@/components/campaign/OfferCard'
-import { Button } from '@/components/ui/button'
+import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { COPY } from '@/lib/copy'
 import { tokens } from '@/lib/tokens'
 import { previewEndsAt, type FormDefaults } from './values'
 
 const P = COPY.campaignForm.preview
 
-// The card exactly as the wall will show it, redrawn on every keystroke.
-export function PreviewRail({ values, imageUrl }: { values: FormDefaults; imageUrl: string | null }) {
+type Props = { values: FormDefaults; imageUrl: string | null; campaignId?: string }
+
+// The card exactly as the wall will show it, redrawn on every keystroke, and the same card on Phoenix.
+export function PreviewRail({ values, imageUrl, campaignId }: Props) {
+  const card = {
+    brand: values.brand?.trim() || P.brand,
+    headline: values.headline?.trim() || P.headline,
+    description: values.description?.trim() ?? '',
+    imageUrl,
+    color: values.tileColor,
+    rewardLabel: values.shareRewardLabel?.trim() || P.reward,
+    endsAt: previewEndsAt(values.startsAt, values.runsForDays),
+  }
   return (
     <aside className="lg:sticky lg:top-6">
       <section
@@ -19,24 +31,13 @@ export function PreviewRail({ values, imageUrl }: { values: FormDefaults; imageU
         <h2 className="text-base font-semibold" style={{ color: tokens.ink }}>{P.title}</h2>
         <p className="mt-1 text-sm" style={{ color: tokens.ink2 }}>{P.subtitle}</p>
         <div className="mt-4">
-          <OfferCard
-            offer={{
-              brand: values.brand?.trim() || P.brand,
-              headline: values.headline?.trim() || P.headline,
-              description: values.description?.trim() ?? '',
-              imageUrl,
-              color: values.tileColor,
-              rewardLabel: values.shareRewardLabel?.trim() || P.reward,
-              endsAt: previewEndsAt(values.startsAt, values.runsForDays),
-            }}
-          />
+          <OfferCard offer={card} />
         </div>
-        {/* Task 13 wires this to the phone-frame preview. The span carries the tooltip a disabled button can't. */}
-        <span title={P.phoenixSoon} className="mt-4 block">
-          <Button type="button" variant="outline" size="lg" className="w-full" disabled title={P.phoenixSoon}>
-            {P.phoenix}
-          </Button>
-        </span>
+        <PreviewButton
+          className="mt-4 w-full"
+          mine={{ ...card, id: campaignId, category: values.category }}
+          load={() => previewOffers(values.country)}
+        />
       </section>
     </aside>
   )

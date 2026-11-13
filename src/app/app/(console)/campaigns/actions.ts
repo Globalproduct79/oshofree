@@ -7,6 +7,8 @@ import {
 } from '@/lib/campaigns'
 import { COPY } from '@/lib/copy'
 import { db } from '@/lib/db'
+import { isCountry } from '@/lib/markets'
+import { phoenixOffers, type OfferDto } from '@/lib/offers'
 import { requireWorkspace } from '@/lib/workspaces'
 
 type Failure = { error: string }
@@ -60,4 +62,10 @@ export async function pause(id: string) {
 export async function resume(id: string) {
   const ws = await requireWorkspace()
   return change(ws.id, id, resumeCampaign)
+}
+
+// The live offers for the Phoenix preview. They are public on Phoenix already, so this reads across workspaces.
+export async function previewOffers(country: unknown): Promise<OfferDto[]> {
+  await requireWorkspace()
+  return isCountry(country) ? phoenixOffers(country, new Date()) : []
 }

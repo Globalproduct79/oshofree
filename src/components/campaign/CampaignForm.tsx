@@ -90,7 +90,7 @@ export function CampaignForm({ campaignId, defaults, initialImageUrl = null }: P
           <ConfirmSection />
           <FormActions problem={formProblem(values)} pending={pending} saved={saved} onSave={onSave} />
         </form>
-        <PreviewRail values={values} imageUrl={imageUrl} />
+        <PreviewRail values={values} imageUrl={imageUrl} campaignId={id} />
       </div>
     </FormProvider>
   )

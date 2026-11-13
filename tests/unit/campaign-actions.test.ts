@@ -1,6 +1,6 @@
 import type { Workspace } from '@prisma/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { pause, saveDraft, submit } from '@/app/app/(console)/campaigns/actions'
+import { pause, previewOffers, saveDraft, submit } from '@/app/app/(console)/campaigns/actions'
 import { createCampaign, type CampaignInput } from '@/lib/campaigns'
 import { db } from '@/lib/db'
 import { requireWorkspace } from '@/lib/workspaces'
@@ -85,5 +85,38 @@ describe('transitions', () => {
   it("explains when a campaign can't change state", async () => {
     const own = await createCampaign(mine.id, input)
     expect(await pause(own.id)).toEqual({ error: "That campaign can't change state right now." })
+  })
+})
+
+describe('previewOffers', () => {
+  const DAY = 86_400_000
+  const live = (workspaceId: string, country: 'NG' | 'KE', headline: string) =>
+    db.campaign.create({
+      data: {
+        workspaceId, name: headline, brand: 'Rival', country, category: 'Retail', headline, description: 'Real.',
+        placement: 'card', redeemMethod: 'code', claimCode: 'R1', budgetUsd: 50, status: 'live', shareRewardLabel: 'Airtime',
+        startsAt: new Date(Date.now() - DAY), endsAt: new Date(Date.now() + DAY),
+      },
+    })
+
+  beforeEach(async () => {
+    await db.workspace.update({ where: { id: theirs.id }, data: { status: 'approved' } })
+    await live(theirs.id, 'NG', 'Lagos offer')
+    await live(theirs.id, 'KE', 'Nairobi offer')
+  })
+
+  it('shows nothing but your own card when Phoenix is not set up', async () => {
+    expect(await previewOffers('NG')).toEqual([])
+  })
+
+  it("lists the offers Phoenix would pull in that country, any workspace's", async () => {
+    await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: true } })
+    expect((await previewOffers('NG')).map((o) => o.headline)).toEqual(['Lagos offer'])
+  })
+
+  it('answers an empty list for a country outside the five markets', async () => {
+    await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: true } })
+    expect(await previewOffers('GB')).toEqual([])
+    expect(await previewOffers(undefined)).toEqual([])
   })
 })

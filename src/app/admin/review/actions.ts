@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { approveCampaign, rejectCampaign } from '@/lib/campaigns'
 import { COPY } from '@/lib/copy'
+import { isCountry } from '@/lib/markets'
+import { phoenixOffers, type OfferDto } from '@/lib/offers'
 import { requireAdmin } from '@/lib/session'
 import { approveWorkspace, declineWorkspace } from '@/lib/workspaces'
 
@@ -36,4 +38,10 @@ export async function approveCampaignAction(id: unknown) {
 }
 export async function rejectCampaignAction(id: unknown, reason: unknown) {
   return decide((by) => rejectCampaign(idOf(id), by, textOf(reason)))
+}
+
+// The offers a campaign waiting here would sit among on Phoenix.
+export async function previewOffersAction(country: unknown): Promise<OfferDto[]> {
+  await requireAdmin()
+  return isCountry(country) ? phoenixOffers(country, new Date()) : []
 }

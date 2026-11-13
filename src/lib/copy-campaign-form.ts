@@ -64,8 +64,6 @@ export const CAMPAIGN_FORM_COPY = {
   preview: {
     title: 'Card preview',
     subtitle: 'What a Phoenix user sees on the Offers wall.',
-    phoenix: 'Preview on Phoenix',
-    phoenixSoon: 'Arrives with the Phoenix preview',
     brand: 'Brand',
     headline: 'Your headline',
     reward: 'Your share reward',

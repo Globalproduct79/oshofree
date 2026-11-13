@@ -67,6 +67,12 @@ export async function offersFor(country: Country, channelId: string, now: Date):
   return campaigns.map((c) => toDto(c, roots.get(c.id)))
 }
 
+// What Phoenix would pull in this country now; nothing when the Phoenix channel is not set up.
+export async function phoenixOffers(country: Country, now: Date): Promise<OfferDto[]> {
+  const phoenix = await db.channel.findUnique({ where: { key: 'phoenix' }, select: { id: true } })
+  return phoenix ? offersFor(country, phoenix.id, now) : []
+}
+
 export type ShareResult = { code: string; url: string } | 'unknown_offer' | 'not_delivering'
 
 // A sharer's own link for an offer that is delivering now.

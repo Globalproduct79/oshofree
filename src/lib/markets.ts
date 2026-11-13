@@ -1,6 +1,8 @@
 export const COUNTRIES = ['NG', 'KE', 'GH', 'TZ', 'SN'] as const
 export type Country = (typeof COUNTRIES)[number]
 
+export const isCountry = (v: unknown): v is Country => (COUNTRIES as readonly unknown[]).includes(v)
+
 export type Market = {
   name: string
   currency: string

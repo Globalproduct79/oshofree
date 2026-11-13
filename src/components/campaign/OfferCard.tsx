@@ -17,7 +17,7 @@ export type OfferCardProps = {
 // UTC so the server and the browser print the same day.
 const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 
-function initials(brand: string) {
+export function initials(brand: string) {
   const letters = brand.split(/\s+/).filter(Boolean).map((w) => w[0]).join('')
   return letters.slice(0, 2).toUpperCase() || '?'
 }
