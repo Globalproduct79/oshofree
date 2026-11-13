@@ -70,7 +70,7 @@ export const CAMPAIGN_COPY = {
     brand: 'Brand',
   },
   channel: (key: string) => CHANNELS[key] ?? key,
-  via: { whatsapp: 'WhatsApp', sms: 'SMS', x: 'X', copy: 'Copy', other: 'Other', unknown: 'Unknown' },
+  via: { whatsapp: 'WhatsApp', sms: 'SMS', x: 'X', facebook: 'Facebook', copy: 'Copy', other: 'Other', unknown: 'Unknown' },
 } as const
 
 export const PREVIEW_COPY = {

@@ -50,6 +50,8 @@ enum CampaignStatus {
   live
   paused
   rejected
+  scheduled
+  ended
 }
 
 enum SharerType {
@@ -64,6 +66,7 @@ enum ShareVia {
   x
   copy
   other
+  facebook
 }
 
 enum LinkEventType {
@@ -77,6 +80,8 @@ enum ChannelEventType {
   Open
   Claim
   Share
+  ShareOpen
+  ShareClaim
 }
 
 enum ReviewTarget {
@@ -90,6 +95,64 @@ enum ReviewVerb {
   Decline
 }
 
+enum RejectReason {
+  misleading_terms
+  not_available
+  broken_link
+  prohibited_category
+  missing_licence
+  creative_standards
+}
+
+enum InvoiceStatus {
+  open
+  due
+  paid
+}
+
+enum LedgerKind {
+  delivery
+  reward
+  payment
+  credit
+  refund
+}
+
+enum PayoutStatus {
+  queued
+  sent
+  held
+  blocked
+  rejected
+}
+
+enum NotificationKind {
+  approved
+  credit
+  pace
+  ended
+  weekly
+  review
+  system
+}
+
+enum CreditRequestStatus {
+  open
+  approved
+  dismissed
+}
+
+enum RevisionStatus {
+  review
+  rejected
+  applied
+}
+
+enum StatementStatus {
+  open
+  paid
+}
+
 model User {
   id            String            @id @default(cuid())
   email         String            @unique
@@ -99,18 +162,32 @@ model User {
   createdAt     DateTime          @default(now())
   memberships   WorkspaceMember[]
   reviews       ReviewAction[]
+  auditEvents   AuditEvent[]
 }
 
 model Workspace {
-  id            String            @id @default(cuid())
-  name          String
-  type          WorkspaceType
-  country       Country
-  status        WorkspaceStatus   @default(pending)
-  declineReason String?
-  createdAt     DateTime          @default(now())
-  members       WorkspaceMember[]
-  campaigns     Campaign[]
+  id                       String            @id @default(cuid())
+  name                     String
+  type                     WorkspaceType
+  country                  Country
+  status                   WorkspaceStatus   @default(pending)
+  declineReason            String?
+  createdAt                DateTime          @default(now())
+  members                  WorkspaceMember[]
+  campaigns                Campaign[]
+  creditLimitCents         Int               @default(50000)
+  registrationNumber       String?
+  accountManager           String            @default("Obinna A.")
+  termsDays                Int               @default(14)
+  approvedAt               DateTime?
+  rewardMaxPerSharerPerDay Int               @default(5)
+  rewardCapPct             Int               @default(20)
+  pointsPerShare           Int               @default(10)
+  invitations              Invitation[]
+  ledger                   LedgerEntry[]
+  invoices                 Invoice[]
+  creditRequests           CreditRequest[]
+  payouts                  RewardPayout[]
 }
 
 model WorkspaceMember {
@@ -124,19 +201,26 @@ model WorkspaceMember {
 }
 
 model Channel {
-  id         String         @id @default(cuid())
-  key        String         @unique
-  name       String
-  apiKeyHash String
-  isLive     Boolean        @default(false)
-  countries  Country[]
-  shareLinks ShareLink[]
-  events     ChannelEvent[]
-  batches    ChannelBatch[]
+  id                    String                @id @default(cuid())
+  key                   String                @unique
+  name                  String
+  apiKeyHash            String
+  isLive                Boolean               @default(false)
+  countries             Country[]
+  shareLinks            ShareLink[]
+  events                ChannelEvent[]
+  batches               ChannelBatch[]
+  previousKeyHash       String?
+  previousKeyValidUntil DateTime?
+  keyCreatedAt          DateTime              @default(now())
+  rateCards             RateCard[]
+  shares                ChannelShare[]
+  statements            SettlementStatement[]
+  claimCodes            ClaimCode[]
 }
 
 model Campaign {
-  id               String         @id @default(cuid())
+  id               String             @id @default(cuid())
   workspaceId      String
   name             String
   brand            String
@@ -154,15 +238,30 @@ model Campaign {
   startsAt         DateTime
   endsAt           DateTime
   shareRewardLabel String
-  status           CampaignStatus @default(draft)
+  status           CampaignStatus     @default(draft)
   rejectReason     String?
   submittedAt      DateTime?
   decidedAt        DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  workspace        Workspace      @relation(fields: [workspaceId], references: [id])
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  workspace        Workspace          @relation(fields: [workspaceId], references: [id])
   shareLinks       ShareLink[]
   channelEvents    ChannelEvent[]
+  creativeVideoKey String?
+  ageGated         Boolean            @default(false)
+  rewardLocal      Int                @default(0)
+  rewardCapPct     Int                @default(20)
+  cpmCents         Int?
+  fxPerUsd         Decimal?
+  rejectReasonCode RejectReason?
+  endedAt          DateTime?
+  pausedBy         String? // 'credit' | 'user' | null
+  version          Int                @default(1)
+  revisions        CampaignRevision[]
+  payouts          RewardPayout[]
+  claimCodes       ClaimCode[]
+  ledger           LedgerEntry[]
+  points           PointsLedger[]
 
   @@index([workspaceId])
   @@index([status, country])
@@ -182,8 +281,8 @@ model ReviewAction {
 }
 
 model ShareLink {
-  id              String       @id @default(cuid())
-  code            String       @unique
+  id              String         @id @default(cuid())
+  code            String         @unique
   campaignId      String
   channelId       String
   parentId        String?
@@ -192,13 +291,14 @@ model ShareLink {
   sharerSessionId String?
   consumerId      String?
   via             ShareVia?
-  createdAt       DateTime     @default(now())
-  campaign        Campaign     @relation(fields: [campaignId], references: [id])
-  channel         Channel      @relation(fields: [channelId], references: [id])
-  parent          ShareLink?   @relation("LinkTree", fields: [parentId], references: [id])
-  children        ShareLink[]  @relation("LinkTree")
-  consumer        Consumer?    @relation(fields: [consumerId], references: [id])
+  createdAt       DateTime       @default(now())
+  campaign        Campaign       @relation(fields: [campaignId], references: [id])
+  channel         Channel        @relation(fields: [channelId], references: [id])
+  parent          ShareLink?     @relation("LinkTree", fields: [parentId], references: [id])
+  children        ShareLink[]    @relation("LinkTree")
+  consumer        Consumer?      @relation(fields: [consumerId], references: [id])
   events          LinkEvent[]
+  payouts         RewardPayout[]
 
   @@unique([parentId, consumerId])
   @@index([campaignId, channelId])
@@ -255,4 +355,238 @@ model ChannelBatch {
   channel    Channel  @relation(fields: [channelId], references: [id])
 
   @@unique([channelId, key])
+}
+
+model Invitation {
+  id          String    @id @default(cuid())
+  workspaceId String
+  email       String
+  role        Role
+  token       String    @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId])
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String?
+  workspaceId String?
+  kind        NotificationKind
+  title       String
+  detail      String?
+  href        String?
+  createdAt   DateTime         @default(now())
+  readAt      DateTime?
+
+  @@index([userId, createdAt])
+}
+
+model NotificationPref {
+  userId      String
+  workspaceId String
+  kind        NotificationKind
+  enabled     Boolean
+
+  @@id([userId, workspaceId, kind])
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  actorId     String
+  action      String
+  targetType  String
+  targetId    String
+  workspaceId String?
+  before      Json?
+  after       Json?
+  at          DateTime @default(now())
+  actor       User     @relation(fields: [actorId], references: [id])
+
+  @@index([workspaceId, at])
+  @@index([targetType, targetId])
+}
+
+model CreditRequest {
+  id            String              @id @default(cuid())
+  workspaceId   String
+  requestedById String
+  status        CreditRequestStatus @default(open)
+  note          String?
+  createdAt     DateTime            @default(now())
+  decidedAt     DateTime?
+  decidedById   String?
+  workspace     Workspace           @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, status])
+}
+
+model CampaignRevision {
+  id               String         @id @default(cuid())
+  campaignId       String
+  data             Json
+  status           RevisionStatus @default(review)
+  rejectReasonCode RejectReason?
+  rejectReason     String?
+  submittedAt      DateTime       @default(now())
+  decidedAt        DateTime?
+  campaign         Campaign       @relation(fields: [campaignId], references: [id])
+
+  @@index([campaignId, status])
+}
+
+model LedgerEntry {
+  id          String     @id @default(cuid())
+  workspaceId String
+  at          DateTime   @default(now())
+  description String
+  amountCents Int
+  kind        LedgerKind
+  campaignId  String?
+  invoiceId   String?
+  dedupeKey   String?    @unique
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id])
+  campaign    Campaign?  @relation(fields: [campaignId], references: [id])
+  invoice     Invoice?   @relation(fields: [invoiceId], references: [id])
+
+  @@index([workspaceId, at])
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  workspaceId String
+  number      String        @unique
+  period      DateTime
+  amountCents Int
+  fxPerUsd    Decimal
+  status      InvoiceStatus @default(open)
+  issuedAt    DateTime
+  dueAt       DateTime
+  paidAt      DateTime?
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id])
+  entries     LedgerEntry[]
+
+  @@index([workspaceId, period])
+}
+
+model RateCard {
+  id            String    @id @default(cuid())
+  channelId     String
+  country       Country
+  placement     Placement
+  cpmCents      Int
+  effectiveFrom DateTime
+  channel       Channel   @relation(fields: [channelId], references: [id])
+
+  @@index([channelId, country, placement, effectiveFrom])
+}
+
+model MarketFx {
+  id            String   @id @default(cuid())
+  country       Country
+  fxPerUsd      Decimal
+  effectiveFrom DateTime
+
+  @@index([country, effectiveFrom])
+}
+
+model ChannelShare {
+  id            String   @id @default(cuid())
+  channelId     String
+  share         Decimal
+  effectiveFrom DateTime
+  channel       Channel  @relation(fields: [channelId], references: [id])
+
+  @@index([channelId, effectiveFrom])
+}
+
+model SettlementStatement {
+  id          String          @id @default(cuid())
+  channelId   String
+  period      DateTime
+  amountCents Int
+  status      StatementStatus @default(open)
+  paidAt      DateTime?
+  channel     Channel         @relation(fields: [channelId], references: [id])
+
+  @@unique([channelId, period])
+}
+
+model RewardPayout {
+  id               String       @id @default(cuid())
+  campaignId       String
+  workspaceId      String
+  shareLinkId      String
+  sharerConsumerId String?
+  sharerSessionId  String?
+  claimEventKey    String       @unique
+  amountLocal      Int
+  amountCents      Int
+  status           PayoutStatus
+  // no_phone | same_device | cap_per_sharer | platform_cap | phone_reuse | cap | manual
+  reason           String?
+  createdAt        DateTime     @default(now())
+  sentAt           DateTime?
+  campaign         Campaign     @relation(fields: [campaignId], references: [id])
+  workspace        Workspace    @relation(fields: [workspaceId], references: [id])
+  shareLink        ShareLink    @relation(fields: [shareLinkId], references: [id])
+
+  @@index([campaignId, status])
+}
+
+model PointsLedger {
+  id              String   @id @default(cuid())
+  consumerId      String?
+  sharerSessionId String?
+  campaignId      String
+  points          Int
+  createdAt       DateTime @default(now())
+  campaign        Campaign @relation(fields: [campaignId], references: [id])
+}
+
+model AggregatorAccount {
+  id           String @id @default("reloadly")
+  balanceCents Int
+}
+
+model AggregatorTopup {
+  id          String   @id @default(cuid())
+  amountCents Int
+  byUserId    String
+  at          DateTime @default(now())
+}
+
+model FraudRule {
+  key     String  @id
+  label   String
+  action  String
+  enabled Boolean
+}
+
+model ClaimCode {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  campaignId String
+  channelId  String
+  sessionId  String
+  day        DateTime // UTC date of issue
+  validUntil DateTime
+  createdAt  DateTime @default(now())
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  channel    Channel  @relation(fields: [channelId], references: [id])
+
+  @@unique([campaignId, channelId, sessionId, day])
+}
+
+model JobRun {
+  id    String   @id @default(cuid())
+  name  String
+  day   DateTime
+  ranAt DateTime @default(now())
+
+  @@unique([name, day])
 }
