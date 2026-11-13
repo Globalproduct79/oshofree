@@ -1,8 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { createWorkspace, setupChecklist, updateWorkspace, workspaceForUser } from '@/lib/workspaces'
+import { isAdminInDb, requireUser } from '@/lib/session'
+import {
+  createWorkspace, requireWorkspace, setupChecklist, updateWorkspace, workspaceForUser,
+} from '@/lib/workspaces'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }))
+vi.mock('@/lib/session', () => ({ requireUser: vi.fn(), isAdminInDb: vi.fn() }))
+const cookieGet = vi.fn()
+vi.mock('next/headers', () => ({ cookies: async () => ({ get: cookieGet }) }))
+const redirectMock = vi.fn((to: string) => {
+  throw new Error(`REDIRECT:${to}`)
+})
+vi.mock('next/navigation', () => ({ redirect: (to: string) => redirectMock(to) }))
 
 const user = (email = 'a@x.com') => db.user.create({ data: { email, passwordHash: 'x', name: 'N' } })
 const input = { name: 'Acme', type: 'Brand', country: 'NG' } as const
@@ -69,5 +79,46 @@ describe('workspaces', () => {
       data: { code: 'ch1', campaignId: campaign.id, channelId: channel.id, depth: 1, sharerType: 'Channel' },
     })
     expect((await setupChecklist(ws.id)).firstShare).toBe(true)
+  })
+})
+
+describe('requireWorkspace', () => {
+  const signIn = (u: { id: string }, admin: boolean, ogWs?: string) => {
+    vi.mocked(requireUser).mockResolvedValue({ id: u.id, email: '', name: '', isGlobalAdmin: admin })
+    vi.mocked(isAdminInDb).mockResolvedValue(admin)
+    cookieGet.mockImplementation((k: string) => (k === 'og_ws' && ogWs ? { value: ogWs } : undefined))
+  }
+
+  it('gives an admin the workspace named by og_ws', async () => {
+    const admin = await user('admin@x.com')
+    const owner = await user('o@x.com')
+    const adminWs = await createWorkspace(admin.id, input)
+    const target = await createWorkspace(owner.id, { ...input, name: 'Target' })
+    signIn(admin, true, target.id)
+    expect((await requireWorkspace()).id).toBe(target.id)
+    expect(target.id).not.toBe(adminWs.id)
+  })
+
+  it('never honours og_ws for a non-admin', async () => {
+    const u = await user()
+    const owner = await user('o@x.com')
+    const own = await createWorkspace(u.id, input)
+    const target = await createWorkspace(owner.id, { ...input, name: 'Target' })
+    signIn(u, false, target.id)
+    expect((await requireWorkspace()).id).toBe(own.id)
+  })
+
+  it('falls back to the admin\'s own workspace when og_ws names nothing', async () => {
+    const admin = await user('admin@x.com')
+    const own = await createWorkspace(admin.id, input)
+    signIn(admin, true, 'does-not-exist')
+    expect((await requireWorkspace()).id).toBe(own.id)
+  })
+
+  it('redirects a user with no workspace to /app/new-workspace', async () => {
+    const u = await user()
+    signIn(u, false)
+    await expect(requireWorkspace()).rejects.toThrow('REDIRECT:/app/new-workspace')
+    expect(redirectMock).toHaveBeenCalledWith('/app/new-workspace')
   })
 })
