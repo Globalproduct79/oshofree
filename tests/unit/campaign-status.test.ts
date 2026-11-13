@@ -1,5 +1,9 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { deliveringWhere, effectiveStatus } from '@/lib/campaign-status'
+import { OfferCard } from '@/components/campaign/OfferCard'
+import { deliveringWhere, effectiveStatus, lastDay } from '@/lib/campaign-status'
+import { shortDate } from '@/lib/format'
 
 const now = new Date('2026-11-13T12:00:00Z')
 const hour = 3600_000
@@ -32,5 +36,18 @@ describe('deliveringWhere', () => {
       endsAt: { gt: now },
       workspace: { status: 'approved' },
     })
+  })
+})
+
+describe('lastDay', () => {
+  const endsAt = new Date('2026-11-27T00:00:00Z') // exclusive: the offer stops at midnight UTC
+
+  it('is the day before an exclusive midnight end', () => {
+    expect(shortDate(lastDay(endsAt))).toBe('26 Nov')
+  })
+
+  it('is the day the Offers card prints', () => {
+    const card = { brand: 'Kola', headline: 'Buy 2', description: '', rewardLabel: 'Airtime', endsAt }
+    expect(renderToStaticMarkup(createElement(OfferCard, { offer: card }))).toContain('Ends 26 Nov')
   })
 })

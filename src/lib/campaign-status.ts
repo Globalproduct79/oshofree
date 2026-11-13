@@ -11,6 +11,12 @@ export function effectiveStatus(
   return c.status
 }
 
+// endsAt is exclusive: the offer stops at midnight UTC after its last day. People read the last day.
+// Display only; the API keeps ends_at as the exclusive instant.
+export function lastDay(endsAt: Date): Date {
+  return new Date(endsAt.getTime() - 1)
+}
+
 export function deliveringWhere(now: Date): Prisma.CampaignWhereInput {
   return {
     status: 'live',

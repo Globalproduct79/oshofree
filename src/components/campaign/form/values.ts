@@ -62,9 +62,10 @@ export function formProblem(values: unknown): string | null {
   return COPY.campaignForm.errors[field] ?? COPY.campaignForm.invalid
 }
 
+// The exclusive end the card turns into its last day; until the dates are valid, a one-day run from today.
 export function previewEndsAt(startsAt: string | undefined, days: number | undefined): Date {
   const ok = /^\d{4}-\d{2}-\d{2}$/.test(startsAt ?? '') && Number.isInteger(days) && (days ?? 0) > 0
-  const dates = campaignDates(ok ? startsAt! : new Date().toISOString().slice(0, 10), ok ? days! : 0)
+  const dates = campaignDates(ok ? startsAt! : new Date().toISOString().slice(0, 10), ok ? days! : 1)
   return Number.isNaN(dates.endsAt.getTime()) ? new Date() : dates.endsAt
 }
 

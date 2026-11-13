@@ -1,4 +1,5 @@
 import type { Campaign, Country, ShareLink } from '@prisma/client'
+import { lastDay } from '@/lib/campaign-status'
 import { COPY } from '@/lib/copy'
 import type { LandingView } from '@/lib/landing/render'
 import type { ShareTargets } from '@/lib/landing/share-targets'
@@ -10,11 +11,10 @@ export type LinkWithCampaign = ShareLink & { campaign: Campaign }
 
 const TILE_COLORS: readonly string[] = tokens.tileColors
 
-// The day the offer ends, as the campaign's own market reads it.
-function endsAtText(c: Campaign): string {
-  const fmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: MARKETS[c.country].timezone })
-  return fmt.format(c.endsAt)
-}
+// The offer's last day. Campaign days are UTC days (it stops at midnight UTC), so this prints in UTC,
+// the same day the Phoenix card and the console show.
+const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+const endsAtText = (c: Campaign) => day.format(lastDay(c.endsAt))
 
 // One builder for every route: the offer as the campaign stands, plus what the state adds.
 export function viewFor(link: LinkWithCampaign, state: LandingView['state'], extras: Partial<LandingView> = {}): LandingView {

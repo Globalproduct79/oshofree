@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { COPY } from '@/lib/copy'
 import { type LandingView, renderLanding } from '@/lib/landing/render'
 import { landingRoute } from '@/lib/landing/respond'
+import { viewFor } from '@/lib/landing/view'
 import { ipHash, isPreviewFetcher } from '@/lib/landing/visitor'
 import { shareTargets } from '@/lib/landing/share-targets'
 import { linkUrl, mintChannelLink } from '@/lib/links'
@@ -116,6 +117,15 @@ const share = (code: string, via: string) =>
   getShare(new Request(`http://localhost/o/${code}/share?via=${via}`), params(code))
 const events = (type: 'Open' | 'Claim' | 'DetailsLeft') =>
   db.linkEvent.findMany({ where: { type }, orderBy: { at: 'asc' } })
+
+describe('viewFor', () => {
+  it("prints the offer's last day, not the exclusive midnight it stops at", async () => {
+    const link = await seed()
+    await db.campaign.update({ where: { id: link.campaignId }, data: { endsAt: new Date('2026-11-27T00:00:00Z') } })
+    const withCampaign = await db.shareLink.findUniqueOrThrow({ where: { id: link.id }, include: { campaign: true } })
+    expect(renderLanding(viewFor(withCampaign, 'offer'))).toContain('Offer ends 26 Nov')
+  })
+})
 
 describe('GET /o/[code]', () => {
   it('renders the offer, sets a year-long og_v cookie and logs an Open with a hashed IP', async () => {

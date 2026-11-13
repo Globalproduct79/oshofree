@@ -1,5 +1,6 @@
 import { Gift } from 'lucide-react'
 import Image from 'next/image'
+import { lastDay } from '@/lib/campaign-status'
 import { COPY } from '@/lib/copy'
 import { tokens } from '@/lib/tokens'
 
@@ -65,7 +66,7 @@ export function OfferCard({ offer }: { offer: OfferCardProps }) {
           {offer.rewardLabel}
         </p>
         <p className="text-[11px]" style={{ color: tokens.ink3 }}>
-          {COPY.card.ends(day.format(offer.endsAt))}
+          {COPY.card.ends(day.format(lastDay(offer.endsAt)))}
         </p>
       </div>
     </article>
