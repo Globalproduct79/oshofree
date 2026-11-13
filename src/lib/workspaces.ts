@@ -62,3 +62,9 @@ export async function setupChecklist(workspaceId: string) {
     firstShare: share !== null,
   }
 }
+
+// True when the user is looking at a workspace they do not own (a Global admin).
+export async function isImpersonating(userId: string, workspaceId: string): Promise<boolean> {
+  const m = await db.workspaceMember.findFirst({ where: { userId, workspaceId, role: 'Owner' } })
+  return m === null
+}

@@ -5,7 +5,7 @@ import { COPY } from '@/lib/copy'
 import { requireUser } from '@/lib/session'
 import { workspaceSchema } from '@/lib/workspace-schema'
 import { createWorkspace } from '@/lib/workspaces'
-import type { FormState } from '../workspace-form'
+import type { FormState } from '../(console)/workspace-form'
 
 export async function createWorkspaceAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const user = await requireUser()

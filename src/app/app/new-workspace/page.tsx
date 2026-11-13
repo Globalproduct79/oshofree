@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { COPY } from '@/lib/copy'
 import { requireUser } from '@/lib/session'
 import { workspaceForUser } from '@/lib/workspaces'
-import { WorkspaceForm } from '../workspace-form'
+import { WorkspaceForm } from '../(console)/workspace-form'
 import { createWorkspaceAction } from './actions'
 
 export default async function NewWorkspacePage() {
