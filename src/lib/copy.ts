@@ -1,3 +1,5 @@
+import { CAMPAIGN_FORM_COPY } from '@/lib/copy-campaign-form'
+
 export const COPY = {
   auth: {
     signInTitle: 'Sign in to OshoFree',
@@ -47,6 +49,11 @@ export const COPY = {
     groups: { campaigns: 'Campaigns', growth: 'Growth', organisation: 'Organisation' },
     items: { campaigns: 'Campaigns', newCampaign: 'New campaign', sharing: 'Sharing', workspace: 'Workspace' },
   },
+  campaignForm: CAMPAIGN_FORM_COPY,
+  card: {
+    sponsored: 'Sponsored',
+    ends: (date: string) => `Ends ${date}`,
+  },
   status: {
     live: 'Live',
     review: 'In review',
@@ -67,6 +74,10 @@ export const COPY = {
     newCampaign: {
       title: 'New campaign',
       subtitle: 'One form. Your offer goes live on Phoenix once Global approves it, usually within a working day.',
+    },
+    editCampaign: {
+      title: 'Edit campaign',
+      subtitle: 'Nothing changes on Phoenix until you submit it and Global approves it.',
     },
     sharing: {
       title: 'Sharing',
