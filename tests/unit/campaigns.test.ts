@@ -104,6 +104,17 @@ describe('campaign lifecycle', () => {
     expect(s.status).toBe('review')
     expect(s.rejectReason).toBeNull()
   })
+  it('refuses to submit a campaign already in review and leaves the row unchanged', async () => {
+    const first = await submitCampaign((await makeCampaign()).id)
+    await expect(submitCampaign(first.id)).rejects.toBe('INVALID_TRANSITION')
+    const after = await db.campaign.findUniqueOrThrow({ where: { id: first.id } })
+    expect(after.status).toBe('review')
+    expect(after.submittedAt).toEqual(first.submittedAt)
+  })
+  it('stores an empty link as null', async () => {
+    const ws = await db.workspace.create({ data: { name: 'Acme', type: 'Brand', country: 'NG' } })
+    expect((await createCampaign(ws.id, { ...valid, linkUrl: '  ' })).linkUrl).toBeNull()
+  })
   it('refuses to pause a campaign in review', async () => {
     const c = await submitCampaign((await makeCampaign()).id)
     await expect(pauseCampaign(c.id)).rejects.toBe('INVALID_TRANSITION')

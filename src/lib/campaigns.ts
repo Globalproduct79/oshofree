@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Campaign, CampaignStatus } from '@prisma/client'
+import type { Campaign, CampaignStatus, Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { CATEGORIES, COUNTRIES } from '@/lib/markets'
 import { tokens } from '@/lib/tokens'
@@ -63,7 +63,7 @@ function fields(i: CampaignInput) {
     placement: i.placement,
     redeemMethod: i.redeemMethod,
     claimCode: i.claimCode ?? null,
-    linkUrl: i.linkUrl ?? null,
+    linkUrl: i.linkUrl?.trim() || null,
     budgetUsd: i.budgetUsd,
     startsAt,
     endsAt,
@@ -71,18 +71,14 @@ function fields(i: CampaignInput) {
   }
 }
 
-async function statusOf(id: string): Promise<CampaignStatus> {
-  const c = await db.campaign.findUniqueOrThrow({ where: { id }, select: { status: true } })
-  return c.status
-}
-
 async function move(
   id: string,
   from: CampaignStatus[],
-  data: Parameters<typeof db.campaign.update>[0]['data'],
+  data: Prisma.CampaignUncheckedUpdateManyInput,
 ): Promise<Campaign> {
-  if (!from.includes(await statusOf(id))) throw 'INVALID_TRANSITION'
-  return db.campaign.update({ where: { id }, data })
+  const { count } = await db.campaign.updateMany({ where: { id, status: { in: from } }, data })
+  if (count === 0) throw 'INVALID_TRANSITION'
+  return db.campaign.findUniqueOrThrow({ where: { id } })
 }
 
 export function createCampaign(workspaceId: string, i: CampaignInput): Promise<Campaign> {
