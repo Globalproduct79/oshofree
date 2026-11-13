@@ -6,14 +6,14 @@ import { tokens } from '@/lib/tokens'
 
 // The creative upload (ADV §3): a `label.f` with its hint, then the dashed `.drop`. Empty, a tap
 // opens the file picker; with a preview, it shows the image and a tap removes it. `accept` is
-// passed to the hidden file input.
+// passed to the hidden file input (images unless the caller says otherwise, e.g. 'video/mp4').
 export function DropZone({
   label,
   hint,
   zoneTitle,
   zoneHint,
   preview,
-  accept,
+  accept = 'image/*',
   onPick,
   onRemove,
 }: {
@@ -22,7 +22,7 @@ export function DropZone({
   zoneTitle: React.ReactNode
   zoneHint: React.ReactNode
   preview?: string | null
-  accept: string
+  accept?: string
   onPick: (file: File) => void
   onRemove: () => void
 }) {

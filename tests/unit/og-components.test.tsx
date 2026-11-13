@@ -459,21 +459,30 @@ describe('Swatches', () => {
 })
 
 describe('DropZone', () => {
-  const props = {
+  // The brief's props; `accept` is optional on top of them.
+  const briefProps = {
     label: 'Ad image',
     hint: '— optional. Square or landscape works best.',
     zoneTitle: 'Upload image',
     zoneHint: 'tap to attach an image',
-    accept: 'image/jpeg,image/png,image/webp',
     onPick: noop,
     onRemove: noop,
   }
+  const props = { ...briefProps, accept: 'image/jpeg,image/png,image/webp' }
   it('shows the label, hint and zone copy with a hidden file input', () => {
     const m = html(<DropZone {...props} />)
     expect(m).toMatch(/<label class="f" for="[^"]+">Ad image <small>— optional\. Square or landscape works best\.<\/small><\/label>/)
     expect(m).toContain('class="drop"')
     expect(m).toContain('Upload image</b><br/>tap to attach an image')
     expect(m).toMatch(/<input [^>]*type="file" [^>]*accept="image\/jpeg,image\/png,image\/webp"[^>]*hidden=""/)
+  })
+  it('accepts images by default', () => {
+    expect(html(<DropZone {...briefProps} />)).toMatch(/<input [^>]*type="file" [^>]*accept="image\/\*"/)
+  })
+  it('passes the accept the caller gives', () => {
+    expect(html(<DropZone {...briefProps} accept="image/*,video/mp4" />)).toMatch(
+      /<input [^>]*type="file" [^>]*accept="image\/\*,video\/mp4"/,
+    )
   })
   it('shows the preview with "Tap to remove"', () => {
     const m = html(<DropZone {...props} preview="blob:abc" />)
