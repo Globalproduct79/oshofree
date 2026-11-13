@@ -1,0 +1,22 @@
+// Rates page strings (GLB §2.3), verbatim.
+export const RATES = {
+  crumb: 'Rates',
+  title: 'Rates',
+  lead: 'Per 1,000 impressions, in USD, per country, placement and channel. Changes apply to new campaigns only.',
+  phoenix: { name: 'Phoenix Browser', status: 'live' },
+  boomplay: { name: 'Boomplay', status: 'coming soon' },
+  tableTitle: 'Phoenix Browser · CPM in USD',
+  tableSub: 'Floor from the 5 Nov call: $1.2–1.5 cards, video $4–6. Video and splash are subject to Phoenix confirming inventory.',
+  head: ['Country', 'Wall card', 'Featured tile', 'Video', 'Splash', 'Local FX'],
+  placements: { card: 'Wall card', featured: 'Featured tile', video: 'Video', splash: 'Splash' },
+  boomplayTitle: 'Boomplay',
+  boomplaySub: "Phoenix's acquisition. Same campaign, same rate-card shape, different inventory. Not live.",
+  addChannel: 'Add channel rates',
+  openTitle: 'Expected open rates',
+  openSub: 'Used in advertiser estimates. Replace with observed rates after launch.',
+  rateToast: 'Rate updated for new campaigns',
+  fxToast: 'FX updated for new invoices',
+  invalidRate: 'Enter a CPM above 0.',
+  invalidFx: 'Enter a rate above 0.',
+  noRate: 'Phoenix is not set up yet.',
+} as const
