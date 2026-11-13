@@ -1,0 +1,257 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Country {
+  NG
+  KE
+  GH
+  TZ
+  SN
+}
+
+enum WorkspaceType {
+  Brand
+  Agency
+}
+
+enum WorkspaceStatus {
+  pending
+  approved
+  declined
+}
+
+enum Role {
+  Owner
+  Manager
+  Viewer
+}
+
+enum Placement {
+  card
+  featured
+  video
+  splash
+}
+
+enum RedeemMethod {
+  code
+  link
+}
+
+enum CampaignStatus {
+  draft
+  review
+  live
+  paused
+  rejected
+}
+
+enum SharerType {
+  Root
+  Channel
+  Consumer
+}
+
+enum ShareVia {
+  whatsapp
+  sms
+  x
+  copy
+  other
+}
+
+enum LinkEventType {
+  Open
+  Claim
+  DetailsLeft
+}
+
+enum ChannelEventType {
+  Impression
+  Open
+  Claim
+  Share
+}
+
+enum ReviewTarget {
+  Workspace
+  Campaign
+}
+
+enum ReviewVerb {
+  Approve
+  Reject
+  Decline
+}
+
+model User {
+  id            String            @id @default(cuid())
+  email         String            @unique
+  passwordHash  String
+  name          String
+  isGlobalAdmin Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  memberships   WorkspaceMember[]
+  reviews       ReviewAction[]
+}
+
+model Workspace {
+  id            String            @id @default(cuid())
+  name          String
+  type          WorkspaceType
+  country       Country
+  status        WorkspaceStatus   @default(pending)
+  declineReason String?
+  createdAt     DateTime          @default(now())
+  members       WorkspaceMember[]
+  campaigns     Campaign[]
+}
+
+model WorkspaceMember {
+  userId      String
+  workspaceId String
+  role        Role      @default(Owner)
+  user        User      @relation(fields: [userId], references: [id])
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@id([userId, workspaceId])
+}
+
+model Channel {
+  id         String         @id @default(cuid())
+  key        String         @unique
+  name       String
+  apiKeyHash String
+  isLive     Boolean        @default(false)
+  countries  Country[]
+  shareLinks ShareLink[]
+  events     ChannelEvent[]
+  batches    ChannelBatch[]
+}
+
+model Campaign {
+  id               String         @id @default(cuid())
+  workspaceId      String
+  name             String
+  brand            String
+  country          Country
+  category         String
+  headline         String
+  description      String
+  creativeImageKey String?
+  tileColor        String?
+  placement        Placement
+  redeemMethod     RedeemMethod
+  claimCode        String?
+  linkUrl          String?
+  budgetUsd        Int
+  startsAt         DateTime
+  endsAt           DateTime
+  shareRewardLabel String
+  status           CampaignStatus @default(draft)
+  rejectReason     String?
+  submittedAt      DateTime?
+  decidedAt        DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id])
+  shareLinks       ShareLink[]
+  channelEvents    ChannelEvent[]
+
+  @@index([workspaceId])
+  @@index([status, country])
+}
+
+model ReviewAction {
+  id         String       @id @default(cuid())
+  targetType ReviewTarget
+  targetId   String
+  action     ReviewVerb
+  reason     String?
+  byUserId   String
+  at         DateTime     @default(now())
+  by         User         @relation(fields: [byUserId], references: [id])
+
+  @@index([targetType, targetId])
+}
+
+model ShareLink {
+  id              String       @id @default(cuid())
+  code            String       @unique
+  campaignId      String
+  channelId       String
+  parentId        String?
+  depth           Int
+  sharerType      SharerType
+  sharerSessionId String?
+  consumerId      String?
+  via             ShareVia?
+  createdAt       DateTime     @default(now())
+  campaign        Campaign     @relation(fields: [campaignId], references: [id])
+  channel         Channel      @relation(fields: [channelId], references: [id])
+  parent          ShareLink?   @relation("LinkTree", fields: [parentId], references: [id])
+  children        ShareLink[]  @relation("LinkTree")
+  consumer        Consumer?    @relation(fields: [consumerId], references: [id])
+  events          LinkEvent[]
+
+  @@index([campaignId, channelId])
+  @@index([parentId])
+}
+
+model Consumer {
+  id         String      @id @default(cuid())
+  phone      String      @unique
+  country    Country
+  name       String?
+  createdAt  DateTime    @default(now())
+  shareLinks ShareLink[]
+}
+
+model LinkEvent {
+  id        String        @id @default(cuid())
+  linkId    String
+  type      LinkEventType
+  visitorId String
+  ipHash    String
+  userAgent String
+  deduped   Boolean       @default(false)
+  at        DateTime      @default(now())
+  link      ShareLink     @relation(fields: [linkId], references: [id])
+
+  @@index([linkId, type])
+}
+
+model ChannelEvent {
+  id         String           @id @default(cuid())
+  channelId  String
+  campaignId String
+  type       ChannelEventType
+  sessionId  String
+  linkCode   String?
+  at         DateTime
+  dedupeKey  String
+  channel    Channel          @relation(fields: [channelId], references: [id])
+  campaign   Campaign         @relation(fields: [campaignId], references: [id])
+
+  @@unique([channelId, dedupeKey])
+  @@index([campaignId, type])
+}
+
+model ChannelBatch {
+  id         String   @id @default(cuid())
+  channelId  String
+  key        String
+  accepted   Int
+  deduped    Int
+  ignored    Int
+  receivedAt DateTime @default(now())
+  channel    Channel  @relation(fields: [channelId], references: [id])
+
+  @@unique([channelId, key])
+}

@@ -8,6 +8,20 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: oshofree
+          POSTGRES_PASSWORD: oshofree
+          POSTGRES_DB: oshofree_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U oshofree"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,6 +32,8 @@ jobs:
       - run: npm run type-check
       - run: npm run lint
       - run: npm test
+        env:
+          DATABASE_URL: postgresql://oshofree:oshofree@localhost:5433/oshofree_test
 
   e2e:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

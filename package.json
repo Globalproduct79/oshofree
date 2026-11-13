@@ -13,11 +13,14 @@
     "db:migrate": "dotenv -- prisma migrate dev",
     "db:seed": "dotenv -- tsx prisma/seed.ts",
     "db:reset": "dotenv -- prisma migrate reset --force",
-    "docker:up": "docker compose up -d"
+    "docker:up": "docker compose up -d",
+    "pretest": "dotenv -e .env.test -- prisma migrate deploy",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@hookform/resolvers": "^7.0.6",
+    "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
@@ -43,6 +46,7 @@
     "dotenv-cli": "^11.1.0",
     "eslint": "^9",
     "eslint-config-next": "15.5.29",
+    "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",
