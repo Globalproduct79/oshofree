@@ -114,6 +114,20 @@ describe('previewOffers', () => {
     expect((await previewOffers('NG')).map((o) => o.headline)).toEqual(['Lagos offer'])
   })
 
+  it('ignores a Phoenix channel that is not live', async () => {
+    await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: false } })
+    expect(await previewOffers('NG')).toEqual([])
+    expect(await db.shareLink.count()).toBe(0)
+  })
+
+  it('hands the browser card fields only, never a claim code or link', async () => {
+    await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: true } })
+    const [offer] = await previewOffers('NG')
+    expect(Object.keys(offer).sort()).toEqual(['brand', 'category', 'creative', 'description', 'ends_at', 'headline', 'id', 'share'])
+    expect(offer.share).toEqual({ reward_label: 'Airtime' })
+    expect(JSON.stringify(offer)).not.toContain('R1')
+  })
+
   it('answers an empty list for a country outside the five markets', async () => {
     await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: true } })
     expect(await previewOffers('GB')).toEqual([])

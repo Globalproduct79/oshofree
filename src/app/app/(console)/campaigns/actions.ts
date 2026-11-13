@@ -8,7 +8,8 @@ import {
 import { COPY } from '@/lib/copy'
 import { db } from '@/lib/db'
 import { isCountry } from '@/lib/markets'
-import { phoenixOffers, type OfferDto } from '@/lib/offers'
+import { previewOffersFor } from '@/lib/offers'
+import type { PreviewOffer } from '@/lib/preview-merge'
 import { requireWorkspace } from '@/lib/workspaces'
 
 type Failure = { error: string }
@@ -65,7 +66,7 @@ export async function resume(id: string) {
 }
 
 // The live offers for the Phoenix preview. They are public on Phoenix already, so this reads across workspaces.
-export async function previewOffers(country: unknown): Promise<OfferDto[]> {
+export async function previewOffers(country: unknown): Promise<PreviewOffer[]> {
   await requireWorkspace()
-  return isCountry(country) ? phoenixOffers(country, new Date()) : []
+  return isCountry(country) ? previewOffersFor(country, new Date()) : []
 }

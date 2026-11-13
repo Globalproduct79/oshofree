@@ -169,6 +169,30 @@ export async function workspaceSharing(workspaceId: string): Promise<Sharing> {
   return sharingFor(campaigns.map((c) => c.id))
 }
 
+// Every campaign in the workspace with its shares and friend claims; two grouped reads, not one per campaign.
+export async function workspaceCampaignShares(
+  workspaceId: string,
+): Promise<{ campaignId: string; shares: number; friendClaims: number }[]> {
+  const [campaigns, links, claims] = await Promise.all([
+    db.campaign.findMany({ where: { workspaceId }, select: { id: true } }),
+    db.shareLink.groupBy({
+      by: ['campaignId'],
+      where: { sharerType: { not: 'Root' }, campaign: { workspaceId } },
+      _count: { _all: true },
+    }),
+    db.$queryRaw<{ campaignId: string; n: number }[]>`
+      SELECT l."campaignId", count(*)::int AS n
+      FROM "LinkEvent" e JOIN "ShareLink" l ON l."id" = e."linkId" JOIN "Campaign" c ON c."id" = l."campaignId"
+      WHERE c."workspaceId" = ${workspaceId} AND l."depth" >= 1 AND e."type" = 'Claim'
+      GROUP BY 1`,
+  ])
+  return campaigns.map(({ id }) => ({
+    campaignId: id,
+    shares: links.find((l) => l.campaignId === id)?._count._all ?? 0,
+    friendClaims: claims.find((c) => c.campaignId === id)?.n ?? 0,
+  }))
+}
+
 export async function homeNumbers(campaignId: string, now: Date) {
   const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } })
   const tz = MARKETS[campaign.country].timezone

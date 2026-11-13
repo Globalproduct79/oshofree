@@ -144,5 +144,6 @@ describe('previewOffersAction', () => {
     signIn(admin)
     expect((await previewOffersAction('NG')).map((o) => o.id)).toEqual([c.id])
     expect(await previewOffersAction('KE')).toEqual([])
+    expect(Object.keys((await previewOffersAction('NG'))[0]).sort()).not.toContain('cta')
   })
 })

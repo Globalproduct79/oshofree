@@ -1,17 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { OfferDto } from '@/lib/offers'
-import { mergeMine, type Mine } from '@/lib/preview-merge'
+import { mergeMine, type Mine, type PreviewOffer } from '@/lib/preview-merge'
 
-const offer = (id: string, headline = `Offer ${id}`): OfferDto => ({
+const offer = (id: string, headline = `Offer ${id}`): PreviewOffer => ({
   id,
-  placement: 'card',
   brand: 'Other Brand',
   headline,
   description: 'Something good.',
   category: 'Retail',
   creative: { image: 'http://localhost:3100/uploads/a.png', color: null },
-  cta: { label: 'CODE1', type: 'code', url: null },
-  share: { enabled: true, reward_label: '₦50 airtime' },
+  share: { reward_label: '₦50 airtime' },
   ends_at: '2026-12-04T00:00:00.000Z',
 })
 

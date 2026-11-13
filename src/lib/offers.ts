@@ -2,6 +2,7 @@ import type { Campaign, Country, ShareVia } from '@prisma/client'
 import { deliveringWhere } from '@/lib/campaign-status'
 import { db } from '@/lib/db'
 import { linkUrl, mintChannelLink, mintRootLink } from '@/lib/links'
+import type { PreviewOffer } from '@/lib/preview-merge'
 import { imageUrl } from '@/lib/storage'
 
 export type OfferDto = {
@@ -67,10 +68,25 @@ export async function offersFor(country: Country, channelId: string, now: Date):
   return campaigns.map((c) => toDto(c, roots.get(c.id)))
 }
 
-// What Phoenix would pull in this country now; nothing when the Phoenix channel is not set up.
+// What Phoenix would pull in this country now; nothing when the Phoenix channel is not set up or not live.
 export async function phoenixOffers(country: Country, now: Date): Promise<OfferDto[]> {
-  const phoenix = await db.channel.findUnique({ where: { key: 'phoenix' }, select: { id: true } })
+  const phoenix = await db.channel.findFirst({ where: { key: 'phoenix', isLive: true }, select: { id: true } })
   return phoenix ? offersFor(country, phoenix.id, now) : []
+}
+
+// What the preview dialog draws, and nothing more: no claim code, no Root link URL.
+export async function previewOffersFor(country: Country, now: Date): Promise<PreviewOffer[]> {
+  const offers = await phoenixOffers(country, now)
+  return offers.map((o) => ({
+    id: o.id,
+    brand: o.brand,
+    headline: o.headline,
+    description: o.description,
+    category: o.category,
+    creative: o.creative,
+    share: { reward_label: o.share.reward_label },
+    ends_at: o.ends_at,
+  }))
 }
 
 export type ShareResult = { code: string; url: string } | 'unknown_offer' | 'not_delivering'

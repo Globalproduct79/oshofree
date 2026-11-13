@@ -4,8 +4,7 @@ import { PhoneFrame } from '@/components/campaign/PhoneFrame'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { COPY } from '@/lib/copy'
-import type { OfferDto } from '@/lib/offers'
-import { mergeMine, type Mine } from '@/lib/preview-merge'
+import { mergeMine, type Mine, type PreviewOffer } from '@/lib/preview-merge'
 import { tokens } from '@/lib/tokens'
 
 const P = COPY.preview
@@ -13,7 +12,7 @@ const P = COPY.preview
 export type PreviewState = 'loading' | 'failed' | 'ready'
 
 type Props = {
-  offers: OfferDto[]
+  offers: PreviewOffer[]
   mine: Mine
   open: boolean
   onOpenChange: (open: boolean) => void

@@ -6,6 +6,7 @@ import {
   campaignSharing,
   heroCampaign,
   homeNumbers,
+  workspaceCampaignShares,
   workspaceSharing,
 } from '@/lib/reports'
 
@@ -126,5 +127,18 @@ describe('reports', () => {
     await mkCampaign(ws.id, 'live', '2026-12-01', '2026-12-09')
     const newer = await mkCampaign(ws.id, 'live', '2026-12-02', '2026-12-09')
     expect((await heroCampaign(ws.id, NOW))?.id).toBe(newer.id)
+  })
+
+  it('counts shares and friend claims per campaign in one pass, only for this workspace', async () => {
+    const { ws, campaign } = await fixture()
+    const other = await mkCampaign(ws.id, 'paused', '2026-12-01', '2026-12-08')
+    const outsider = await db.workspace.create({ data: { name: 'Else', type: 'Brand', country: 'NG' } })
+    await mkCampaign(outsider.id, 'live', '2026-12-01', '2026-12-08')
+    const channel = await db.channel.findFirstOrThrow({ where: { key: 'phoenix' } })
+    await db.shareLink.create({ data: { code: 'OTHER001', campaignId: other.id, channelId: channel.id, depth: 1, sharerType: 'Channel', via: 'x' } })
+    const rows = await workspaceCampaignShares(ws.id)
+    expect(rows).toHaveLength(2)
+    expect(rows).toContainEqual({ campaignId: campaign.id, shares: 3, friendClaims: 1 })
+    expect(rows).toContainEqual({ campaignId: other.id, shares: 1, friendClaims: 0 })
   })
 })

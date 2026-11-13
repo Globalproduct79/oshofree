@@ -64,9 +64,13 @@ export const CAMPAIGN_COPY = {
     channel: 'Channel',
     medium: 'Medium',
     noShares: 'No shares yet.',
+    workspaceEmpty: 'No shares yet. Shares start when your first campaign goes live on Phoenix.',
+    campaigns: 'Campaigns',
+    campaign: 'Campaign',
+    brand: 'Brand',
   },
   channel: (key: string) => CHANNELS[key] ?? key,
-  via: { whatsapp: 'WhatsApp', sms: 'SMS', x: 'X', copy: 'Copy', other: 'Other', unknown: 'Not recorded' },
+  via: { whatsapp: 'WhatsApp', sms: 'SMS', x: 'X', copy: 'Copy', other: 'Other', unknown: 'Unknown' },
 } as const
 
 export const PREVIEW_COPY = {
