@@ -39,6 +39,15 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
           {COPY.banner.pending}
         </p>
       )}
+      {workspace.status === 'declined' && (
+        <p
+          role="status"
+          className="border-b px-4 py-3 text-sm sm:px-8"
+          style={{ backgroundColor: tokens.redSoft, borderColor: tokens.line, color: tokens.red }}
+        >
+          {COPY.banner.declined(workspace.declineReason)}
+        </p>
+      )}
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8">{children}</main>
     </div>
   )

@@ -50,8 +50,10 @@ export async function saveDraft(input: unknown, id?: string): Promise<{ id: stri
   return 'error' in res ? res : { id }
 }
 
-export async function submit(id: string) {
+// A declined workspace can still keep drafts, but nothing it submits could ever be approved.
+export async function submit(id: string): Promise<{ ok: true } | Failure> {
   const ws = await requireWorkspace()
+  if (ws.status === 'declined') return { error: COPY.campaignForm.workspaceDeclined }
   return change(ws.id, id, submitCampaign)
 }
 

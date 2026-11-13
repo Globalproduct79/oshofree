@@ -17,9 +17,10 @@ import { PreviewRail } from './form/PreviewRail'
 import { RedeemSection } from './form/RedeemSection'
 import { formProblem, type FormDefaults, type FormValues } from './form/values'
 
-type Props = { campaignId?: string; defaults: FormDefaults; initialImageUrl?: string | null }
+// cannotSubmit replaces "Submit for review" with the reason, e.g. when Global declined the workspace.
+type Props = { campaignId?: string; defaults: FormDefaults; initialImageUrl?: string | null; cannotSubmit?: string | null }
 
-export function CampaignForm({ campaignId, defaults, initialImageUrl = null }: Props) {
+export function CampaignForm({ campaignId, defaults, initialImageUrl = null, cannotSubmit = null }: Props) {
   const router = useRouter()
   const form = useForm<FormValues, unknown, CampaignInput>({ resolver: zodResolver(campaignInput), defaultValues: defaults, mode: 'onTouched' })
   const values = useWatch({ control: form.control })
@@ -71,7 +72,7 @@ export function CampaignForm({ campaignId, defaults, initialImageUrl = null }: P
   return (
     <FormProvider {...form}>
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-        <form onSubmit={onSubmit} noValidate className="flex min-w-0 flex-col gap-6">
+        <form onSubmit={cannotSubmit ? (e) => e.preventDefault() : onSubmit} noValidate className="flex min-w-0 flex-col gap-6">
           {error && (
             <p
               ref={errorRef}
@@ -88,7 +89,13 @@ export function CampaignForm({ campaignId, defaults, initialImageUrl = null }: P
           <RedeemSection />
           <MoneySection />
           <ConfirmSection />
-          <FormActions problem={formProblem(values)} pending={pending} saved={saved} onSave={onSave} />
+          <FormActions
+            problem={formProblem(values)}
+            pending={pending}
+            saved={saved}
+            onSave={onSave}
+            cannotSubmit={cannotSubmit}
+          />
         </form>
         <PreviewRail values={values} imageUrl={imageUrl} campaignId={id} />
       </div>

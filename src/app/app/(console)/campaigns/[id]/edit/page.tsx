@@ -30,6 +30,7 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
         campaignId={campaign.id}
         defaults={campaignDefaults(campaign)}
         initialImageUrl={campaign.creativeImageKey ? imageUrl(campaign.creativeImageKey) : null}
+        cannotSubmit={ws.status === 'declined' ? COPY.campaignForm.workspaceDeclined : null}
       />
     </>
   )

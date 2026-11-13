@@ -34,6 +34,8 @@ export const COPY = {
   banner: {
     pending:
       "Your workspace is waiting for Global's approval. You can draft campaigns now; they go live once both are approved.",
+    declined: (reason: string | null) =>
+      `Global declined this workspace${reason?.trim() ? `: ${reason.trim().replace(/[.!?]+$/, '')}` : ''}. Campaigns can't go live until that changes.`,
     impersonating: (name: string) => `You are viewing ${name} as Global.`,
     exit: 'Exit',
   },

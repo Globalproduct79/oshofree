@@ -9,7 +9,10 @@ export default async function NewCampaignPage() {
   return (
     <>
       <PageHead title={COPY.page.newCampaign.title} subtitle={COPY.page.newCampaign.subtitle} />
-      <CampaignForm defaults={newCampaignDefaults(ws)} />
+      <CampaignForm
+        defaults={newCampaignDefaults(ws)}
+        cannotSubmit={ws.status === 'declined' ? COPY.campaignForm.workspaceDeclined : null}
+      />
     </>
   )
 }

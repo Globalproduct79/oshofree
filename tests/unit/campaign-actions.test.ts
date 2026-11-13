@@ -82,6 +82,16 @@ describe('transitions', () => {
     expect((await db.campaign.findUniqueOrThrow({ where: { id: other.id } })).status).toBe('draft')
   })
 
+  it('refuses to submit when Global declined the workspace, and leaves the draft as it was', async () => {
+    const declined = await db.workspace.update({
+      where: { id: mine.id }, data: { status: 'declined', declineReason: 'Not a real brand' },
+    })
+    vi.mocked(requireWorkspace).mockResolvedValue(declined)
+    const own = await createCampaign(mine.id, input)
+    expect(await submit(own.id)).toEqual({ error: "Your workspace was declined, so campaigns can't be submitted." })
+    expect((await db.campaign.findUniqueOrThrow({ where: { id: own.id } })).status).toBe('draft')
+  })
+
   it("explains when a campaign can't change state", async () => {
     const own = await createCampaign(mine.id, input)
     expect(await pause(own.id)).toEqual({ error: "That campaign can't change state right now." })

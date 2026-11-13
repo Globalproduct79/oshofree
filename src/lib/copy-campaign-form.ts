@@ -61,6 +61,7 @@ export const CAMPAIGN_FORM_COPY = {
   invalid: "This campaign can't be saved until every field is filled in correctly.",
   notFound: "That campaign isn't in this workspace, so nothing was changed.",
   invalidTransition: "That campaign can't change state right now.",
+  workspaceDeclined: "Your workspace was declined, so campaigns can't be submitted.",
   preview: {
     title: 'Card preview',
     subtitle: 'What a Phoenix user sees on the Offers wall.',
