@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { OfferCard } from '@/components/campaign/OfferCard'
 import { COPY } from '@/lib/copy'
 import type { PreviewCard } from '@/lib/preview-merge'
@@ -8,7 +9,7 @@ const P = COPY.preview
 const SCALE = 0.75
 
 // Phoenix's More → Offers screen inside a phone: header, category chips, the two-column card grid.
-export function PhoneFrame({ cards, note }: { cards: PreviewCard[]; note: string | null }) {
+export function PhoneFrame({ cards, note, children }: { cards: PreviewCard[]; note: string | null; children?: ReactNode }) {
   const categories = [...new Set(cards.map((c) => c.category).filter((c): c is string => Boolean(c)))]
   return (
     <div
@@ -46,9 +47,7 @@ export function PhoneFrame({ cards, note }: { cards: PreviewCard[]; note: string
             </p>
           )}
           <div className="mt-3 grid grid-cols-2 gap-2">
-            {cards.map((c) => (
-              <OfferCard key={c.key} offer={c} />
-            ))}
+            {children ?? cards.map((c) => <OfferCard key={c.key} offer={c} />)}
           </div>
         </div>
       </div>

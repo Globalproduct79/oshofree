@@ -118,6 +118,14 @@ export const COPY = {
     phoneErrorNG: 'Enter a Nigerian mobile number, like 0803 123 4567.',
     phoneError: (country: string) => `Enter a mobile number for ${country}, like +254 712 345 678`,
   },
+  wall: {
+    note: "This is OshoFree's stand-in for the Phoenix Offers wall. Every tap here goes through the same API Phoenix will call.",
+    share: 'Share',
+    shareLead: 'Send this link to a friend',
+    claim: 'Claim',
+    code: 'Your code',
+    empty: 'No offers in this market right now.',
+  },
   card: {
     sponsored: 'Sponsored',
     ends: (date: string) => `Ends ${date}`,
