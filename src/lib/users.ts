@@ -2,6 +2,9 @@ import bcrypt from 'bcryptjs'
 import { Prisma, type User } from '@prisma/client'
 import { db } from '@/lib/db'
 
+// Compared against when the email is unknown, so response time doesn't reveal which emails exist.
+const DUMMY_HASH = bcrypt.hashSync('x', 10)
+
 export async function createUser(input: {
   email: string
   password: string
@@ -20,6 +23,9 @@ export async function createUser(input: {
 
 export async function verifyCredentials(email: string, password: string): Promise<User | null> {
   const user = await db.user.findUnique({ where: { email: email.trim().toLowerCase() } })
-  if (!user) return null
+  if (!user) {
+    await bcrypt.compare(password, DUMMY_HASH)
+    return null
+  }
   return (await bcrypt.compare(password, user.passwordHash)) ? user : null
 }

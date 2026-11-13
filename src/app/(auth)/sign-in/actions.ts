@@ -6,10 +6,12 @@ import { COPY } from '@/lib/copy'
 
 // Auth.js hands us an absolute callbackUrl; keep only same-origin paths (no open redirect).
 function safeRedirect(raw: string): string {
+  if (!raw) return '/app'
   try {
     const base = new URL(process.env.APP_URL ?? 'http://localhost:3100')
     const url = new URL(raw, base)
     if (url.origin !== base.origin) return '/app'
+    if (url.pathname === '/') return '/app'
     return url.pathname + url.search
   } catch {
     return '/app'
