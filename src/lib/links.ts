@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { Prisma, type ShareLink } from '@prisma/client'
+import type { Tx } from '@/lib/db'
 import { db } from '@/lib/db'
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
@@ -13,13 +14,16 @@ export function generateCode(): string {
 }
 
 // The seed of a campaign's share tree: one Root link per (campaign, channel).
-export async function mintRootLink(campaignId: string, channelId: string): Promise<ShareLink> {
-  const existing = await db.shareLink.findFirst({ where: { campaignId, channelId, sharerType: 'Root' } })
+export async function mintRootLink(campaignId: string, channelId: string, client: Tx = db): Promise<ShareLink> {
+  const existing = await client.shareLink.findFirst({ where: { campaignId, channelId, sharerType: 'Root' } })
   if (existing) return existing
   for (let attempt = 0; ; attempt++) {
+    // Inside a transaction a unique violation aborts it, so look before inserting.
+    const code = generateCode()
+    if (await client.shareLink.findUnique({ where: { code }, select: { id: true } })) continue
     try {
-      return await db.shareLink.create({
-        data: { code: generateCode(), campaignId, channelId, depth: 0, sharerType: 'Root' },
+      return await client.shareLink.create({
+        data: { code, campaignId, channelId, depth: 0, sharerType: 'Root' },
       })
     } catch (e) {
       const collision = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002'

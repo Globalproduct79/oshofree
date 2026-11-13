@@ -2,7 +2,7 @@ import 'server-only'
 import type { Workspace, WorkspaceType } from '@prisma/client'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { db } from '@/lib/db'
+import { db, type Tx } from '@/lib/db'
 import type { Country } from '@/lib/markets'
 import { isAdminInDb, requireUser } from '@/lib/session'
 
@@ -69,24 +69,28 @@ export async function isImpersonating(userId: string, workspaceId: string): Prom
   return m === null
 }
 
-async function decide(id: string, data: { status: 'approved' | 'declined'; declineReason?: string }) {
-  const { count } = await db.workspace.updateMany({ where: { id, status: 'pending' }, data })
+async function decide(tx: Tx, id: string, data: { status: 'approved' | 'declined'; declineReason?: string }) {
+  const { count } = await tx.workspace.updateMany({ where: { id, status: 'pending' }, data })
   if (count === 0) throw 'INVALID_TRANSITION'
-  return db.workspace.findUniqueOrThrow({ where: { id } })
+  return tx.workspace.findUniqueOrThrow({ where: { id } })
 }
 
-export async function approveWorkspace(id: string, byUserId: string): Promise<Workspace> {
-  const ws = await decide(id, { status: 'approved' })
-  await db.reviewAction.create({ data: { targetType: 'Workspace', targetId: id, action: 'Approve', byUserId } })
-  return ws
+export function approveWorkspace(id: string, byUserId: string): Promise<Workspace> {
+  return db.$transaction(async (tx) => {
+    const ws = await decide(tx, id, { status: 'approved' })
+    await tx.reviewAction.create({ data: { targetType: 'Workspace', targetId: id, action: 'Approve', byUserId } })
+    return ws
+  })
 }
 
 export async function declineWorkspace(id: string, byUserId: string, reason: string): Promise<Workspace> {
   const why = reason.trim()
   if (!why) throw 'REASON_REQUIRED'
-  const ws = await decide(id, { status: 'declined', declineReason: why })
-  await db.reviewAction.create({
-    data: { targetType: 'Workspace', targetId: id, action: 'Decline', reason: why, byUserId },
+  return db.$transaction(async (tx) => {
+    const ws = await decide(tx, id, { status: 'declined', declineReason: why })
+    await tx.reviewAction.create({
+      data: { targetType: 'Workspace', targetId: id, action: 'Decline', reason: why, byUserId },
+    })
+    return ws
   })
-  return ws
 }

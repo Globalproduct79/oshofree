@@ -1,5 +1,5 @@
 import type { Campaign, CampaignStatus, Prisma } from '@prisma/client'
-import { db } from '@/lib/db'
+import { db, type Tx } from '@/lib/db'
 import { mintRootLink } from '@/lib/links'
 import { campaignDates, type CampaignInput } from '@/lib/campaign-schema'
 
@@ -31,10 +31,11 @@ async function move(
   id: string,
   from: CampaignStatus[],
   data: Prisma.CampaignUncheckedUpdateManyInput,
+  client: Tx = db,
 ): Promise<Campaign> {
-  const { count } = await db.campaign.updateMany({ where: { id, status: { in: from } }, data })
+  const { count } = await client.campaign.updateMany({ where: { id, status: { in: from } }, data })
   if (count === 0) throw 'INVALID_TRANSITION'
-  return db.campaign.findUniqueOrThrow({ where: { id } })
+  return client.campaign.findUniqueOrThrow({ where: { id } })
 }
 
 export function createCampaign(workspaceId: string, i: CampaignInput): Promise<Campaign> {
@@ -61,23 +62,27 @@ export function resumeCampaign(id: string): Promise<Campaign> {
   return move(id, ['paused'], { status: 'live' })
 }
 
-// Reasons are required for a "no"; the decision is recorded with the person who made it.
+// Reasons are required for a "no". Status, mints and the audit row commit together or not at all.
 export async function approveCampaign(id: string, byUserId: string): Promise<Campaign> {
   const row = await db.campaign.findUnique({ where: { id }, select: { workspace: { select: { status: true } } } })
   if (row && row.workspace.status !== 'approved') throw 'WORKSPACE_NOT_APPROVED'
-  const live = await move(id, ['review'], { status: 'live', decidedAt: new Date(), rejectReason: null })
-  const channels = await db.channel.findMany({ where: { isLive: true }, select: { id: true } })
-  for (const ch of channels) await mintRootLink(id, ch.id)
-  await db.reviewAction.create({ data: { targetType: 'Campaign', targetId: id, action: 'Approve', byUserId } })
-  return live
+  return db.$transaction(async (tx) => {
+    const live = await move(id, ['review'], { status: 'live', decidedAt: new Date(), rejectReason: null }, tx)
+    const channels = await tx.channel.findMany({ where: { isLive: true }, select: { id: true } })
+    for (const ch of channels) await mintRootLink(id, ch.id, tx)
+    await tx.reviewAction.create({ data: { targetType: 'Campaign', targetId: id, action: 'Approve', byUserId } })
+    return live
+  })
 }
 
 export async function rejectCampaign(id: string, byUserId: string, reason: string): Promise<Campaign> {
   const why = reason.trim()
   if (!why) throw 'REASON_REQUIRED'
-  const rejected = await move(id, ['review'], { status: 'rejected', rejectReason: why, decidedAt: new Date() })
-  await db.reviewAction.create({
-    data: { targetType: 'Campaign', targetId: id, action: 'Reject', reason: why, byUserId },
+  return db.$transaction(async (tx) => {
+    const rejected = await move(id, ['review'], { status: 'rejected', rejectReason: why, decidedAt: new Date() }, tx)
+    await tx.reviewAction.create({
+      data: { targetType: 'Campaign', targetId: id, action: 'Reject', reason: why, byUserId },
+    })
+    return rejected
   })
-  return rejected
 }

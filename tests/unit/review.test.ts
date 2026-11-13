@@ -68,6 +68,20 @@ describe('approveCampaign', () => {
   })
 })
 
+describe('atomic decisions', () => {
+  it('leaves the campaign in review with no links when the audit row cannot be written', async () => {
+    const { c } = await setup()
+    await expect(approveCampaign(c.id, 'no-such-user')).rejects.toBeDefined()
+    expect((await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).status).toBe('review')
+    expect(await db.shareLink.count({ where: { campaignId: c.id } })).toBe(0)
+  })
+  it('leaves a pending workspace pending when the audit row cannot be written', async () => {
+    const { ws } = await setup('pending')
+    await expect(approveWorkspace(ws.id, 'no-such-user')).rejects.toBeDefined()
+    expect((await db.workspace.findUniqueOrThrow({ where: { id: ws.id } })).status).toBe('pending')
+  })
+})
+
 describe('rejectCampaign', () => {
   it('stores the reason and records the decision', async () => {
     const { admin, c } = await setup()
