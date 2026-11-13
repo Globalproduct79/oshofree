@@ -125,6 +125,8 @@ export const COPY = {
     claim: 'Claim',
     code: 'Your code',
     empty: 'No offers in this market right now.',
+    error: "Couldn't reach the OshoFree API. Check the dev server and the channel key.",
+    actionFailed: "That didn't reach the API. Try again.",
   },
   card: {
     sponsored: 'Sponsored',

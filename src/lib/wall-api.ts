@@ -1,4 +1,6 @@
+import "server-only";
 import { randomUUID } from "node:crypto";
+import { COPY } from "@/lib/copy";
 import type { OfferDto } from "@/lib/offers";
 
 // The demo wall's three calls to the channel API, made as Phoenix will: bearer key, JSON, v1 paths.
@@ -79,4 +81,22 @@ export async function postShare(
     fetchImpl,
   );
   return json<{ code: string; url: string }>(res);
+}
+
+// The page's read: an unreachable API leaves the wall up with no offers and a note, not an error page.
+export async function loadWallOffers(
+  country: string,
+  fetchImpl: typeof fetch = fetch,
+) {
+  try {
+    return {
+      offers: (await fetchOffers(country, fetchImpl)).offers,
+      error: null as string | null,
+    };
+  } catch {
+    return {
+      offers: [] as OfferDto[],
+      error: COPY.wall.error as string | null,
+    };
+  }
 }
