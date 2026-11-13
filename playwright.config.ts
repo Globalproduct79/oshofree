@@ -5,7 +5,8 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: 'tests/e2e',
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // No retries anywhere: the first attempt has already changed the database, so a retry cannot pass.
+  retries: 0,
   workers: 1,
   // Next dev compiles each page on its first visit, so the one long test gets room.
   timeout: 180_000,
@@ -13,7 +14,7 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: 'http://localhost:3101',
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {

@@ -1,0 +1,84 @@
+# OshoFree
+
+OshoFree is where brands run sponsored offers on the Phoenix Offers wall: a brand creates a campaign,
+Global approves it, and Phoenix shows it as a card. Every Phoenix user who shares an offer gets a link of
+their own, and each open, claim and onward share of that link is counted in the brand's report.
+
+## Prerequisites
+
+- Node 20
+- Docker (runs Postgres 16 on port 5433 with two databases: `oshofree` and `oshofree_test`)
+
+## Setup
+
+```sh
+cp .env.example .env
+npm install
+npm run docker:up
+```
+
+Then create the schema and the demo data, one of:
+
+- `npm run db:reset` — wipes the development database, applies every migration and seeds it. Run it
+  yourself in a terminal; Prisma refuses a reset started by an AI agent.
+- `npx prisma migrate deploy && npm run db:seed` — for agents and CI, on an empty database. The seed
+  refuses to run if users already exist.
+
+```sh
+npm run dev   # http://localhost:3100
+```
+
+## Demo data
+
+Every seeded login uses the password `password`.
+
+| Login | What it shows |
+| --- | --- |
+| `admin@oshofree.demo` | Global: Review, Advertisers, Phoenix API |
+| `tunde@kolabright.demo` | Kola Bright, an approved brand with live campaigns and a share chain |
+| `ada@zurifoods.demo` | Zuri Foods, a brand still waiting for approval |
+
+The Phoenix channel's development key is `phx_dev_oshofree` (`DEMO_CHANNEL_KEY`). The seed stores its
+hash on the Phoenix channel, and `/admin/api` shows the key outside production.
+
+## Tests
+
+```sh
+npm run type-check
+npm run lint
+npm test            # Vitest against oshofree_test; every table is emptied before each test
+```
+
+End to end, once per machine run `npx playwright install chromium`, then:
+
+```sh
+npm run test:e2e
+```
+
+It migrates, empties and seeds `oshofree_test`, starts its own Next server on port 3101 (build output
+in `.next-e2e`), and walks the whole loop: sign up, approval, share from the wall, a friend's claim and
+the brand's report. It never touches the dev server on 3100 or the development database. The test
+scripts load `.env.test` with override, so an exported `DATABASE_URL` cannot point them elsewhere.
+
+## Demo wall
+
+`/wall` stands in for the Phoenix Offers wall while `DEMO_WALL=1`. It needs no sign-in, and every tap
+goes through the same channel API Phoenix will call, with `DEMO_CHANNEL_KEY`. Add `?country=KE` (or
+GH, TZ, SN) to see another market; the default is NG.
+
+## Deploy checklist
+
+- `DATABASE_URL`: the production Postgres. Run `npx prisma migrate deploy` on each release. Never run
+  the seed there.
+- `APP_URL`: the public `https://` origin. Share links are built from it, and the visitor cookie is
+  marked Secure only when it starts with `https://`.
+- `AUTH_SECRET`: a random string of 32 or more characters.
+- `AUTH_TRUST_HOST=true`.
+- `IP_HASH_SALT`: 16 or more random characters. Production refuses to hash a visitor's IP without it,
+  so landing pages fail until it is set.
+- `DEMO_WALL`: unset. The wall and its server actions are off unless it is exactly `1`.
+- `DEMO_CHANNEL_KEY`: unset. Issue a real key per channel and store only its sha256 hex digest in that
+  Channel row's `apiKeyHash`, with `isLive` true:
+  `node -e "console.log(require('crypto').createHash('sha256').update(process.argv[1]).digest('hex'))" <key>`
+- Uploads still go to local disk (`UPLOAD_DIR`, default `./uploads`). Object storage is not built yet,
+  so give the app a persistent volume and run a single instance.
