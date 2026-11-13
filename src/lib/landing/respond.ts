@@ -34,6 +34,8 @@ export async function liveLink(code: string, now = new Date()): Promise<
 // Every /o route answers with a page, even when something breaks underneath.
 export function landingRoute(handler: (req: Request, code: string) => Promise<Response>) {
   return async (req: Request, { params }: Context): Promise<Response> => {
+    // Next answers HEAD with GET; a preview bot's or link checker's probe is not a visit.
+    if (req.method === 'HEAD') return new Response(null, { status: 204 })
     try {
       return await handler(req, (await params).code)
     } catch (e) {

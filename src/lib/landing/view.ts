@@ -36,6 +36,12 @@ export function viewFor(link: LinkWithCampaign, state: LandingView['state'], ext
   }
 }
 
+// The brand's link as a Location header can carry it: percent-encoded, punycoded host.
+// Throws on a URL that does not parse, so callers resolve it before writing any Claim.
+export function brandHref(c: Campaign): string | null {
+  return c.redeemMethod === 'link' && c.linkUrl ? new URL(c.linkUrl).href : null
+}
+
 function statusView(state: 'ended' | 'error', brand = ''): LandingView {
   return {
     state, code: '', brand, headline: '', description: '', imageUrl: null, color: null,

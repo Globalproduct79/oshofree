@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { COPY } from '@/lib/copy'
 import { type LandingView, renderLanding } from '@/lib/landing/render'
 import { landingRoute } from '@/lib/landing/respond'
+import { ipHash } from '@/lib/landing/visitor'
 import { shareTargets } from '@/lib/landing/share-targets'
 import { linkUrl, mintChannelLink } from '@/lib/links'
 
@@ -179,6 +180,59 @@ describe('GET /o/[code]', () => {
     expect(await events('Claim')).toHaveLength(1)
     expect(await events('Open')).toHaveLength(0)
   })
+
+  it('percent-encodes a brand link outside Latin-1 into a valid Location, after exactly one Claim per claim', async () => {
+    const link = await seed({ ...linkOffer, linkUrl: 'https://kolabright.ng/₦50 off' })
+    const encoded = 'https://kolabright.ng/%E2%82%A650%20off'
+    const viaGet = await page(link.code, '?go=claim')
+    expect(viaGet.status).toBe(302)
+    expect(viaGet.headers.get('location')).toBe(encoded)
+    expect(await events('Claim')).toHaveLength(1)
+    const viaPost = await submit(postClaim, link.code, 'claim')
+    expect(viaPost.status).toBe(302)
+    expect(viaPost.headers.get('location')).toBe(encoded)
+    expect(await events('Claim')).toHaveLength(2)
+  })
+
+  it('answers HEAD with an empty 204: no cookie, no Open, no Claim', async () => {
+    const link = await seed(linkOffer)
+    for (const query of ['', '?go=claim']) {
+      const res = await getPage(new Request(`http://localhost/o/${link.code}${query}`, { method: 'HEAD' }), params(link.code))
+      expect(res.status).toBe(204)
+      expect(res.headers.get('set-cookie')).toBeNull()
+      expect(res.headers.get('location')).toBeNull()
+      expect(await res.text()).toBe('')
+    }
+    expect(await db.linkEvent.count()).toBe(0)
+  })
+})
+
+describe('ipHash salt', () => {
+  const req = new Request('http://localhost/o/X', { headers: { 'x-real-ip': '203.0.113.7' } })
+
+  it('refuses to hash in production without a salt of at least 16 characters', () => {
+    try {
+      vi.stubEnv('NODE_ENV', 'production')
+      vi.stubEnv('IP_HASH_SALT', '')
+      expect(() => ipHash(req)).toThrow('IP_HASH_SALT')
+      vi.stubEnv('IP_HASH_SALT', 'fifteen-chars!!')
+      expect(() => ipHash(req)).toThrow('IP_HASH_SALT')
+      vi.stubEnv('IP_HASH_SALT', 'a-real-secret-salt')
+      expect(ipHash(req)).toBe(createHash('sha256').update('203.0.113.7a-real-secret-salt').digest('hex'))
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('falls back to the dev salt outside production', () => {
+    try {
+      vi.stubEnv('NODE_ENV', 'test')
+      vi.stubEnv('IP_HASH_SALT', '')
+      expect(ipHash(req)).toBe(createHash('sha256').update('203.0.113.7dev-salt').digest('hex'))
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
 })
 
 describe('landingRoute', () => {
@@ -236,6 +290,29 @@ describe('POST /o/[code]/details', () => {
     const html = await res.text()
     for (const via of ['whatsapp', 'sms', 'x']) expect(html).toContain(`/o/${mine.code}/share?via=${via}`)
     expect(html).toContain(`value="${linkUrl(mine.code)}"`)
+  })
+
+  const shownCode = async (res: Response) => /\/o\/([0-9A-Z]{8})\/share\?via=whatsapp/.exec(await res.text())?.[1]
+
+  it('hands back the same link, and counts details once, when the same number is sent again', async () => {
+    const link = await seed()
+    const first = await submit(postDetails, link.code, 'details', { name: 'Ada', phone: '0803 123 4567' })
+    const again = await submit(postDetails, link.code, 'details', { phone: '+234 803 123 4567' })
+    expect([first.status, again.status]).toEqual([200, 200])
+    const mine = await db.shareLink.findMany({ where: { sharerType: 'Consumer' } })
+    expect(mine).toHaveLength(1)
+    expect([await shownCode(first), await shownCode(again)]).toEqual([mine[0].code, mine[0].code])
+    expect(await events('DetailsLeft')).toHaveLength(1)
+    expect(await db.consumer.findUniqueOrThrow({ where: { phone: '+2348031234567' } })).toMatchObject({ name: 'Ada' })
+  })
+
+  it('mints one link and counts details once when the same number arrives twice at once', async () => {
+    const link = await seed()
+    const both = await Promise.all([1, 2].map(() => submit(postDetails, link.code, 'details', { phone: '08031234567' })))
+    const mine = await db.shareLink.findMany({ where: { sharerType: 'Consumer' } })
+    expect(mine).toHaveLength(1)
+    expect(await Promise.all(both.map(shownCode))).toEqual([mine[0].code, mine[0].code])
+    expect(await events('DetailsLeft')).toHaveLength(1)
   })
 })
 

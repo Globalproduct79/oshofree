@@ -5,6 +5,16 @@ import { tokens } from '@/lib/tokens'
 
 // No database here: the campaign form imports this in the browser.
 
+// Stored as the WHATWG serialisation: path and query percent-encoded, host punycoded, so it is
+// always a valid Location header. Unparseable input passes through for validateCampaign to refuse.
+export function normaliseUrl(raw: string): string {
+  try {
+    return new URL(raw).href
+  } catch {
+    return raw
+  }
+}
+
 export const campaignInput = z.object({
   name: z.string().trim().min(2).max(80),
   brand: z.string().trim().min(1).max(80),
@@ -17,7 +27,7 @@ export const campaignInput = z.object({
   placement: z.literal('card'),
   redeemMethod: z.enum(['code', 'link']),
   claimCode: z.string().trim().min(1).max(24).optional(),
-  linkUrl: z.string().trim().optional(),
+  linkUrl: z.string().trim().transform(normaliseUrl).optional(),
   budgetUsd: z.number().int().min(50),
   startsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   runsForDays: z.number().int().min(1).max(90),

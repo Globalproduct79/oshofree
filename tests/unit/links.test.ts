@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
 import {
+  ensureConsumerLink,
   linkByCode,
   linkUrl,
   mintChannelLink,
@@ -44,6 +45,28 @@ describe('share-link tree', () => {
     expect(c2).toMatchObject({ sharerType: 'Consumer', via: null, campaignId: campaign.id, channelId: channel.id })
   })
 
+  it('keeps one consumer link per (parent, consumer), and the database refuses a second', async () => {
+    const { campaign, channel } = await setup()
+    const ch = await mintChannelLink(campaign.id, channel.id, 's', 'sms')
+    const ada = await upsertConsumer('+2348031234567', 'NG')
+    const first = await ensureConsumerLink(ch.id, ada.id)
+    const again = await ensureConsumerLink(ch.id, ada.id)
+    expect([first.created, again.created]).toEqual([true, false])
+    expect(again.link.id).toBe(first.link.id)
+    expect((await mintConsumerLink(ch.id, ada.id)).id).toBe(first.link.id)
+    expect((await mintConsumerLink(first.link.id, ada.id)).depth).toBe(3)
+    const dup = db.shareLink.create({
+      data: {
+        code: 'DUPL1CAT', campaignId: campaign.id, channelId: channel.id, parentId: ch.id, depth: 2,
+        sharerType: 'Consumer', consumerId: ada.id,
+      },
+    })
+    await expect(dup).rejects.toMatchObject({ code: 'P2002' })
+    // Channel links carry no consumer, so any number of them can share a parent.
+    await mintChannelLink(campaign.id, channel.id, 's2', 'x')
+    expect(await db.shareLink.count({ where: { sharerType: 'Channel' } })).toBe(2)
+  })
+
   it('sets via, finds by code and builds the url', async () => {
     const { campaign, channel } = await setup()
     const ch = await mintChannelLink(campaign.id, channel.id, 's', 'copy')
@@ -67,9 +90,10 @@ describe('events', () => {
     expect(await recordOpen(link.id, 'v2', 'h', 'ua', day1)).toEqual({ deduped: false })
     await recordClaim(link.id, 'v1', 'h', 'ua')
     await recordDetails(link.id, 'v1', 'h', 'ua')
-    const consumer = await upsertConsumer('+2348031234567', 'NG')
-    await mintConsumerLink(link.id, consumer.id)
-    await mintConsumerLink(link.id, consumer.id)
+    const ada = await upsertConsumer('+2348031234567', 'NG')
+    const bola = await upsertConsumer('+2348031234568', 'NG')
+    await mintConsumerLink(link.id, ada.id)
+    await mintConsumerLink(link.id, bola.id)
     expect(await linkStats(link.code)).toEqual({
       opens_unique: 3, opens_all: 4, details_left: 1, claims: 1, children: 2,
     })

@@ -51,6 +51,15 @@ describe('campaignInput', () => {
   })
 })
 
+describe('campaignInput linkUrl', () => {
+  it('stores the link as a valid Location: percent-encoded path, punycoded host', () => {
+    const parse = (linkUrl: string) => campaignInput.parse({ ...valid, redeemMethod: 'link', linkUrl }).linkUrl
+    expect(parse(' https://kolabright.ng/₦50 off ')).toBe('https://kolabright.ng/%E2%82%A650%20off')
+    expect(parse('https://bücher.example/é?q=ñ')).toBe('https://xn--bcher-kva.example/%C3%A9?q=%C3%B1')
+    expect(parse('not a url')).toBe('not a url')
+  })
+})
+
 describe('validateCampaign', () => {
   it('passes a valid input', () => expect(validateCampaign(valid)).toBeNull())
   it('asks for a name', () =>

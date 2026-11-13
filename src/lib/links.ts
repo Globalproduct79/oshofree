@@ -1,7 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { Prisma, type ShareLink, type ShareVia } from '@prisma/client'
-import type { Tx } from '@/lib/db'
-import { db } from '@/lib/db'
+import { db, isUniqueViolation, type Tx } from '@/lib/db'
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 
@@ -36,13 +35,15 @@ export function linkUrl(code: string): string {
   return `${process.env.APP_URL}/o/${code}`
 }
 
-async function createLink(data: Omit<Prisma.ShareLinkUncheckedCreateInput, 'code'>): Promise<ShareLink> {
+async function createLink(data: Omit<Prisma.ShareLinkUncheckedCreateInput, 'code'>, client: Tx = db): Promise<ShareLink> {
   for (let attempt = 0; ; attempt++) {
+    // Inside a transaction a unique violation aborts it, so look before inserting.
+    const code = generateCode()
+    if (await client.shareLink.findUnique({ where: { code }, select: { id: true } })) continue
     try {
-      return await db.shareLink.create({ data: { ...data, code: generateCode() } })
+      return await client.shareLink.create({ data: { ...data, code } })
     } catch (e) {
-      const collision = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002'
-      if (!collision || attempt >= 4) throw e
+      if (!isUniqueViolation(e) || attempt >= 4) throw e
     }
   }
 }
@@ -61,13 +62,33 @@ export async function mintChannelLink(
   })
 }
 
-// A consumer's link, one level under whichever link brought them in.
-export async function mintConsumerLink(parentId: string, consumerId: string): Promise<ShareLink> {
-  const parent = await db.shareLink.findUniqueOrThrow({ where: { id: parentId } })
-  return createLink({
+// A consumer's link, one level under whichever link brought them in: one per (parent, consumer),
+// so asking again returns the link they already hold. In a transaction, a per-pair advisory lock
+// makes a concurrent second ask wait and then find the first; the unique index is the backstop.
+export async function ensureConsumerLink(
+  parentId: string,
+  consumerId: string,
+  client: Tx = db,
+): Promise<{ link: ShareLink; created: boolean }> {
+  await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${parentId} || ':consumer:' || ${consumerId}))`
+  const existing = await client.shareLink.findFirst({ where: { parentId, consumerId }, orderBy: { createdAt: 'asc' } })
+  if (existing) return { link: existing, created: false }
+  const parent = await client.shareLink.findUniqueOrThrow({ where: { id: parentId } })
+  const link = await createLink({
     campaignId: parent.campaignId, channelId: parent.channelId, parentId: parent.id,
     depth: parent.depth + 1, sharerType: 'Consumer', consumerId, via: null,
-  })
+  }, client)
+  return { link, created: true }
+}
+
+export async function mintConsumerLink(parentId: string, consumerId: string, client: Tx = db): Promise<ShareLink> {
+  try {
+    return (await ensureConsumerLink(parentId, consumerId, client)).link
+  } catch (e) {
+    // Outside a transaction a concurrent mint can win the race; theirs is the link.
+    if (!isUniqueViolation(e)) throw e
+    return client.shareLink.findFirstOrThrow({ where: { parentId, consumerId }, orderBy: { createdAt: 'asc' } })
+  }
 }
 
 export async function setLinkVia(id: string, via: ShareVia): Promise<void> {

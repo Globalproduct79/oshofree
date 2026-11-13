@@ -19,10 +19,18 @@ export function clientIp(req: Request): string {
   return forwarded || req.headers.get('x-real-ip')?.trim() || '0.0.0.0'
 }
 
+// A public salt makes the hash reversible over the IPv4 space, so production refuses to run without
+// a real one. Checked on use, not at import, so `next build` does not need the secret.
+function salt(): string {
+  const s = process.env.IP_HASH_SALT
+  if (process.env.NODE_ENV === 'production' && (!s || s.length < 16))
+    throw new Error('IP_HASH_SALT must be set to at least 16 characters in production')
+  return s || 'dev-salt'
+}
+
 // Only the salted hash is ever stored; the raw address goes no further than this function.
 export function ipHash(req: Request): string {
-  const salt = process.env.IP_HASH_SALT || 'dev-salt'
-  return createHash('sha256').update(clientIp(req) + salt).digest('hex')
+  return createHash('sha256').update(clientIp(req) + salt()).digest('hex')
 }
 
 // Who is asking: the og_v cookie (minted when missing or malformed), hashed IP and user agent.

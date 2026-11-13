@@ -200,6 +200,7 @@ model ShareLink {
   consumer        Consumer?    @relation(fields: [consumerId], references: [id])
   events          LinkEvent[]
 
+  @@unique([parentId, consumerId])
   @@index([campaignId, channelId])
   @@index([parentId])
 }

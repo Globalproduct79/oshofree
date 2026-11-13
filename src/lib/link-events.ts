@@ -1,12 +1,12 @@
 import type { LinkEventType } from '@prisma/client'
-import { db } from '@/lib/db'
+import { db, type Tx } from '@/lib/db'
 
 export function startOfUtcDay(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
 }
 
-function write(type: LinkEventType, linkId: string, visitorId: string, ipHash: string, userAgent: string, deduped = false, at = new Date()) {
-  return db.linkEvent.create({ data: { linkId, type, visitorId, ipHash, userAgent, deduped, at } })
+function write(type: LinkEventType, linkId: string, visitorId: string, ipHash: string, userAgent: string, client: Tx = db) {
+  return client.linkEvent.create({ data: { linkId, type, visitorId, ipHash, userAgent } })
 }
 
 // The raw row is always written; it is marked deduped when this visitor already
@@ -38,8 +38,14 @@ export async function recordClaim(linkId: string, visitorId: string, ipHash: str
   await write('Claim', linkId, visitorId, ipHash, userAgent)
 }
 
-export async function recordDetails(linkId: string, visitorId: string, ipHash: string, userAgent: string): Promise<void> {
-  await write('DetailsLeft', linkId, visitorId, ipHash, userAgent)
+export async function recordDetails(
+  linkId: string,
+  visitorId: string,
+  ipHash: string,
+  userAgent: string,
+  client: Tx = db,
+): Promise<void> {
+  await write('DetailsLeft', linkId, visitorId, ipHash, userAgent, client)
 }
 
 export async function linkStats(code: string) {
