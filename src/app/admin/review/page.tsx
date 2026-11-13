@@ -5,6 +5,7 @@ import { campaignCard } from '@/lib/campaign-card'
 import { checkLink } from '@/lib/link-check'
 import { COPY } from '@/lib/copy'
 import { db } from '@/lib/db'
+import { requireAdmin } from '@/lib/session'
 import { tokens } from '@/lib/tokens'
 import {
   approveCampaignAction, approveWorkspaceAction, declineWorkspaceAction, previewOffersAction, rejectCampaignAction,
@@ -37,7 +38,9 @@ const Empty = () => (
 
 const rowStyle = { backgroundColor: tokens.card, borderColor: tokens.line, borderRadius: tokens.radius }
 
+// Gated here as well as in the layout: Next can render a page without its layout.
 export default async function ReviewPage() {
+  await requireAdmin()
   const [workspaces, campaigns] = await Promise.all([
     db.workspace.findMany({
       where: { status: 'pending' },

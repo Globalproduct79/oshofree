@@ -6,6 +6,8 @@ import path from 'node:path'
 config({ path: '.env.test', override: true, quiet: true })
 
 export default defineConfig({
+  // tsconfig keeps JSX for Next ("preserve"); tests that import a page need it compiled.
+  oxc: { jsx: { runtime: 'automatic' } },
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, 'src'),

@@ -4,10 +4,13 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { COPY } from '@/lib/copy'
 import { db } from '@/lib/db'
+import { requireAdmin } from '@/lib/session'
 import { tokens } from '@/lib/tokens'
 import { openWorkspace } from './actions'
 
+// Gated here as well as in the layout: Next can render a page without its layout.
 export default async function AdvertisersPage() {
+  await requireAdmin()
   const [workspaces, counts] = await Promise.all([
     db.workspace.findMany({ orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
     db.campaign.groupBy({ by: ['workspaceId'], _count: { _all: true } }),
