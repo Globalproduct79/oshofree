@@ -105,6 +105,9 @@ describe('active workspace', () => {
     signIn(g)
     await setActiveWorkspace(other.id)
     expect(jar.set).toHaveBeenLastCalledWith('of_ws', other.id, expect.anything())
+    const events = await db.auditEvent.findMany()
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ actorId: g.id, action: 'workspace.enter', targetType: 'Workspace', targetId: other.id, workspaceId: other.id })
   })
 
   it('lists a member their workspaces oldest first, and Global all by status then name', async () => {
@@ -119,5 +122,20 @@ describe('active workspace', () => {
     expect((await listSwitcher(u)).map((w) => w.name)).toEqual(['B', 'A'])
     expect(Object.keys((await listSwitcher(u))[0]).sort()).toEqual(['country', 'id', 'name', 'status', 'type'])
     expect((await listSwitcher(g)).map((w) => w.id)).toEqual([a.id, b.id, p.id, d.id])
+  })
+})
+
+describe('a demoted Global with a stale JWT', () => {
+  it('is treated as a plain member everywhere', async () => {
+    const u = await mkUser('d@x.com', false)
+    const mine = await mkWs('Mine')
+    const foreign = await mkWs('Foreign')
+    await join(u.id, mine.id, 'Manager')
+    signIn({ id: u.id, isGlobalAdmin: true }, foreign.id)
+    const m = await requireMember('view')
+    expect([m.workspace.id, m.role, m.user.isGlobalAdmin]).toEqual([mine.id, 'Manager', false])
+    await expect(setActiveWorkspace(foreign.id)).rejects.toBe('FORBIDDEN')
+    expect((await listSwitcher({ id: u.id })).map((w) => w.id)).toEqual([mine.id])
+    expect(await db.auditEvent.count()).toBe(0)
   })
 })

@@ -1,6 +1,7 @@
 import 'server-only'
 import type { WorkspaceStatus, WorkspaceType } from '@prisma/client'
 import { cookies } from 'next/headers'
+import { audit } from '@/lib/audit'
 import { db } from '@/lib/db'
 import { isAdminInDb, requireUser, type SessionUser } from '@/lib/session'
 
@@ -14,10 +15,15 @@ const statusRank: Record<WorkspaceStatus, number> = { approved: 0, pending: 1, d
 // The only writer of the cookie: Global may pick any workspace, everyone else only their own.
 export async function setActiveWorkspace(id: string): Promise<void> {
   const user = await requireUser()
-  const allowed = (await isAdminInDb(user.id))
-    ? await db.workspace.findUnique({ where: { id }, select: { id: true } })
-    : await db.workspaceMember.findFirst({ where: { userId: user.id, workspaceId: id }, select: { workspaceId: true } })
-  if (!allowed) throw 'FORBIDDEN'
+  const member = await db.workspaceMember.findFirst({
+    where: { userId: user.id, workspaceId: id },
+    select: { workspaceId: true },
+  })
+  if (!member) {
+    if (!(await isAdminInDb(user.id))) throw 'FORBIDDEN'
+    if (!(await db.workspace.findUnique({ where: { id }, select: { id: true } }))) throw 'FORBIDDEN'
+    await audit(user.id, 'workspace.enter', { type: 'Workspace', id, workspaceId: id })
+  }
   // No maxAge: a session cookie, gone when the browser closes.
   ;(await cookies()).set(ACTIVE_WORKSPACE_COOKIE, id, { httpOnly: true, sameSite: 'lax', path: '/' })
 }
@@ -30,8 +36,8 @@ export async function readActiveWorkspaceId(): Promise<string | undefined> {
   return (await cookies()).get(ACTIVE_WORKSPACE_COOKIE)?.value
 }
 
-export async function listSwitcher(user: Pick<SessionUser, 'id'> & { isGlobalAdmin?: boolean }): Promise<SwitcherItem[]> {
-  if (user.isGlobalAdmin ?? (await isAdminInDb(user.id))) {
+export async function listSwitcher(user: Pick<SessionUser, 'id'>): Promise<SwitcherItem[]> {
+  if (await isAdminInDb(user.id)) {
     const all = await db.workspace.findMany({ select: pick, orderBy: { name: 'asc' } })
     return all.sort((a, b) => statusRank[a.status] - statusRank[b.status])
   }

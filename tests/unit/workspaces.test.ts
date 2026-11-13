@@ -99,7 +99,7 @@ describe('requireWorkspace', () => {
     expect(target.id).not.toBe(adminWs.id)
   })
 
-  it('never honours of_ws for a non-admin', async () => {
+  it('ignores of_ws for a workspace the user is not in', async () => {
     const u = await user()
     const owner = await user('o@x.com')
     const own = await createWorkspace(u.id, input)
