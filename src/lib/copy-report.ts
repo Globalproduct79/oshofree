@@ -78,7 +78,7 @@ export const PREVIEW_COPY = {
   title: 'On Phoenix',
   subtitle: 'Your card, outlined, among the offers live in this country right now.',
   explainer:
-    'The Phoenix user opens Offers, taps your card and either takes a claim code or is sent to your link. If they share it, the friend lands on the same offer with a token; when the friend claims, the sharer earns airtime and points. Each step shows up in your report within the hour.',
+    'The Phoenix user opens Offers, taps your card and either takes a claim code or is sent to your link. If they share it, the friend lands on your offer page and can leave their number to get a link of their own. Every open, claim and share shows in your report straight away.',
   offers: 'Offers',
   all: 'All',
   loading: 'Loading the offers live now…',

@@ -97,6 +97,7 @@ export const ENDPOINTS: Endpoint[] = [
       'channel must match the key\'s channel, or 400 channel_mismatch.',
       'Idempotency-Key is required. Replaying a key returns the same counts and records nothing twice.',
       'Events dedupe per session, offer, type and hour; repeats count as deduped.',
+      'Events whose offer_id is unknown are counted in ignored and not stored.',
       'ids (offer_id, session_id, link_code) are 1 to 200 characters.',
     ],
   },
