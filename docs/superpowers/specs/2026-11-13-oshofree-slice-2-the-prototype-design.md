@@ -352,6 +352,53 @@ campaigns have no "today" impressions. Logins (password `password`): `admin@osho
 `kofi@sunfresh.demo`, plus `ada@kolabright.demo` (Manager) and `kemi@mediaspec.demo`
 (Viewer) for role checks.
 
+### 6.14 Rulings from the builder check (13 Nov 2026)
+
+A reviewer read this document as a builder would and asked seven questions. All seven are
+settled here as Claude's calls:
+
+1. **Sharer identity and phone.** `POST /api/v1/share` gains an optional `msisdn` (E.164,
+   verified by Phoenix's own OTP before the call). When present, OshoFree upserts a
+   `Consumer` for it and sets `ShareLink.consumerId` on the Channel link, so a Phoenix sharer
+   and a landing-page sharer are the same kind of record. A payout for a sharer with no known
+   phone is `held` with reason `no_phone` until Global releases it or Phoenix resends the
+   share with a number. "Top sharers" shows masked phones; a sharer without one shows as
+   "Phoenix user · ••{last 4 of session}". The simulation and the seed always supply numbers.
+2. **One source for friend opens and claims.** The share link always lands on OshoFree's
+   `/o/<code>`, so a friend's open and claim are the landing page's `LinkEvent` rows and
+   nothing else. Phoenix's `share_open` / `share_claim` events are accepted and stored for
+   the channel's own stats page but are never counted in advertiser metrics or payouts. A
+   successful share is the first `Claim` `LinkEvent` per link per visitor; its id is the
+   payout's `claimEventKey`. "Same device" compares the friend's visitor cookie with the
+   sharer's visitor cookie (when the sharer ever opened the landing page) or, for Phoenix
+   sharers, the friend's claim session with the sharer's `session_id`.
+3. **Pending revision.** A `CampaignRevision` holds only the offer fields (brand, category,
+   headline, description, tile colour, creative keys, placement, redeem method, claim code,
+   link, age gate). Money and timing never go through it; they use "Change without review"
+   and apply to the live campaign at once, so credit in use is unchanged by a revision. A
+   revision is a row in the review queue ("Revised offer · {headline}", same actions) and
+   counts in the Review badge. Rejecting it leaves the campaign live with the status line
+   "Live · revised offer not approved: {code}: {note}" and the advertiser can edit again.
+   Scheduled and paused campaigns behave like live ones; draft, review, rejected and ended
+   campaigns are edited in place and go to review as the prototype does.
+4. **Rewards caps.** The three workspace caps are the advertiser's own limits for every
+   campaign in the workspace: max successful shares per sharer per day (over it → payout
+   `held`, reason `cap_per_sharer`), max rewards as % of budget (the default and ceiling for
+   each campaign's `rewardCapPct`), points per successful share (used when awarding points).
+   Global's fraud rule "more than 5 rewards per sharer per day" is the platform floor: the
+   effective per-sharer limit is the lower of the two while the rule is enabled.
+5. **Seed money.** Every money figure in the seed is derived from the seeded events and
+   ledger lines; the prototype's invoice and settlement dollar amounts are not targets (the
+   inventories flag them as inconsistent). Seed dates are relative to the run day, as in the
+   prototype, so the demo always looks current.
+6. **Workspace settings after approval.** Name and registration number change freely. Type
+   and billing country are editable while the workspace is pending; after approval they are
+   read-only for the Owner with the hint "Ask Global to change this." and editable by Global
+   on the advertiser detail page. A billing-country change takes effect at the next invoice.
+7. **Channel keys.** The Phoenix API page gains a "Keys" box for Global: the live key's
+   prefix and creation date, "Rotate key" (shows the new key once; the old key stays valid
+   for 24 hours), and the sandbox note. Advertisers never see this page.
+
 ## 7. Left to the builder
 
 - Component file boundaries, as long as each prototype component class maps to one React
