@@ -2,9 +2,6 @@ import type { RedeemMethod } from '@prisma/client'
 
 // The campaign page and the Phoenix preview, split out of copy.ts. Reached through COPY.campaign/preview.
 
-// Channel facts carry the channel's short name: "Saw on Phoenix", not "Saw on Phoenix Browser".
-const CHANNELS: Record<string, string> = { phoenix: 'Phoenix', boomplay: 'Boomplay' }
-
 // The campaign page (ADV §2), verbatim. Ours, and marked so: the rejected chart sub-line (spec §6.8),
 // the revision status lines (spec §6.14.3), the End now confirm's buttons, the refusals the prototype
 // never had, and the History box.
@@ -104,29 +101,6 @@ export const CAMPAIGN_COPY = {
     revisionApproved: 'Revised offer approved',
     revisionRejected: (reason: string) => (reason ? `Revised offer not approved: ${reason}` : 'Revised offer not approved'),
   },
-  // The slice-1 Sharing page's words, until the Sharing page task rewrites it.
-  sharing: {
-    title: 'Sharing',
-    shares: 'Shares',
-    friendOpens: 'Friend opens',
-    friendClaims: 'Friend claims',
-    detailsLeft: 'Details left',
-    deepestChain: 'Deepest chain',
-    viral: 'Viral coefficient',
-    viralHint: 'Friend claims ÷ shares',
-    none: '—',
-    byChannel: 'By channel',
-    byMedium: 'Shared via',
-    channel: 'Channel',
-    medium: 'Medium',
-    noShares: 'No shares yet.',
-    workspaceEmpty: 'No shares yet. Shares start when your first campaign goes live on Phoenix.',
-    campaigns: 'Campaigns',
-    campaign: 'Campaign',
-    brand: 'Brand',
-  },
-  channel: (key: string) => CHANNELS[key] ?? key,
-  via: { whatsapp: 'WhatsApp', sms: 'SMS', x: 'X', facebook: 'Facebook', copy: 'Copy', other: 'Other', unknown: 'Unknown' },
 } as const
 
 export const PREVIEW_COPY = {

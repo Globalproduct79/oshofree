@@ -55,13 +55,6 @@ export const COPY = {
     declined: (reason: string | null) =>
       `Global declined this workspace${reason?.trim() ? `: ${reason.trim().replace(/[.!?]+$/, '')}` : ''}. Campaigns can't go live until that changes.`,
   },
-  nav: {
-    menu: 'Menu',
-    signOut: 'Sign out',
-    groups: { campaigns: 'Campaigns', growth: 'Growth', organisation: 'Organisation' },
-    items: { campaigns: 'Campaigns', newCampaign: 'New campaign', sharing: 'Sharing', workspace: 'Workspace' },
-  },
-  admin: { platform: 'Platform', global: 'Global', review: 'Review', advertisers: 'Advertisers', api: 'Phoenix API' },
   campaignForm: CAMPAIGN_FORM_COPY,
   campaign: CAMPAIGN_COPY,
   preview: PREVIEW_COPY,

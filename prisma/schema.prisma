@@ -232,7 +232,7 @@ model Campaign {
   tileColor        String?
   placement        Placement
   redeemMethod     RedeemMethod
-  claimCode        String?
+  claimCode        String? // Legacy (slice 1): no form sets it; codes are issued per claim (ClaimCode). Drop after the schema freeze.
   linkUrl          String?
   budgetUsd        Int
   startsAt         DateTime

@@ -3,13 +3,9 @@ import type { CampaignStatus, ChannelEventType, LedgerKind, PayoutStatus, Prisma
 import { db } from '@/lib/db'
 import { maskPhone } from '@/lib/format'
 import {
-  campaignDaily,
-  campaignFunnel,
   campaignMetrics,
-  campaignSharing,
   heroCampaign,
   homeCards,
-  homeNumbers,
   platformKpis,
   pointsIssued,
   rewardsLedgerRows,
@@ -385,60 +381,5 @@ describe('platform', () => {
       { campaignId: d.id, name: 'Supa10 Jackpot', workspaceName: 'MediaSpec', successfulShares: 2, rewardLocal: 10, symbol: 'KSh', owedCents: 16, rechargeStatus: 'open' },
       { campaignId: b.id, name: 'Pesa promo', workspaceName: 'Kola Bright', successfulShares: 1, rewardLocal: 10, symbol: 'KSh', owedCents: 8, rechargeStatus: 'paid' },
     ])
-  })
-})
-
-describe('slice-1 exports kept for the old pages', () => {
-  it('homeNumbers reads the new metrics', async () => {
-    const { a } = await world()
-    expect(await homeNumbers(a.id, NOW)).toEqual({
-      impressions: 10, impressionsToday: 7, uniqueLinkOpens: 10, shares: 7, claims: 2 + 8, daysElapsed: 7, daysTotal: 14,
-    })
-  })
-
-  const NOW1 = new Date('2026-12-03T12:00:00Z')
-
-  async function slice1Fixture() {
-    const ws = await db.workspace.create({ data: { name: 'Acme', type: 'Brand', country: 'NG' } })
-    const campaign = await mkCampaign(ws.id, 'live', 'live', { startsAt: at('2026-12-01'), endsAt: at('2026-12-08') })
-    const channel = await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'h', isLive: true } })
-    const root = await link(campaign, channel.id, 0, 'Root')
-    const wa = await link(campaign, channel.id, 1, 'Channel', { parentId: root.id, via: 'whatsapp' })
-    await link(campaign, channel.id, 1, 'Channel', { parentId: root.id, via: 'sms' })
-    const consumer = await db.consumer.create({ data: { phone: '+2348031234567', country: 'NG' } })
-    const friend = await link(campaign, channel.id, 2, 'Consumer', { parentId: wa.id, consumerId: consumer.id })
-    await events(campaign, channel.id, 'Impression', 10, NOW1.toISOString())
-    await events(campaign, channel.id, 'Open', 3, NOW1.toISOString())
-    await events(campaign, channel.id, 'Claim', 1, NOW1.toISOString())
-    const le = (linkId: string, type: 'Open' | 'Claim' | 'DetailsLeft', deduped = false) =>
-      ({ linkId, type, visitorId: 'v1', ipHash: 'i', userAgent: 'u', deduped, at: NOW1 })
-    await db.linkEvent.createMany({
-      data: [le(wa.id, 'Open'), le(wa.id, 'Open', true), le(friend.id, 'Claim'), le(friend.id, 'DetailsLeft')],
-    })
-    return { ws, campaign, channel }
-  }
-
-  it('builds the funnel from channel facts and OshoFree facts, kept apart', async () => {
-    const { campaign } = await slice1Fixture()
-    expect(await campaignFunnel(campaign.id)).toEqual([
-      { channel: 'phoenix', saw: 10, openedOnChannel: 3, claimedOnChannel: 1, claimedViaLink: 1, shares: 3, friendOpened: 1, friendClaimed: 1, detailsLeft: 1 },
-    ])
-  })
-
-  it('reports sharing by channel and by medium', async () => {
-    const { campaign } = await slice1Fixture()
-    const s = await campaignSharing(campaign.id)
-    expect(s).toMatchObject({ shares: 3, friendOpens: 1, friendClaims: 1, detailsLeft: 1, deepestChain: 2 })
-    expect(s.byMedium.map((m) => m.via).sort()).toEqual(['sms', 'unknown', 'whatsapp'])
-  })
-
-  it('zero-fills the daily series in the market timezone', async () => {
-    const { campaign, channel } = await slice1Fixture()
-    const d = await campaignDaily(campaign.id, 14, NOW1)
-    expect(d).toHaveLength(14)
-    expect(d[13]).toMatchObject({ day: '2026-12-03', impressions: 10, linkOpens: 1, claimsOnChannel: 1, claimsViaLink: 1 })
-    await events(campaign, channel.id, 'Impression', 1, '2026-12-03T23:30:00Z')
-    const late = await campaignDaily(campaign.id, 14, new Date('2026-12-04T00:45:00Z'))
-    expect(late[13]).toMatchObject({ day: '2026-12-04', impressions: 1 })
   })
 })
