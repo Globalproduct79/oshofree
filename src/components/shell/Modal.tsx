@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useId, useRef } from 'react'
+import { tabStops, tabTarget } from './focus-trap'
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -34,7 +35,8 @@ export function Modal({
     if (!open) return
     const opener = document.activeElement as HTMLElement | null
     const box = panel.current
-    const focusables = () => (box ? Array.from(box.querySelectorAll<HTMLElement>(FOCUSABLE)) : [])
+    // Only what Tab can reach: a roving tab list's unselected tabs (tabindex -1) are not stops.
+    const focusables = () => tabStops(box ? Array.from(box.querySelectorAll<HTMLElement>(FOCUSABLE)) : [])
     ;(focusables()[0] ?? box)?.focus()
 
     function onKey(e: KeyboardEvent) {
@@ -44,21 +46,10 @@ export function Modal({
         return
       }
       if (e.key !== 'Tab') return
-      const list = focusables()
-      if (list.length === 0) {
-        e.preventDefault()
-        return
-      }
-      const first = list[0]
-      const last = list[list.length - 1]
-      const inside = box?.contains(document.activeElement)
-      if (e.shiftKey && (document.activeElement === first || !inside)) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
-        e.preventDefault()
-        first.focus()
-      }
+      const inside = Boolean(box?.contains(document.activeElement))
+      const to = tabTarget(focusables(), document.activeElement, { shift: e.shiftKey, inside })
+      if (to.prevent) e.preventDefault()
+      to.focus?.focus()
     }
     document.addEventListener('keydown', onKey)
     return () => {
