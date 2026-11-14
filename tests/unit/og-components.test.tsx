@@ -447,7 +447,8 @@ describe('OptionTile', () => {
   it('flags placements whose inventory is not confirmed', () => {
     const m = html(<OptionTile pressed={false} title="Video" desc="6–15s clip" big="$4.50 CPM" soon />)
     expect(m).toContain('aria-pressed="false"')
-    expect(m).toContain('<span class="soon">inventory TBC</span><b>Video</b>')
+    // After the title, so the tile's name starts with its placement; CSS puts it on the top edge.
+    expect(m).toContain('<b>Video</b><span class="soon">inventory TBC</span>')
   })
 })
 

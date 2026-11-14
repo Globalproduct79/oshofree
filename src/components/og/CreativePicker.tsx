@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } fr
 import { COMPONENTS } from '@/lib/copy-components'
 import { tokens } from '@/lib/tokens'
 import { Button } from './Button'
+import { droppedFile, PickerMemory, zoneKey } from './picker-logic'
 
 const C = COMPONENTS.drop
 
@@ -28,9 +29,9 @@ type Props = {
   frame?: ReactNode
   // Buttons after Replace and Remove (a splash's View full size).
   actions?: ReactNode
+  // A file picked, dropped, or sent again by Retry (the picker keeps the last one).
   onPick: (file: File) => void
   onRemove: () => void
-  onRetry?: () => void
 }
 
 // The image as it is, or the video with the browser's own controls, opened at its first frame (#t=0.1 makes
@@ -51,7 +52,9 @@ function Media({ media, still }: { media: PickerMedia; still?: boolean }) {
 // The creative upload (ADV §3): a `label.f` with its hint, then the dashed `.drop`. Empty, the zone is a button
 // (click, Enter or Space opens the file picker) and a file can be dropped on it. While a file uploads the zone
 // shows it with a progress bar; once chosen, the creative itself (an image, a video with controls, or the
-// caller's frame) with Replace and Remove under it. What happens is said in a live region.
+// caller's frame) with Replace and Remove under it. The live region says "Uploading…" once and then the outcome
+// once; the percentage is on the progress bar (and shown beside the words, hidden from screen readers). When the
+// picker settles after a pick, a Retry or a Remove, focus goes to Replace, or to the empty zone.
 export function CreativePicker({
   label,
   hint,
@@ -64,34 +67,30 @@ export function CreativePicker({
   actions,
   onPick,
   onRemove,
-  onRetry,
 }: Props) {
   const id = useId()
   const input = useRef<HTMLInputElement>(null)
   const zone = useRef<HTMLDivElement>(null)
+  const replace = useRef<HTMLButtonElement>(null)
   const [over, setOver] = useState(false)
-  // After Remove the button is gone: focus goes back to the empty zone.
-  const refocus = useRef(false)
-  useEffect(() => {
-    if (refocus.current && !chosen) {
-      refocus.current = false
-      zone.current?.focus()
-    }
-  }, [chosen])
+  const [memory] = useState(() => new PickerMemory())
 
   const busy = status.state === 'uploading'
   const empty = !busy && !chosen
+  useEffect(() => {
+    const target = memory.settle(status.state, chosen !== null)
+    if (target) (target === 'replace' ? replace.current : zone.current)?.focus()
+  }, [memory, status, chosen])
+
   const open = () => {
     if (!busy) input.current?.click()
   }
-  const take = (file: File | undefined) => {
-    if (file && !busy) onPick(file)
-  }
+  const take = (file: File | undefined) => memory.take(file, busy, onPick)
   const drag = (e: DragEvent, on: boolean) => {
     e.preventDefault()
     if (!busy) setOver(on)
   }
-  const message = busy ? C.progress(status.percent) : status.state === 'error' ? status.message : (status.note ?? '')
+  const message = busy ? C.uploading : status.state === 'error' ? status.message : (status.note ?? '')
 
   return (
     <>
@@ -108,12 +107,7 @@ export function CreativePicker({
           role: 'button',
           tabIndex: 0,
           onClick: open,
-          onKeyDown: (e: React.KeyboardEvent) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              open()
-            }
-          },
+          onKeyDown: (e: React.KeyboardEvent) => zoneKey(e, open),
         })}
         onDragOver={(e) => drag(e, true)}
         onDragLeave={(e) => {
@@ -122,7 +116,7 @@ export function CreativePicker({
         }}
         onDrop={(e) => {
           drag(e, false)
-          take(e.dataTransfer.files?.[0])
+          take(droppedFile(e))
         }}
       >
         {busy ? (
@@ -151,7 +145,7 @@ export function CreativePicker({
       </div>
       {chosen && !busy && (
         <div className="btns dacts">
-          <Button size="s" type="button" onClick={open}>
+          <Button ref={replace} size="s" type="button" onClick={open}>
             {C.replace}
           </Button>
           <Button
@@ -159,7 +153,7 @@ export function CreativePicker({
             size="s"
             type="button"
             onClick={() => {
-              refocus.current = true
+              memory.removed()
               onRemove()
             }}
           >
@@ -170,8 +164,9 @@ export function CreativePicker({
       )}
       <div className={status.state === 'error' ? 'dmsg bad' : 'dmsg'}>
         <span aria-live="polite">{message}</span>
-        {status.state === 'error' && status.retry && onRetry && (
-          <Button size="s" type="button" onClick={onRetry}>
+        {busy && <span aria-hidden="true">{C.percent(status.percent)}</span>}
+        {status.state === 'error' && status.retry && (
+          <Button size="s" type="button" onClick={() => memory.retry(busy, onPick)}>
             {C.retry}
           </Button>
         )}

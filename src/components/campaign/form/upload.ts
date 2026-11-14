@@ -20,11 +20,19 @@ const isVideo = (type: string) => (VIDEO_TYPES as readonly string[]).includes(ty
 const limitText = (bytes: number) => `${bytes / MB} MB`
 const sizeText = (bytes: number) => `${Math.ceil((bytes * 10) / MB) / 10} MB`
 
+// The extensions each placement takes: a file named like one but refused by its type is not called by its name
+// ("That file is a WEBP. Use a JPG, PNG or WebP." would contradict itself).
+const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'webp']
+const TAKES_EXT: Record<PlacementKey, readonly string[]> = {
+  card: IMAGE_EXT, featured: IMAGE_EXT, video: ['mp4'], splash: [...IMAGE_EXT, 'mp4'],
+}
+
 // "a GIF", "an MP4", "an SVG": the file's extension (else its declared type) as a reader says it. Letters read
 // one by one (a digit, or no vowel) take "an" before A, E, F, H, I, L, M, N, O, R, S and X; a word before a vowel.
-function typeName(file: { name: string; type: string }): string | null {
+// Null when it has no name to give, or the name is one the placement takes.
+function typeName(file: { name: string; type: string }, placement: PlacementKey): string | null {
   const ext = /\.([a-z0-9]{1,8})$/i.exec(file.name)?.[1] ?? /^[a-z]+\/(?:x-)?([a-z0-9.-]+)/i.exec(file.type)?.[1]
-  if (!ext) return null
+  if (!ext || TAKES_EXT[placement].includes(ext.toLowerCase())) return null
   const label = ext.toUpperCase()
   const spelt = /\d/.test(label) || !/[AEIOU]/.test(label)
   const an = (spelt ? 'AEFHILMNORSX' : 'AEIOU').includes(label[0])
@@ -38,7 +46,7 @@ export function checkCreativeFile(file: { name: string; type: string; size: numb
   const takes = placement === 'video' ? video : placement === 'splash' ? image || video : image
   if (!takes) {
     if (placement === 'video') return U.wrongVideo
-    const name = typeName(file)
+    const name = typeName(file, placement)
     if (!name) return U.bad
     return placement === 'splash' ? U.wrongSplash(name) : U.wrongImage(name)
   }
@@ -137,7 +145,7 @@ export async function pickCreative(file: File, run: PickRun): Promise<void> {
   if (!res.ok) return run.status({ state: 'error', message: res.message, retry: res.retry })
   if (!fits(run.placement(), res.creative)) return run.status({ state: 'error', message: F.validation.creativeMismatch, retry: false })
   run.chosen(res.creative)
-  run.status({ state: 'idle' })
+  run.status({ state: 'idle', note: U.attached[res.creative.kind] })
 }
 
 // Why switching to `placement` took the creative off: the wrong kind, or an image over the placement's cap.

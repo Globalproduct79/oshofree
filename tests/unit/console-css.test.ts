@@ -22,3 +22,8 @@ it('the creative picker: a lit zone for a drag, the upload bar, a message line, 
   // The prototype's `.drop img` clamps a thumbnail to 90 px; inside the phone the splash must fill the screen.
   expect(css).toContain('.drop .phone-thumb img,.drop .phone-thumb video{max-height:none;max-width:none;margin:0;border-radius:0}')
 })
+it("puts a placement tile's inventory badge on the tile's top edge, clear of the title", () => {
+  expect(css).toContain('.opt .soon{top:-9px;right:10px;margin:0;line-height:1.4}')
+  // After the prototype's rule (which placed it inside the tile, over a long title), so this one wins.
+  expect(css.indexOf('.opt .soon{top:-9px')).toBeGreaterThan(css.indexOf('.opt .soon{position:absolute;top:8px'))
+})

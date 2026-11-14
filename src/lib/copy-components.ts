@@ -74,8 +74,8 @@ export const COMPONENTS = {
     replace: 'Replace',
     remove: 'Remove',
     retry: 'Retry',
-    uploading: 'Uploading',
-    progress: (percent: number) => `Uploading… ${percent}%`,
+    uploading: 'Uploading…',
+    percent: (percent: number) => `${percent}%`,
     chosen: { image: 'The image you chose', video: 'The video you chose' },
   },
 } as const

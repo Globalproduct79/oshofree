@@ -45,9 +45,8 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
   const [values, setValues] = useState(defaults)
   // The server's refusal, shown until the next change.
   const [notice, setNotice] = useState<string | null>(null)
-  // The creative picker: resting, uploading (with its percentage) or refused; Retry sends the last file again.
+  // The creative picker: resting, uploading (with its percentage) or refused (its Retry sends the file to pick again).
   const [creativeStatus, setCreativeStatus] = useState<PickerStatus>({ state: 'idle' })
-  const lastFile = useRef<File | null>(null)
   const uploading = creativeStatus.state === 'uploading'
   // Whether this browser holds a draft of the New form (Start over shows while it does).
   const [hasDraft, setHasDraft] = useState(false)
@@ -104,7 +103,6 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
   }
   // The placement may have changed while the file uploaded: a creative it cannot take is discarded.
   function pick(file: File) {
-    lastFile.current = file
     setNotice(null)
     return pickCreative(file, {
       placement: () => latest.current.placement,
@@ -191,7 +189,6 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
             choose={choose}
             status={creativeStatus}
             pick={pick}
-            retry={() => lastFile.current && pick(lastFile.current)}
             remove={removeCreative}
             mine={mine}
             loadLive={() => previewOffers(values.country)}

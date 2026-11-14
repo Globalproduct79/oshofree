@@ -56,23 +56,24 @@ export const CAMPAIGN_FORM_COPY = {
     inventoryTbc: 'inventory TBC',
     cpm: (dollars: string) => `$${dollars} CPM`,
   },
+  // The zone hints are ours: the prototype's "tap to attach a sample (demo)" was a demo's; this is a real upload.
   drop: {
     card: {
       label: 'Ad image', hint: '— optional. Square or landscape works best.',
-      zoneTitle: 'Upload image', zoneHint: 'tap to attach a sample (demo)',
+      zoneTitle: 'Upload image', zoneHint: 'drag a JPG, PNG or WebP here, or choose a file',
     },
     featured: {
       label: 'Ad image', hint: '— optional. Square or landscape works best.',
-      zoneTitle: 'Upload image', zoneHint: 'tap to attach a sample (demo)',
+      zoneTitle: 'Upload image', zoneHint: 'drag a JPG, PNG or WebP here, or choose a file',
     },
     // The size in these two hints is ours: the caps by kind (image-rules) replaced the prototype's "under 2 MB".
     video: {
       label: 'Video clip', hint: '— MP4, 6–15 s, under 25 MB. Required.',
-      zoneTitle: 'Upload creative', zoneHint: 'tap to attach a sample (demo)',
+      zoneTitle: 'Upload creative', zoneHint: 'drag an MP4 here, or choose a file',
     },
     splash: {
       label: 'Splash creative', hint: '— portrait image under 4 MB, or an MP4 under 25 MB. Required.',
-      zoneTitle: 'Upload creative', zoneHint: 'tap to attach a sample (demo)',
+      zoneTitle: 'Upload creative', zoneHint: 'drag an image or an MP4 here, or choose a file',
     },
     attached: 'Tap to remove',
     // Ours: a chosen splash shows in a small phone; this opens the Phoenix preview with it full screen.
@@ -151,6 +152,8 @@ export const CAMPAIGN_FORM_COPY = {
     wrongSplash: (type: string) => `That file is ${type}. Use a JPG, PNG or WebP image, or an MP4 video.`,
     bad: "That file can't be used. Attach a JPG, PNG or WebP image, or an MP4 video.",
     failed: "The upload didn't finish. Try again.",
+    // Said once when an upload lands, after "Uploading…".
+    attached: { image: 'Image attached.', video: 'Video attached.' },
     cleared: {
       video: (placement: string) => `The video was removed — a ${placement} shows an image.`,
       image: 'The image was removed — Video needs an MP4.',

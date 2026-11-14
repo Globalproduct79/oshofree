@@ -89,6 +89,11 @@ describe('checkCreativeFile: refused in the browser before anything is sent', ()
     expect(checkCreativeFile(file('anim.gif', 'image/gif'), 'splash')).toBe(
       'That file is a GIF. Use a JPG, PNG or WebP image, or an MP4 video.',
     )
+    // A name the placement takes on a file whose type it refuses is not repeated back: the general sentence.
+    const general = "That file can't be used. Attach a JPG, PNG or WebP image, or an MP4 video."
+    expect(checkCreativeFile(file('photo.webp', ''), 'card')).toBe(general)
+    expect(checkCreativeFile(file('photo.JPG', 'image/heic'), 'featured')).toBe(general)
+    expect(checkCreativeFile(file('clip.mp4', 'video/quicktime'), 'splash')).toBe(general)
     // No extension: the declared type names it; neither: the general sentence.
     expect(checkCreativeFile(file('scan', 'application/pdf'), 'card')).toBe('That file is a PDF. Use a JPG, PNG or WebP.')
     expect(checkCreativeFile(file('mystery', ''), 'card')).toBe(
@@ -171,8 +176,8 @@ describe('pickCreative: the picker states one pick goes through', () => {
   const html = (status: PickerStatus, chosen: { url: string; kind: 'image' | 'video' } | null = null) =>
     renderToStaticMarkup(
       createElement(CreativePicker, {
-        label: 'Ad image', hint: '', zoneTitle: 'Upload image', zoneHint: 'tap', status, chosen,
-        onPick: vi.fn(), onRemove: vi.fn(), onRetry: vi.fn(),
+        label: 'Ad image', hint: '', zoneTitle: 'Upload image', zoneHint: 'drag it here', status, chosen,
+        onPick: vi.fn(), onRemove: vi.fn(),
       }),
     )
 
@@ -198,14 +203,16 @@ describe('pickCreative: the picker states one pick goes through', () => {
     expect(r.statuses).toEqual([
       { state: 'uploading', percent: 0, preview: { url: 'blob:local', kind: 'image' } },
       { state: 'uploading', percent: 25, preview: { url: 'blob:local', kind: 'image' } },
-      { state: 'idle' },
+      { state: 'idle', note: 'Image attached.' },
     ])
     expect(r.chosen).toEqual([{ ...stored, bytes: 2048 }])
     expect(r.revoke).toHaveBeenCalledOnce()
     const uploading = html(r.statuses[1])
     expect(uploading).toContain('<img src="blob:local"')
     expect(uploading).toMatch(/role="progressbar"[^>]*aria-valuenow="25"/)
-    expect(uploading).toContain('Uploading… 25%')
+    expect(uploading).toContain('<span aria-live="polite">Uploading…</span><span aria-hidden="true">25%</span>')
+    // The outcome, said once.
+    expect(html(r.statuses[2], { url: stored.url, kind: 'image' })).toContain('<span aria-live="polite">Image attached.</span>')
   })
 
   it('a refused file: one error, no request, no Retry', async () => {

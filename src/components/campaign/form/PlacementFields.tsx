@@ -14,10 +14,9 @@ type Props = {
   // Phoenix's current CPM per placement in the chosen country; null where Global has set none.
   cpmCents: Record<PlacementKey, number | null>
   choose: (placement: PlacementKey) => void
-  // The creative picker's state, and its three actions.
+  // The creative picker's state, and its actions (Retry sends the picker's last file to `pick` again).
   status: PickerStatus
   pick: (file: File) => void
-  retry: () => void
   remove: () => void
   // The draft as Phoenix draws it, and the live offers around it: a splash's View full size opens that preview.
   mine: PreviewOffer
@@ -28,7 +27,7 @@ const INVENTORY_TBC: readonly PlacementKey[] = ['video', 'splash']
 
 // ADV §3 fields 8–9: the four placement tiles with their live CPM, then the creative picker the placement asks for:
 // an image for a card or tile, an MP4 (played with controls) for video, either for a splash, shown in a small phone.
-export function PlacementFields({ values: v, cpmCents, choose, status, pick, retry, remove, mine, loadLive }: Props) {
+export function PlacementFields({ values: v, cpmCents, choose, status, pick, remove, mine, loadLive }: Props) {
   const drop = F.drop[v.placement]
   const splash = v.placement === 'splash' && v.creative !== null
   const country = MARKETS[v.country].name
@@ -80,7 +79,6 @@ export function PlacementFields({ values: v, cpmCents, choose, status, pick, ret
             ) : undefined
           }
           onPick={pick}
-          onRetry={retry}
           onRemove={remove}
         />
       </div>
