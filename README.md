@@ -35,9 +35,11 @@ markets, FX, the 55 % share), the nine campaigns and their history, invoices and
 relative to the day you seed, so the demo always looks current. Every number comes from the real pipeline:
 the seed replays each campaign's past days through event ingestion, `POST /share`, the landing page's
 opens and claims (which make the payouts, through the fraud checks) and the daily job (which charges
-delivery, starts and ends flights, closes last month and warns on pace). The only invoices it writes
-itself are two older than any seeded campaign (MediaSpec's paid INV-0037 and Pesa Link's overdue
-INV-0046). It is a pure function of the run time: one seeded random generator drives every choice.
+delivery, starts and ends flights, closes last month, reminds about invoices, warns on pace and sends
+Monday's digest). Kola Bright's and MediaSpec's invoices for last month (INV-0041 and INV-0044) are that
+close's, at whatever their campaigns' charges came to. The only invoices the seed writes itself are two
+older than any seeded campaign: MediaSpec's paid INV-0037 and Pesa Link's overdue INV-0046, at the
+prototype's amounts. It is a pure function of the run time: one seeded random generator drives every choice.
 
 Every seeded login uses the password `password`.
 
@@ -52,11 +54,11 @@ Every seeded login uses the password `password`.
 | `wanjiru@pesalink.demo` | Owner, Pesa Link | A brand in Kenya with one live campaign and an overdue invoice, close to its $500 limit |
 | `kofi@sunfresh.demo` | Owner, SunFresh Juices | A brand in Ghana still awaiting Global's approval |
 
-`SEED_SCALE` (default `0.2`) sets the share of the prototype's volumes the seed generates: impressions,
-and with them opens, shares, friends' claims, rewards and spend. At `0.2` the seed takes under a minute,
-and campaigns show a fifth of the prototype's delivery (so the daily job reports them as slower than
-planned). `SEED_SCALE=1 npm run db:seed` reproduces the prototype's delivery and reward figures and
-takes about two minutes.
+`SEED_SCALE` (default `1`) sets the share of the prototype's volumes the seed generates: impressions, and
+with them opens, shares, friends' claims, rewards and spend. At `1` the campaigns show the prototype's
+delivery and reward figures, and the seed takes about two minutes. The unit tests and `npm run test:e2e`
+seed with `0.2` to stay quick, so their campaigns deliver a fifth as much (and the daily job reports them
+as slower than planned).
 
 The Phoenix channel's development key is `phx_dev_oshofree` (`DEMO_CHANNEL_KEY`). The seed stores its
 hash on the Phoenix channel, prints it with the logins, and `/admin/api` shows the key outside production.

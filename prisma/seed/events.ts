@@ -10,7 +10,7 @@ import { dayBounds } from '@/lib/market-clock'
 import { MARKETS } from '@/lib/markets'
 import { campaignSpendCents } from '@/lib/money'
 import { shareOffer } from '@/lib/offers'
-import { CAMPAIGNS, type Made, type SeedCampaign } from './campaigns'
+import { CAMPAIGNS, flightOf, type Made, type SeedCampaign } from './campaigns'
 import type { Clock, Timeline } from './timeline'
 import type { People } from './users'
 
@@ -31,9 +31,9 @@ const CRON_HOUR = 2
 const FRAUD_DAYS = [-3, -2]
 const SEED_CLIENT = 'seed'
 
-// The default share of the prototype's volumes (SEED_SCALE): impressions — and with them opens, shares,
-// friends, payouts and spend — are scaled down so the seed stays quick. SEED_SCALE=1 gives the full volumes.
-export const DEFAULT_SCALE = 0.2
+// The share of the prototype's volumes the seed generates (SEED_SCALE): impressions, and with them opens, shares,
+// friends, payouts and spend. The demo gets all of them (about two minutes); the tests and test:e2e pass 0.2.
+export const DEFAULT_SCALE = 1
 
 export function seedScale(raw = process.env.SEED_SCALE): number {
   if (raw === undefined || raw.trim() === '') return DEFAULT_SCALE
@@ -135,12 +135,13 @@ export function planHistory(
 ): History {
   const history: History = { days: 0, jobErrors: [] }
   const flights = CAMPAIGNS.filter((s) => s.status !== 'review').map((spec): Flight => {
-    const last = Math.min(spec.end ?? spec.start + spec.days!, 0) - 1
-    const days = Array.from({ length: last - spec.start + 1 }, (_, i) => clock.date(spec.start + i))
+    const { start, end } = flightOf(spec, clock)
+    const last = Math.min(end, 0) - 1
+    const days = Array.from({ length: last - start + 1 }, (_, i) => clock.date(start + i))
     const budgetCents = spec.offer.budgetUsd * 100
     return { spec, days, targetCents: Math.round(budgetCents * spec.progress * scale), plannedCents: 0 }
   })
-  const first = Math.min(...flights.map((f) => f.spec.start))
+  const first = Math.min(...flights.map((f) => flightOf(f.spec, clock).start))
   for (let offset = first; offset <= -1; offset++) {
     const date = clock.date(offset)
     const over = clock.utc(offset + 1)

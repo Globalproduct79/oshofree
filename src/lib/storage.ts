@@ -5,6 +5,7 @@ import { mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { CREATIVE_KEY_RE, MAX_IMAGE_BYTES } from '@/lib/image-rules'
+import { uploadDir } from '@/lib/upload-dir'
 
 // Local disk in slice 1; an S3-compatible bucket replaces the body of these three functions later.
 
@@ -21,9 +22,6 @@ function ascii(b: Uint8Array, from: number, to: number) {
   return String.fromCharCode(...b.subarray(from, to))
 }
 
-function uploadDir() {
-  return path.resolve(process.env.UPLOAD_DIR || './uploads')
-}
 
 export type CreativeError = 'too_large' | 'unsupported_type'
 

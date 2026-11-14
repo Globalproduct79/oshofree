@@ -18,6 +18,9 @@ export function makeClock(now: Date) {
   return {
     now,
     date,
+    // Days from today to the 1st of the month `months` from this one (UTC calendar): firstOfMonth(-1) is last
+    // month's 1st, firstOfMonth(0) − 1 its last day.
+    firstOfMonth: (months: number) => Math.round((Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + months, 1) - today) / DAY_MS),
     // `hour` o'clock in the market on the day `offset` days from today.
     at: (offset: number, country: Country, hour: number) =>
       new Date(localMidnight(date(offset), country).getTime() + hour * HOUR_MS),

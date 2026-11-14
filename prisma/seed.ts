@@ -4,8 +4,8 @@ import { prng } from './seed/prng'
 import { placeCreatives, planCampaigns } from './seed/campaigns'
 import { DEMO_KEY, seedChannels } from './seed/channels'
 import { planHistory, seedScale } from './seed/events'
-import { planEarlierMoney, settleLastMonth } from './seed/money'
-import { invoiceNotices, readOlder } from './seed/notifications'
+import { planEarlierMoney, planLastMonth, renumberTheRest } from './seed/money'
+import { readOlder } from './seed/notifications'
 import { seedRates } from './seed/rates'
 import { makeClock, Stamper, Timeline } from './seed/timeline'
 import { LOGINS, PASSWORD, seedUsers } from './seed/users'
@@ -44,11 +44,11 @@ export async function seed(now: Date = new Date(), opts: SeedOptions = {}) {
   planEarlierMoney(timeline, workspaces, people, clock)
   const made = planCampaigns(timeline, workspaces, people, clock)
   const history = planHistory(timeline, made, people, phoenix.id, clock, rng, scale)
+  planLastMonth(timeline, workspaces, people, clock)
   await timeline.run()
   if (history.jobErrors.length) throw new Error(`The daily job reported errors:\n${history.jobErrors.join('\n')}`)
 
-  await settleLastMonth(workspaces, people, clock, stamp)
-  await invoiceNotices(clock, stamp)
+  await renumberTheRest()
   await readOlder(clock)
   return summary(scale, history.days, Date.now() - started)
 }

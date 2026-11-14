@@ -5,13 +5,18 @@ import { db } from '@/lib/db'
 import { MARKETS } from '@/lib/markets'
 import { localMidnight, wallClock } from '@/lib/market-clock'
 import { campaignSpendCents, creditSummary, invoiceStatus, nextInvoiceNumber } from '@/lib/money'
+import { PLACEMENTS } from '@/lib/rates'
+import { uploadDir } from '@/lib/upload-dir'
 import { resetDb } from '../../scripts/db-truncate'
 import { seed } from '../../prisma/seed'
+import { CPM_CENTS, FX_PER_USD } from '../../prisma/seed/rates'
 
-// The prototype's own day: every relative date in the inventory lands where it shows (ADV "Seed campaigns").
-const NOW = new Date('2026-11-13T10:00:00Z')
+// A day after the prototype's own (ADV "Seed campaigns" is relative to 13 Nov): the inventory's dates land a day on.
+const NOW = new Date('2026-11-14T10:00:00Z')
 const DAY = 86_400_000
 const SLOW = 300_000
+// The tests seed a fifth of the prototype's volumes (the default, 1, takes about two minutes).
+const SCALE = 0.2
 
 const STATUSES = {
   'Buy 2 get 1 — November': 'live',
@@ -34,16 +39,27 @@ async function impressionsByCampaign(): Promise<Record<string, number>> {
   return Object.fromEntries(campaigns.map((c) => [c.name, n.get(c.id) ?? 0]))
 }
 
+// Each closeMonth invoice carries its own ledger lines, and its issue is audited under its number.
+async function closedFromLedger(number: string) {
+  const inv = await db.invoice.findUniqueOrThrow({ where: { number } })
+  const { _sum, _count } = await db.ledgerEntry.aggregate({
+    where: { invoiceId: inv.id, kind: { in: ['delivery', 'reward'] } }, _sum: { amountCents: true }, _count: { _all: true },
+  })
+  expect(_count._all, number).toBeGreaterThan(0)
+  expect(-(_sum.amountCents ?? 0), number).toBe(inv.amountCents)
+  const issued = await db.auditEvent.findFirstOrThrow({ where: { action: 'invoice.issue', targetId: inv.id } })
+  expect((issued.after as { number?: string }).number, number).toBe(number)
+  return inv
+}
+
 const isLocalMidnight = (at: Date, tz: string) => {
   const w = wallClock(tz, at)
   return w.hour === 0 && w.minute === 0 && w.second === 0 && at.getUTCMilliseconds() === 0
 }
 
 describe('seed', () => {
-  let first: Record<string, number> = {}
-
   it("builds the prototype's four workspaces, nine campaigns and their history through the real pipeline", async () => {
-    const summary = await seed(NOW)
+    const summary = await seed(NOW, { scale: SCALE })
 
     expect(await db.workspace.count()).toBe(4)
     expect(await db.user.count()).toBe(8)
@@ -56,9 +72,9 @@ describe('seed', () => {
     const campaigns = await db.campaign.findMany({ include: { workspace: true } })
     expect(Object.fromEntries(campaigns.map((c) => [c.name, c.status]))).toEqual(STATUSES)
     for (const c of campaigns) {
-      // Every campaign went through submit, so it carries the CPM and FX it was submitted at.
-      expect(c.cpmCents, c.name).toBeGreaterThan(0)
-      expect(Number(c.fxPerUsd), c.name).toBeGreaterThan(0)
+      // Every campaign went through submit, so it carries the rate card's CPM and the market's FX.
+      expect(c.cpmCents, c.name).toBe(CPM_CENTS[c.country][PLACEMENTS.indexOf(c.placement)])
+      expect(Number(c.fxPerUsd), c.name).toBe(FX_PER_USD[c.country])
       // Flights start and end at the market's midnight.
       expect(isLocalMidnight(c.startsAt, MARKETS[c.country].timezone), c.name).toBe(true)
       expect(isLocalMidnight(c.endsAt, MARKETS[c.country].timezone), c.name).toBe(true)
@@ -115,13 +131,9 @@ describe('seed', () => {
     ])
     for (const i of invoices) expect(i.country).toBe(i.workspace.country)
     expect(await nextInvoiceNumber()).toBe('INV-0052')
-    // The October invoices are closeMonth's: their amounts are the October charges they carry.
-    for (const n of ['INV-0041', 'INV-0044']) {
-      const inv = invoices.find((i) => i.number === n)!
-      const { _sum } = await db.ledgerEntry.aggregate({ where: { invoiceId: inv.id, kind: { in: ['delivery', 'reward'] } }, _sum: { amountCents: true } })
-      expect(-(_sum.amountCents ?? 0), n).toBe(inv.amountCents)
-      expect(inv.amountCents, n).toBeGreaterThan(0)
-    }
+    // Last month's invoices are closeMonth's: their amounts are the charges they carry.
+    await closedFromLedger('INV-0041')
+    await closedFromLedger('INV-0044')
     expect(await db.ledgerEntry.count({ where: { kind: 'payment', description: 'INV-0041 paid' } })).toBe(1)
 
     // Credit, roughly as ADV §14.
@@ -142,7 +154,8 @@ describe('seed', () => {
     expect(sun.status).toBe('pending')
     expect(await db.campaign.count({ where: { workspaceId: sun.id } })).toBe(0)
     const kofi = await db.user.findUniqueOrThrow({ where: { email: 'kofi@sunfresh.demo' } })
-    expect(await db.notification.findFirst({ where: { userId: kofi.id, workspaceId: sun.id, title: 'Your workspace is awaiting approval' } })).not.toBeNull()
+    const awaiting = await db.notification.findFirstOrThrow({ where: { userId: kofi.id, workspaceId: sun.id, title: 'Your workspace is awaiting approval' } })
+    expect(awaiting.readAt).toBeNull()
 
     // People and roles.
     const roles = await db.workspaceMember.findMany({ include: { user: true, workspace: true } })
@@ -162,27 +175,40 @@ describe('seed', () => {
     const inReview = await db.notification.findFirstOrThrow({ where: { userId: tunde.id, title: 'December draw teaser is in review' } })
     expect(inReview.createdAt.getTime()).toBeLessThan(NOW.getTime())
     expect(inReview.createdAt.getTime()).toBeGreaterThan(NOW.getTime() - 2 * DAY)
+    // The daily job's invoice duty said these, not the seed.
     const dolapo = await db.user.findUniqueOrThrow({ where: { email: 'dolapo@mediaspec.demo' } })
-    expect(await db.notification.findFirst({ where: { userId: dolapo.id, title: { startsWith: 'INV-0044 is due in' } } })).not.toBeNull()
+    expect(await db.notification.findFirst({ where: { userId: dolapo.id, title: 'INV-0044 is due in 5 days' } })).not.toBeNull()
     const wanjiru = await db.user.findUniqueOrThrow({ where: { email: 'wanjiru@pesalink.demo' } })
     expect(await db.notification.findFirst({ where: { userId: wanjiru.id, title: 'INV-0046 is overdue' } })).not.toBeNull()
+    expect(await db.notification.count({ where: { title: { startsWith: 'INV-0041' } } })).toBe(0)
+    // MediaSpec has the weekly digest on: the Monday runs sent it; Kola has it off.
+    expect(await db.notification.count({ where: { userId: dolapo.id, kind: 'weekly' } })).toBeGreaterThan(0)
+    expect(await db.notification.count({ where: { userId: tunde.id, kind: 'weekly' } })).toBe(0)
     expect(await db.notification.count({ where: { createdAt: { gt: NOW } } })).toBe(0)
 
-    first = await impressionsByCampaign()
-    expect(first['Buy 2 get 1 — November']).toBeGreaterThan(0)
-    expect(first['December draw teaser']).toBe(0)
+    // The creatives went to the test uploads folder, not the dev server's.
+    expect(uploadDir()).not.toBe(path.resolve('uploads'))
+    const keys = campaigns.flatMap((c) => (c.creativeImageKey ? [c.creativeImageKey] : []))
+    expect(keys).toHaveLength(4)
+    for (const k of keys) expect(existsSync(path.join(uploadDir(), k)), k).toBe(true)
 
-    await expect(seed(NOW)).rejects.toThrow(/Refusing to seed/)
+    const impressions = await impressionsByCampaign()
+    expect(impressions['Buy 2 get 1 — November']).toBeGreaterThan(0)
+    expect(impressions['December draw teaser']).toBe(0)
+
+    await expect(seed(NOW, { scale: SCALE })).rejects.toThrow(/Refusing to seed/)
   }, SLOW)
 
-  it('is a pure function of now: a second run on an empty database delivers the same impressions', async () => {
+  it('is a pure function of now: two runs on empty databases deliver the same impressions', async () => {
+    await seed(NOW, { scale: SCALE })
+    const first = await impressionsByCampaign()
     expect(Object.keys(first)).toHaveLength(9)
     await resetDb()
-    await seed(NOW)
+    await seed(NOW, { scale: SCALE })
     expect(await impressionsByCampaign()).toEqual(first)
   }, SLOW)
 
-  it('holds on a late-month run day, where some October invoices have no history to close', async () => {
+  it('closes last month for Kola Bright and MediaSpec on a late-month run day too', async () => {
     const late = new Date('2026-11-27T09:00:00Z')
     await seed(late, { scale: 0.05 })
     const invoices = await db.invoice.findMany({ include: { workspace: true }, orderBy: { number: 'asc' } })
@@ -194,6 +220,11 @@ describe('seed', () => {
     ])
     expect(invoiceStatus(invoices[3], late)).toBe('overdue')
     expect(await nextInvoiceNumber()).toBe('INV-0052')
+    // Both are October's, closed from the ended campaigns' October charges.
+    for (const n of ['INV-0041', 'INV-0044']) {
+      const inv = await closedFromLedger(n)
+      expect(inv.period.toISOString(), n).toBe('2026-09-30T23:00:00.000Z')
+    }
     const kola = await creditSummary((await workspace('Kola Bright')).id)
     expect(kola.inUseCents).toBeGreaterThanOrEqual(50000)
     expect(kola.inUseCents).toBeLessThanOrEqual(90000)

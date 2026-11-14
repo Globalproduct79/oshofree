@@ -1,4 +1,4 @@
-import type { Invoice, Workspace } from '@prisma/client'
+import type { Invoice, Prisma, Workspace } from '@prisma/client'
 import { audit, SYSTEM_ACTOR } from '@/lib/audit'
 import { db } from '@/lib/db'
 import { localMidnight } from '@/lib/market-clock'
@@ -6,19 +6,20 @@ import { MARKETS } from '@/lib/markets'
 import { FIRST_INVOICE_NUMBER, markInvoicePaid } from '@/lib/money'
 import { currentFx } from '@/lib/rates'
 import { topUpAggregator } from '@/lib/rewards'
-import type { Clock, Stamper, Timeline } from './timeline'
+import type { Clock, Timeline } from './timeline'
 import type { People } from './users'
 import type { Workspaces } from './workspaces'
 
 // The invoices of ADV §8, as the money pipeline makes them (spec §6.14.5). The daily job's month close during
-// the replayed history issues the previous month's invoices from the seeded ledger, so their amounts are
-// whatever the events produced; the seed gives them the inventory's numbers and Global marks Kola's paid.
+// the replayed history issues last month's invoices from the seeded ledger — the two ended campaigns are anchored
+// in last month, so Kola Bright and MediaSpec always have charges there — so their amounts are whatever the
+// events produced. Right after that close the seed gives them the inventory's numbers (INV-0041, INV-0044), and
+// Global marks Kola's paid three days later, before the job's invoice reminders could call it due.
 //
 // Two of the inventory's invoices are older than any seeded campaign — MediaSpec's paid one two months back and
-// Pesa Link's overdue one — so no close can make them: they are issued directly, as closeMonth would have
-// (on the 1st, Net terms, the market's FX for the month), at the inventory's amounts. The same goes for an
-// October invoice on a run day whose history no longer reaches October. The "(to date)" rows INV-0049…0051 are
-// the Invoices page's running row (unbilled charges), never stored: a stored row would stop next month's close.
+// Pesa Link's overdue one — so no close can make them: they are issued directly, as closeMonth would have (on the
+// 1st, Net terms, the market's FX for the month), at the inventory's amounts. The "(to date)" rows INV-0049…0051
+// are the Invoices page's running row (unbilled charges), never stored: a stored row would stop next month's close.
 
 const DAY_MS = 86_400_000
 const HOUR_MS = 3_600_000
@@ -29,8 +30,8 @@ export const AGGREGATOR_CENTS = 124000
 
 type Listed = { number: string; amountCents: number }
 const MEDIASPEC_EARLIER: Listed = { number: 'INV-0037', amountCents: 284000 }
-const KOLA_LAST_MONTH: Listed = { number: 'INV-0041', amountCents: 112000 }
-const MEDIASPEC_LAST_MONTH: Listed = { number: 'INV-0044', amountCents: 361000 }
+const KOLA_LAST_MONTH = 'INV-0041'
+const MEDIASPEC_LAST_MONTH = 'INV-0044'
 const PESA_OVERDUE: Listed = { number: 'INV-0046', amountCents: 21000 }
 
 // The calendar month `offset` months from the run day's (UTC, so last month is over in every market): its
@@ -45,7 +46,7 @@ function month(ws: Workspace, now: Date, offset: number) {
   }
 }
 
-// An invoice issued as closeMonth issues one, for a month with no seeded history.
+// An invoice issued as closeMonth issues one, for a month before the seeded history.
 async function issue(ws: Workspace, now: Date, offset: number, listed: Listed): Promise<Invoice> {
   const { start, end, closedAt } = month(ws, now, offset)
   const fxPerUsd = await currentFx(ws.country, new Date(end.getTime() - 1))
@@ -85,26 +86,42 @@ export function planEarlierMoney(timeline: Timeline, ws: Workspaces, people: Peo
     issue(ws.pesa, clock.now, pesaOffset, PESA_OVERDUE))
 }
 
-// After the history: last month's invoices for Kola Bright (paid three days after issue) and MediaSpec (due)
-// take the inventory's numbers; any other invoice the closes issued keeps the sequence from INV-0052.
-export async function settleLastMonth(ws: Workspaces, people: People, clock: Clock, stamp: Stamper): Promise<void> {
-  const now = clock.now
-  const lastMonth = async (w: Workspace, listed: Listed): Promise<Invoice> => {
-    const { start, closedAt } = month(w, now, -1)
-    const closed = await db.invoice.findFirst({ where: { workspaceId: w.id, period: start } })
-    if (closed) return db.invoice.update({ where: { id: closed.id }, data: { number: listed.number } })
-    return stamp.at(closedAt, () => issue(w, now, -1, listed))
-  }
-  const kola = await lastMonth(ws.kola, KOLA_LAST_MONTH)
-  await lastMonth(ws.media, MEDIASPEC_LAST_MONTH)
-  const issued = kola.issuedAt.getTime()
-  const paidAt = new Date(Math.max(issued, Math.min(issued + 3 * DAY_MS, now.getTime() - HOUR_MS)))
-  await stamp.at(paidAt, () => markInvoicePaid(kola.id, people.admin.id, paidAt))
+const numbered = (n: number) => `INV-${String(n).padStart(4, '0')}`
 
-  const first = `INV-${String(FIRST_INVOICE_NUMBER).padStart(4, '0')}`
-  const rest = await db.invoice.findMany({ where: { number: { gte: first } }, orderBy: { number: 'asc' } })
+// A closeMonth invoice takes another number, and its issue's audit row says so too.
+async function renumber(invoice: Invoice, number: string): Promise<Invoice> {
+  const renamed = await db.invoice.update({ where: { id: invoice.id }, data: { number } })
+  const issued = await db.auditEvent.findFirst({ where: { action: 'invoice.issue', targetType: 'Invoice', targetId: invoice.id } })
+  if (issued) {
+    await db.auditEvent.update({ where: { id: issued.id }, data: { after: { ...(issued.after as Prisma.JsonObject), number } } })
+  }
+  return renamed
+}
+
+// Last month's close happens in the daily job's run for its last day (02:00 UTC on the 1st, or now when that is
+// still ahead). Straight after it, Kola Bright's and MediaSpec's invoices take the inventory's numbers; Kola's is
+// paid three days later (or as late as now allows).
+export function planLastMonth(timeline: Timeline, ws: Workspaces, people: People, clock: Clock): void {
+  const now = clock.now
+  const closedAt = month(ws.kola, now, -1).closedAt
+  let kola: Invoice | null = null
+  timeline.add(closedAt, 'number last month\'s invoices', async () => {
+    for (const [w, number] of [[ws.kola, KOLA_LAST_MONTH], [ws.media, MEDIASPEC_LAST_MONTH]] as const) {
+      const closed = await db.invoice.findFirst({ where: { workspaceId: w.id, period: month(w, now, -1).start } })
+      if (!closed) throw new Error(`${w.name} has no invoice for last month: its ended campaign should have charges there`)
+      const renamed = await renumber(closed, number)
+      if (w.id === ws.kola.id) kola = renamed
+    }
+  }, 3.5)
+  const paidAt = new Date(Math.max(closedAt.getTime(), Math.min(closedAt.getTime() + 3 * DAY_MS, now.getTime() - HOUR_MS)))
+  timeline.add(paidAt, `pay ${KOLA_LAST_MONTH}`, () => markInvoicePaid(kola!.id, people.admin.id, paidAt), 3.6)
+}
+
+// After the history: any other invoice the closes issued keeps the sequence from INV-0052.
+export async function renumberTheRest(): Promise<void> {
+  const rest = await db.invoice.findMany({ where: { number: { gte: numbered(FIRST_INVOICE_NUMBER) } }, orderBy: { number: 'asc' } })
   for (const [i, inv] of rest.entries()) {
-    const number = `INV-${String(FIRST_INVOICE_NUMBER + i).padStart(4, '0')}`
-    if (inv.number !== number) await db.invoice.update({ where: { id: inv.id }, data: { number } })
+    const number = numbered(FIRST_INVOICE_NUMBER + i)
+    if (inv.number !== number) await renumber(inv, number)
   }
 }

@@ -1,9 +1,8 @@
 import type { NotificationKind, Role, Workspace, WorkspaceType } from '@prisma/client'
-import { NOTIFY } from '@/lib/copy-notifications'
 import { db } from '@/lib/db'
 import type { Country } from '@/lib/markets'
 import { setCreditLimit } from '@/lib/money'
-import { notifyWorkspace, setPref } from '@/lib/notifications'
+import { setPref } from '@/lib/notifications'
 import { approveWorkspace, createWorkspace } from '@/lib/workspaces'
 import type { Clock, Stamper } from './timeline'
 import type { People, PersonKey } from './users'
@@ -64,12 +63,8 @@ export async function seedWorkspaces(people: People, clock: Clock, stamp: Stampe
   for (const spec of WORKSPACES) {
     if (spec.joinedDaysAgo === null) {
       const joinedAt = clock.hoursAgo(SUNFRESH_HOURS_AGO)
-      out[spec.key] = await stamp.at(joinedAt, async () => {
-        const ws = await join(spec, people, joinedAt)
-        const told = NOTIFY.awaitingApproval()
-        await notifyWorkspace(ws.id, 'system', told.title, told.detail, '/app/workspace')
-        return ws
-      })
+      // createWorkspace tells its owner it is awaiting approval.
+      out[spec.key] = await stamp.at(joinedAt, () => join(spec, people, joinedAt))
       continue
     }
     const joinedAt = clock.utc(-spec.joinedDaysAgo, 9)
