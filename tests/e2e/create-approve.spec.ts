@@ -116,14 +116,20 @@ async function saveDraftAndReopen(page: Page, image: string) {
   await expect(page.getByRole('img', { name: COMPONENTS.drop.chosen.image })).toHaveAttribute('src', image)
 }
 
-// The Review step summarises the creative that will run; Back to edit returns to the form (focus on the button that
-// opened the step) and the step opens again.
+// The Review step summarises the creative that will run. A confirmation given there is for what was reviewed: Back to
+// edit returns to the form (focus on the button that opened the step), and the step opens again unconfirmed.
 async function reviewTheCreative(page: Page, image: string) {
   await expect(page.getByRole('img', { name: F.review.image })).toHaveAttribute('src', image)
+  const confirm = page.getByRole('checkbox', { name: F.fields.terms })
+  const submit = page.getByRole('button', { name: F.buttons.submit })
+  await confirm.check()
+  await expect(submit).toBeEnabled()
   await page.getByRole('button', { name: F.buttons.back }).click()
   await expect(page.getByRole('button', { name: F.buttons.review })).toBeFocused()
   await expect(page.getByLabel(F.fields.headline.label)).toHaveValue(HARMATTAN.headline)
   await openReview(page, HARMATTAN)
+  await expect(confirm).not.toBeChecked()
+  await expect(submit).toBeDisabled()
 }
 
 test('F1: a brand previews and submits a Wall card, Global approves it, and it is live on Phoenix', async ({ browser }) => {

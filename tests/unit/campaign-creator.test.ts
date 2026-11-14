@@ -1,7 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createCampaign, type CampaignInput } from '@/lib/campaigns'
+import { campaignDates } from '@/lib/campaign-schema'
+import {
+  approveCampaign, approveRevision, createCampaign, editOffer, rejectCampaign, submitCampaign, type CampaignInput, type OfferFields,
+} from '@/lib/campaigns'
 import { db } from '@/lib/db'
 
 // A campaign names the person who created it (Campaign.createdById, Prompt 6): a nullable column with its index
@@ -86,5 +89,50 @@ describe('createCampaign stamps its creator', () => {
     await createCampaign(ws.id, { ...input, name: 'Other' }, tunde.id)
     const created = await db.user.findUniqueOrThrow({ where: { id: ada.id }, include: { campaignsCreated: { select: { id: true } } } })
     expect(created.campaignsCreated).toEqual([{ id: mine.id }])
+  })
+})
+
+describe('a campaign keeps its creator', () => {
+  const NOW = new Date('2026-11-14T09:00:00Z')
+  const DAY = 86_400_000
+
+  // Acme in Nigeria with Ada (who creates) and Tunde (who changes it afterwards), Global, and Phoenix's card rate.
+  async function world() {
+    const ws = await db.workspace.create({ data: { name: 'Acme', type: 'Brand', country: 'NG', status: 'approved', creditLimitCents: 150_000 } })
+    const ada = await mkUser('Ada Eze', 'ada@x.test')
+    const tunde = await mkUser('Tunde Okafor', 'tunde@x.test')
+    await db.workspaceMember.createMany({ data: [{ userId: tunde.id, workspaceId: ws.id, role: 'Owner' }, { userId: ada.id, workspaceId: ws.id, role: 'Manager' }] })
+    const admin = await db.user.create({ data: { email: 'g@x.test', name: 'Global', passwordHash: 'x', isGlobalAdmin: true } })
+    const phoenix = await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: true } })
+    const from = new Date(NOW.getTime() - 30 * DAY)
+    await db.rateCard.create({ data: { channelId: phoenix.id, country: 'NG', placement: 'card', cpmCents: 120, effectiveFrom: from } })
+    await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1550, effectiveFrom: from } })
+    return { ws, ada, tunde, admin }
+  }
+
+  const creator = async (id: string) => (await db.campaign.findUniqueOrThrow({ where: { id } })).createdById
+
+  it('through a rejection, a resubmission, an edit in place, approval and a revised offer by someone else', async () => {
+    const { ws, ada, tunde, admin } = await world()
+    const c = await createCampaign(ws.id, input, ada.id, NOW)
+    await submitCampaign(c.id, ada.id, NOW)
+    await rejectCampaign(c.id, admin.id, 'misleading_terms', 'Say where.', NOW)
+    // Tunde resubmits it as it was.
+    await submitCampaign(c.id, tunde.id, NOW)
+    expect(await creator(c.id)).toBe(ada.id)
+    await rejectCampaign(c.id, admin.id, 'broken_link', '', NOW)
+    // Tunde edits it in place, money and timing included, which sends it back to review.
+    const offer: OfferFields = {
+      brand: 'Acme Foods', category: 'Food & drink', headline: 'Buy two, get one free', description: input.description,
+      tileColor: '#FF5A1F', placement: 'card', redeemMethod: 'code', ageGated: false,
+    }
+    const edited = await editOffer(c.id, tunde.id, { ...offer, budgetUsd: 80, rewardLocal: 40, ...campaignDates('2026-12-01', 14, 'NG') }, NOW)
+    expect(edited.campaign).toMatchObject({ status: 'review', headline: 'Buy two, get one free', createdById: ada.id })
+    // Approved and live, then Tunde's revised offer is approved and swapped in.
+    await approveCampaign(c.id, admin.id, new Date('2026-12-02T09:00:00Z'))
+    const { revision } = await editOffer(c.id, tunde.id, { ...offer, headline: 'Buy three, get one free' }, new Date('2026-12-03T09:00:00Z'))
+    const applied = await approveRevision(revision!.id, admin.id, new Date('2026-12-04T09:00:00Z'))
+    expect(applied).toMatchObject({ headline: 'Buy three, get one free', version: 2, createdById: ada.id })
+    expect(await creator(c.id)).toBe(ada.id)
   })
 })
