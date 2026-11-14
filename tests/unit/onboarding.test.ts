@@ -4,14 +4,19 @@ import { signInAction } from '@/app/(auth)/sign-in/actions'
 import SignInPage from '@/app/(auth)/sign-in/page'
 import { signUpAction } from '@/app/(auth)/sign-up/actions'
 import SignUpPage from '@/app/(auth)/sign-up/page'
+import ConsoleLayout from '@/app/app/(console)/layout'
 import HomePage from '@/app/app/(console)/page'
+import { inviteAction } from '@/app/app/(console)/people/actions'
+import { createWorkspaceAction } from '@/app/app/new-workspace/actions'
 import { acceptInviteAction, signInAsSomeoneElseAction } from '@/app/invite/[token]/actions'
 import InvitePage from '@/app/invite/[token]/page'
 import { auth, signIn as authSignIn, signOut } from '@/lib/auth'
 import { INVITE_PAGE } from '@/lib/copy-people'
+import { SHELL } from '@/lib/copy-shell'
 import { db } from '@/lib/db'
 import { validInvite } from '@/lib/invitations'
 import { hashPassword } from '@/lib/users'
+import { approveWorkspace } from '@/lib/workspaces'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }))
 // next-auth itself can't load under vitest; the sign-in action only needs its AuthError class.
@@ -25,7 +30,8 @@ vi.mock('next/navigation', async (importOriginal) => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }))
 
-// Prompt 4: an invite link leads to an account in the right workspace, with the role it names.
+// Prompt 4: an invite link leads to an account in the right workspace, with the role it names; a new owner's
+// workspace waits for Global with the banner showing for everyone in it, and invites can go out meanwhile.
 
 const DAY = 86_400_000
 const TOKEN = 'c0ffee'.repeat(5) + 'ab'
@@ -236,5 +242,47 @@ describe('the invite page', () => {
     // Nobody joined: the link still waits for whoever signs in next.
     expect(await validInvite(TOKEN)).not.toBeNull()
     expect(await db.workspaceMember.count({ where: { userId: kemi.id } })).toBe(0)
+  })
+})
+
+describe('a new owner’s workspace while it waits for Global', () => {
+  const layout = async () =>
+    text(renderToStaticMarkup(await ConsoleLayout({ children: null })))
+  const PENDING = `${SHELL.banner.pending.lead} ${SHELL.banner.pending.text}`
+
+  it('Create workspace lands on its home, under the awaiting-approval banner', async () => {
+    const nkem = await mkUser('Nkem Obi')
+    signIn(nkem)
+    await expect(createWorkspaceAction(null, form({ name: 'Brand Demo', type: 'Brand', country: 'NG' }))).rejects.toMatchObject({
+      digest: expect.stringContaining(';/app;'),
+    })
+    const ws = await db.workspace.findFirstOrThrow({ where: { name: 'Brand Demo' } })
+    expect(ws.status).toBe('pending')
+    signIn(nkem, ws.id)
+    expect(await layout()).toContain(PENDING)
+  })
+
+  it('the owner can invite while pending; whoever joins sees the banner too; approval lifts it for everyone', async () => {
+    const nkem = await mkUser('Nkem Obi')
+    const ws = await db.workspace.create({ data: { name: 'Brand Demo', type: 'Brand', country: 'NG', status: 'pending' } })
+    await db.workspaceMember.create({ data: { userId: nkem.id, workspaceId: ws.id, role: 'Owner' } })
+    signIn(nkem, ws.id)
+    const sent = await inviteAction('kemi@x.test', 'Viewer')
+    expect(sent).toMatchObject({ ok: true, role: 'Viewer' })
+
+    const kemi = await mkUser('Kemi Balogun', 'kemi@x.test')
+    const token = (await db.invitation.findFirstOrThrow({ where: { workspaceId: ws.id } })).token
+    signIn(kemi)
+    keepCookie()
+    await expect(acceptInviteAction(token)).rejects.toMatchObject({ digest: expect.stringContaining(';/app?joined=') })
+    signIn(kemi, ws.id)
+    expect(await layout()).toContain(PENDING)
+
+    const admin = await db.user.create({ data: { email: 'admin@x.test', name: 'Ada Admin', passwordHash: 'x', isGlobalAdmin: true } })
+    await approveWorkspace(ws.id, admin.id)
+    for (const who of [nkem, kemi]) {
+      signIn(who, ws.id)
+      expect(await layout()).not.toContain(SHELL.banner.pending.lead)
+    }
   })
 })

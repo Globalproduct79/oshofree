@@ -16,5 +16,6 @@ export async function createWorkspaceAction(_prev: FormState, formData: FormData
   } catch (e) {
     if (e !== 'ALREADY_HAS_WORKSPACE') throw e
   }
-  redirect('/app/workspace')
+  // Its home, under the awaiting-approval banner the whole workspace sees until Global decides.
+  redirect('/app')
 }
