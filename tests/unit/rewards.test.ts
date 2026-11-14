@@ -49,10 +49,15 @@ async function sharerLink(w: World, phone: string | null, sessionId: string): Pr
   })
 }
 
-const share = (link: ShareLink, over: Partial<Parameters<typeof onSuccessfulShare>[0]> = {}) =>
-  onSuccessfulShare({
-    campaignId: link.campaignId, shareLinkId: link.id, claimEventKey: `claim-${++n}`, friendVisitorId: `dev-${n}`, now: NOW, ...over,
-  })
+// A friend's Claim on the link: its id is the payout's key.
+const claimOn = async (link: ShareLink, visitorId = `dev-${++n}`) =>
+  (await db.linkEvent.create({ data: { linkId: link.id, type: 'Claim', visitorId, ipHash: 'h', userAgent: 'ua', at: NOW } })).id
+
+const share = async (link: ShareLink, over: Partial<Parameters<typeof onSuccessfulShare>[0]> = {}) => {
+  const friendVisitorId = over.friendVisitorId ?? `dev-${++n}`
+  const claimEventKey = over.claimEventKey ?? (await claimOn(link, friendVisitorId))
+  return onSuccessfulShare({ campaignId: link.campaignId, shareLinkId: link.id, now: NOW, ...over, claimEventKey, friendVisitorId })
+}
 
 const rewardLines = () => db.ledgerEntry.findMany({ where: { kind: 'reward' }, orderBy: { at: 'asc' } })
 const points = () => db.pointsLedger.findMany({ orderBy: { createdAt: 'asc' } })
@@ -64,11 +69,12 @@ describe('onSuccessfulShare', () => {
   it("queues the campaign's airtime, charges it to the campaign as a share-rewards line and gives the sharer the workspace's points", async () => {
     const w = await world({ pointsPerShare: 7 })
     const link = await sharerLink(w, ADA, 'dev-ada')
-    const payout = await share(link, { claimEventKey: 'claim-1' })
+    const key = await claimOn(link)
+    const payout = await share(link, { claimEventKey: key })
     // ₦50 at ₦1,500 to the dollar is 3.33 cents.
     expect(payout).toMatchObject({
       campaignId: w.campaign.id, workspaceId: w.ws.id, shareLinkId: link.id, sharerConsumerId: link.consumerId,
-      sharerSessionId: 'dev-ada', claimEventKey: 'claim-1', amountLocal: 50, amountCents: 3, status: 'queued', reason: null,
+      sharerSessionId: 'dev-ada', claimEventKey: key, amountLocal: 50, amountCents: 3, status: 'queued', reason: null,
       createdAt: NOW, sentAt: null,
     })
     expect(await rewardLines()).toMatchObject([
@@ -80,13 +86,14 @@ describe('onSuccessfulShare', () => {
   it('creates one payout, one ledger line and one points award for a replayed claim, even at once', async () => {
     const w = await world()
     const link = await sharerLink(w, ADA, 'dev-ada')
-    const first = await share(link, { claimEventKey: 'claim-1' })
-    const again = await share(link, { claimEventKey: 'claim-1' })
-    const racing = await Promise.all([1, 2, 3].map(() => share(link, { claimEventKey: 'claim-2' })))
+    const [k1, k2, k3] = [await claimOn(link), await claimOn(link), await claimOn(link)]
+    const first = await share(link, { claimEventKey: k1 })
+    const again = await share(link, { claimEventKey: k1 })
+    const racing = await Promise.all([1, 2, 3].map(() => share(link, { claimEventKey: k2 })))
     // Inside a caller's transaction (the landing page's claim) a replay must not abort it.
     const inTx = await db.$transaction(async (tx) => {
-      const one = await onSuccessfulShare({ campaignId: link.campaignId, shareLinkId: link.id, claimEventKey: 'claim-3', friendVisitorId: 'f', now: NOW }, tx)
-      const two = await onSuccessfulShare({ campaignId: link.campaignId, shareLinkId: link.id, claimEventKey: 'claim-3', friendVisitorId: 'f', now: NOW }, tx)
+      const one = await onSuccessfulShare({ campaignId: link.campaignId, shareLinkId: link.id, claimEventKey: k3, friendVisitorId: 'f', now: NOW }, tx)
+      const two = await onSuccessfulShare({ campaignId: link.campaignId, shareLinkId: link.id, claimEventKey: k3, friendVisitorId: 'f', now: NOW }, tx)
       return [one.id, two.id]
     })
     expect(again.id).toBe(first.id)
@@ -119,17 +126,44 @@ describe('onSuccessfulShare', () => {
     const ada = await sharerLink(w, ADA, 'dev-ada')
     expect(await share(phoenix)).toMatchObject({ status: 'held', reason: 'no_phone', amountCents: 10, sharerConsumerId: null })
     expect(await share(ada, { friendVisitorId: 'dev-ada' })).toMatchObject({ status: 'blocked', reason: 'same_device' })
-    // 20 % of $1 is 20 cents; the held 10 count, so a second 10 fits and a third does not.
+    // 20 % of $1 is 20 cents. The held 10 is not charged, so two queued 10s fit and a third does not.
+    expect(await share(ada)).toMatchObject({ status: 'queued' })
     expect(await share(ada)).toMatchObject({ status: 'queued' })
     expect(await share(ada)).toMatchObject({ status: 'rejected', reason: 'cap' })
-    expect(await rewardLines()).toHaveLength(1)
-    expect((await points()).map((p) => [p.sharerSessionId, p.points]).sort()).toEqual([['dev-ada', 10], ['sess-1', 10]])
+    expect(await rewardLines()).toHaveLength(2)
+    expect((await points()).map((p) => [p.sharerSessionId, p.points]).sort()).toEqual([['dev-ada', 10], ['dev-ada', 10], ['sess-1', 10]])
+  })
+
+  it("lets held payouts take none of the campaign cap: genuine shares still queue, and releasing past the cap is refused", async () => {
+    // 20 % of $1 is 20 cents; each share is 10. Two held payouts would fill the cap if they counted.
+    const w = await world({}, { budgetUsd: 1, rewardLocal: 150 })
+    const phoenix = await sharerLink(w, null, 'sess-1')
+    const held = [await share(phoenix), await share(phoenix)]
+    expect(held.map((p) => p.status)).toEqual(['held', 'held'])
+    const ada = await sharerLink(w, ADA, 'dev-ada')
+    expect(await share(ada)).toMatchObject({ status: 'queued' })
+    await expect(releasePayout(held[0].id, w.user.id)).resolves.toMatchObject({ status: 'queued' })
+    await expect(releasePayout(held[1].id, w.user.id)).rejects.toBe('CAP')
+    expect((await db.rewardPayout.findUniqueOrThrow({ where: { id: held[1].id } })).status).toBe('held')
+    expect(await rewardLines()).toHaveLength(2)
   })
 
   it('refuses a claim on a link with no sharer', async () => {
     const w = await world()
-    await expect(onSuccessfulShare({ campaignId: w.campaign.id, shareLinkId: w.root.id, claimEventKey: 'k', friendVisitorId: 'v', now: NOW }))
+    await expect(onSuccessfulShare({ campaignId: w.campaign.id, shareLinkId: w.root.id, claimEventKey: await claimOn(w.root), friendVisitorId: 'v', now: NOW }))
       .rejects.toBe('INVALID')
+    expect(await db.rewardPayout.count()).toBe(0)
+  })
+
+  it('pays only for a Claim on the same link: a missing event, an Open or a Claim on another link is NOT_A_CLAIM', async () => {
+    const w = await world()
+    const ada = await sharerLink(w, ADA, 'dev-ada')
+    const bola = await sharerLink(w, '+2348030000002', 'dev-bola')
+    const open = await db.linkEvent.create({ data: { linkId: ada.id, type: 'Open', visitorId: 'v', ipHash: 'h', userAgent: 'ua', at: NOW } })
+    for (const claimEventKey of ['no-such-event', open.id, await claimOn(bola)]) {
+      await expect(onSuccessfulShare({ campaignId: w.campaign.id, shareLinkId: ada.id, claimEventKey, friendVisitorId: 'v', now: NOW }))
+        .rejects.toBe('NOT_A_CLAIM')
+    }
     expect(await db.rewardPayout.count()).toBe(0)
   })
 })
@@ -161,7 +195,7 @@ describe('releasePayout and rejectPayout', () => {
     await db.rewardPayout.create({
       data: {
         campaignId: w.campaign.id, workspaceId: w.ws.id, shareLinkId: ada.id, sharerConsumerId: ada.consumerId,
-        claimEventKey: 'sent-1', amountLocal: 150, amountCents: 10, status: 'sent', createdAt: NOW,
+        claimEventKey: await claimOn(ada), amountLocal: 150, amountCents: 10, status: 'sent', createdAt: NOW,
       },
     })
     await expect(releasePayout(held.id, w.user.id)).rejects.toBe('CAP')
@@ -305,6 +339,27 @@ describe("a friend's claim on the landing page", () => {
     const on = (link: ShareLink) => db.rewardPayout.findMany({ where: { shareLinkId: link.id }, select: { status: true, reason: true } })
     expect([await on(a.link), await on(b.link), await on(c.link)]).toEqual([
       [{ status: 'queued', reason: null }], [{ status: 'queued', reason: null }], [{ status: 'held', reason: 'phone_reuse' }],
+    ])
+  })
+
+  it("does not count the friend's own blocked self-claim as one of the sharers their number reached", async () => {
+    const w = await world()
+    const channelLink = await mintChannelLink(w.campaign.id, w.channel.id, 'sess-1', 'whatsapp')
+    const s = await landingSharer(w, channelLink, '0803 000 0001')
+    const x = await landingSharer(w, channelLink, '0803 000 0002')
+    const y = await landingSharer(w, channelLink, '0803 000 0003')
+    // F leaves their number on S's link, then taps their own new link from the same browser.
+    const f = await landingSharer(w, s.link, '0809 000 0001')
+    await claim(f.link.code, f.device)
+    await claim(s.link.code, f.device)
+    await claim(x.link.code, f.device)
+    await claim(y.link.code, f.device)
+    const on = (link: ShareLink) => db.rewardPayout.findMany({ where: { shareLinkId: link.id }, select: { status: true, reason: true } })
+    expect([await on(f.link), await on(s.link), await on(x.link), await on(y.link)]).toEqual([
+      [{ status: 'blocked', reason: 'same_device' }],
+      [{ status: 'queued', reason: null }],
+      [{ status: 'queued', reason: null }],
+      [{ status: 'held', reason: 'phone_reuse' }],
     ])
   })
 

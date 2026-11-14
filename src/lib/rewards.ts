@@ -3,7 +3,7 @@ import type { RewardPayout } from '@prisma/client'
 import { audit } from '@/lib/audit'
 import { MONEY } from '@/lib/copy-money'
 import { db, isUniqueViolation, type Tx } from '@/lib/db'
-import { evaluate, rewardCapCents } from '@/lib/fraud'
+import { CHARGED, evaluate, rewardCapCents } from '@/lib/fraud'
 import { postLedger } from '@/lib/money'
 import { currentFx } from '@/lib/rates'
 
@@ -17,7 +17,7 @@ const SEND_BATCH = 1000
 export type ShareInput = {
   campaignId: string
   shareLinkId: string
-  // The id of the friend's first Claim LinkEvent on the link: one payout per key.
+  // The id of the friend's first Claim LinkEvent on the link (else 'NOT_A_CLAIM'): one payout per key.
   claimEventKey: string
   friendVisitorId?: string
   friendSessionId?: string
@@ -59,6 +59,9 @@ async function createPayout(tx: Tx, input: ShareInput): Promise<RewardPayout> {
   })
   // A Root link has no sharer to pay.
   if (!link || link.campaignId !== input.campaignId || link.sharerType === 'Root') throw 'INVALID'
+  // Only a friend's Claim on this very link pays.
+  const claim = await tx.linkEvent.findUnique({ where: { id: input.claimEventKey }, select: { linkId: true, type: true } })
+  if (!claim || claim.type !== 'Claim' || claim.linkId !== link.id) throw 'NOT_A_CLAIM'
   await sharerLock(tx, link.consumerId ?? link.sharerSessionId ?? link.id)
   await campaignLock(tx, link.campaignId)
   const existing = await tx.rewardPayout.findUnique({ where: { claimEventKey: input.claimEventKey } })
@@ -107,8 +110,8 @@ export async function onSuccessfulShare(input: ShareInput, tx?: Tx): Promise<Rew
 }
 
 // Global releases a held payout to the queue and the campaign is charged for it — unless that would take
-// the campaign's charged rewards past its cap ('CAP'; the payout stays held). Releasing a payout that is
-// not held changes nothing.
+// the campaign's charged rewards past its cap ('CAP'; the payout stays held). A held payout took none of
+// the cap, so this is its cap check. Releasing a payout that is not held changes nothing.
 export async function releasePayout(id: string, byUserId: string, now = new Date()): Promise<RewardPayout> {
   const payout = await db.rewardPayout.findUnique({ where: { id } })
   if (!payout) throw 'NOT_FOUND'
@@ -119,7 +122,7 @@ export async function releasePayout(id: string, byUserId: string, now = new Date
     if (current.status !== 'held') return false
     const campaign = await tx.campaign.findUniqueOrThrow({ where: { id: payout.campaignId }, include: { workspace: true } })
     const { _sum } = await tx.rewardPayout.aggregate({
-      where: { campaignId: campaign.id, status: { in: ['queued', 'sent'] } },
+      where: { campaignId: campaign.id, status: { in: CHARGED } },
       _sum: { amountCents: true },
     })
     if ((_sum.amountCents ?? 0) + current.amountCents > rewardCapCents(campaign, campaign.workspace)) throw 'CAP'

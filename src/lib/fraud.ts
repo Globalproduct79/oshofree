@@ -16,8 +16,11 @@ export type FraudRuleKey = (typeof FRAUD_RULES)[number]['key']
 export const PLATFORM_DAILY_LIMIT = 5
 export const PHONE_REUSE_SHARERS = 3
 
-// A payout that is neither blocked nor rejected is a successful share: it counts toward the caps.
+// A payout that is neither blocked nor rejected is a successful share: it counts toward the daily caps.
 export const COUNTED: PayoutStatus[] = ['queued', 'sent', 'held']
+// Only queued and sent payouts are charged, so only they take up the campaign's reward cap; a held one
+// is checked against the cap when Global releases it.
+export const CHARGED: PayoutStatus[] = ['queued', 'sent']
 
 export type PayoutReason = 'no_phone' | 'same_device' | 'cap_per_sharer' | 'platform_cap' | 'phone_reuse' | 'cap' | 'manual'
 export type Verdict =
@@ -57,17 +60,20 @@ export type FraudInput = {
   now: Date
 }
 
-// The sharers whose payouts came from claims made in a browser that has left this number on the landing
-// page (a Consumer link minted from that browser carries the number and the browser's cookie).
-async function sharersOfPhone(client: Tx, phone: string): Promise<Set<string>> {
+// The other sharers whose payouts came from claims made in a browser that has left this number on the
+// landing page (a Consumer link minted from that browser carries the number and the browser's cookie).
+// The number's own links are not other sharers, and a blocked payout reached no one.
+async function sharersOfPhone(client: Tx, phone: string): Promise<{ owner: string | null; sharers: Set<string> }> {
+  const owner = await client.consumer.findUnique({ where: { phone }, select: { id: true } })
+  if (!owner) return { owner: null, sharers: new Set() }
   const rows = await client.$queryRaw<{ sharer: string }[]>`
     SELECT DISTINCT COALESCE(p."sharerConsumerId", p."sharerSessionId", p."shareLinkId") AS sharer
-    FROM "Consumer" c
-    JOIN "ShareLink" f ON f."consumerId" = c."id" AND f."sharerType" = 'Consumer' AND f."sharerSessionId" IS NOT NULL
+    FROM "ShareLink" f
     JOIN "LinkEvent" e ON e."visitorId" = f."sharerSessionId" AND e."type" = 'Claim'
     JOIN "RewardPayout" p ON p."claimEventKey" = e."id"
-    WHERE c."phone" = ${phone}`
-  return new Set(rows.map((r) => r.sharer))
+    WHERE f."consumerId" = ${owner.id} AND f."sharerType" = 'Consumer' AND f."sharerSessionId" IS NOT NULL
+      AND p."status" <> 'blocked' AND p."sharerConsumerId" IS DISTINCT FROM ${owner.id}`
+  return { owner: owner.id, sharers: new Set(rows.map((r) => r.sharer)) }
 }
 
 // What a successful share's payout becomes, checked in this order (spec §6.14.1, §6.14.2, §6.14.4):
@@ -77,9 +83,9 @@ async function sharersOfPhone(client: Tx, phone: string): Promise<Set<string>> {
 //      workspace's own cap (this workspace's campaigns), platform_cap against Global's floor of 5 (every
 //      campaign) while that rule is on — the effective limit is the lower of the two;
 //   4. the friend's number already brought rewards to other sharers, making 3 or more with this one →
-//      held, phone_reuse;
-//   5. the campaign's rewards would pass its cap % of budget (the lower of the campaign's and the
-//      workspace's) → rejected, cap;
+//      held, phone_reuse (the number's own links and blocked payouts do not count);
+//   5. the campaign's charged rewards (queued and sent) would pass its cap % of budget (the lower of the
+//      campaign's and the workspace's) → rejected, cap;
 //   otherwise queued. "Today" is the campaign market's local day.
 export async function evaluate(input: FraudInput, client: Tx = db): Promise<Verdict> {
   const { link, campaign, workspace, amountCents, now } = input
@@ -103,12 +109,13 @@ export async function evaluate(input: FraudInput, client: Tx = db): Promise<Verd
   }
 
   if (on('phone_reuse') && input.friendPhone) {
-    const sharers = await sharersOfPhone(client, input.friendPhone)
-    if (sharers.add(sharer).size >= PHONE_REUSE_SHARERS) return { status: 'held', reason: 'phone_reuse' }
+    const { owner, sharers } = await sharersOfPhone(client, input.friendPhone)
+    if (sharer !== owner) sharers.add(sharer)
+    if (sharers.size >= PHONE_REUSE_SHARERS) return { status: 'held', reason: 'phone_reuse' }
   }
 
   const { _sum } = await client.rewardPayout.aggregate({
-    where: { campaignId: campaign.id, status: { in: COUNTED } },
+    where: { campaignId: campaign.id, status: { in: CHARGED } },
     _sum: { amountCents: true },
   })
   if ((_sum.amountCents ?? 0) + amountCents > rewardCapCents(campaign, workspace)) return { status: 'rejected', reason: 'cap' }

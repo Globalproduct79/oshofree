@@ -166,13 +166,13 @@ describe('evaluate', () => {
     const FRIEND = '+2348090000001'
 
     // The friend claimed from device dev-f on each sharer's link, then left their number from that device.
-    async function friendClaimedOn(w: World, links: ShareLink[]) {
+    async function friendClaimedOn(w: World, links: ShareLink[], status: PayoutStatus = 'queued') {
       for (const link of links) {
         const e = await db.linkEvent.create({ data: { linkId: link.id, type: 'Claim', visitorId: 'dev-f', ipHash: 'h', userAgent: 'ua', at: NOW } })
         await db.rewardPayout.create({
           data: {
             campaignId: link.campaignId, workspaceId: w.ws.id, shareLinkId: link.id, sharerConsumerId: link.consumerId,
-            sharerSessionId: link.sharerSessionId, claimEventKey: e.id, amountLocal: 50, amountCents: 3, status: 'queued', createdAt: NOW,
+            sharerSessionId: link.sharerSessionId, claimEventKey: e.id, amountLocal: 50, amountCents: 3, status, createdAt: NOW,
           },
         })
       }
@@ -200,6 +200,24 @@ describe('evaluate', () => {
       expect(await evaluate(input(w, c, { friendPhone: FRIEND }))).toEqual({ status: 'queued', reason: null })
     })
 
+    it("counts neither blocked payouts nor the friend's own links as other sharers", async () => {
+      const w = await world()
+      const a = await sharerLink(w, '+2348030000001', 'dev-a')
+      const b = await sharerLink(w, '+2348030000002', 'dev-b')
+      const c = await sharerLink(w, '+2348030000003', 'dev-c')
+      const d = await sharerLink(w, '+2348030000004', 'dev-d')
+      // The friend's own link, shared from another browser of theirs.
+      const own = await sharerLink(w, FRIEND, 'dev-own')
+      await friendClaimedOn(w, [a, own])
+      await friendClaimedOn(w, [b], 'blocked')
+      // Linked to a only: own is the friend, b was blocked.
+      expect(await evaluate(input(w, c, { friendPhone: FRIEND }))).toEqual({ status: 'queued', reason: null })
+      await friendClaimedOn(w, [d])
+      // Linked to a and d: a third sharer is held, but the friend's own link is not a third sharer.
+      expect(await evaluate(input(w, c, { friendPhone: FRIEND }))).toEqual({ status: 'held', reason: 'phone_reuse' })
+      expect(await evaluate(input(w, own, { friendPhone: FRIEND }))).toEqual({ status: 'queued', reason: null })
+    })
+
     it('comes after the daily cap and before the campaign cap', async () => {
       const w = await world({}, { budgetUsd: 1 })
       const a = await sharerLink(w, '+2348030000001', 'dev-a')
@@ -213,16 +231,15 @@ describe('evaluate', () => {
     })
   })
 
-  it('rejects a reward that would take the campaign past its cap % of budget, counting held but not blocked or rejected', async () => {
-    // $100 × 20 % = 2,000 cents.
+  it('rejects a reward that would take the campaign past its cap % of budget, counting only queued and sent rewards', async () => {
+    // $100 × 20 % = 2,000 cents. Held rewards are not charged until released, so they take none of it.
     const w = await world()
     const a = await sharerLink(w, '+2348030000001', 'dev-a')
     const b = await sharerLink(w, '+2348030000002', 'dev-b')
     await payouts(w, a, ['queued', 'sent'], { amountCents: 900 })
-    await payouts(w, a, ['held'], { amountCents: 197 })
-    await payouts(w, a, ['blocked', 'rejected'], { amountCents: 900 })
-    expect(await evaluate(input(w, b, { amountCents: 3 }))).toEqual({ status: 'queued', reason: null })
-    expect(await evaluate(input(w, b, { amountCents: 4 }))).toEqual({ status: 'rejected', reason: 'cap' })
+    await payouts(w, a, ['held', 'blocked', 'rejected'], { amountCents: 900 })
+    expect(await evaluate(input(w, b, { amountCents: 200 }))).toEqual({ status: 'queued', reason: null })
+    expect(await evaluate(input(w, b, { amountCents: 201 }))).toEqual({ status: 'rejected', reason: 'cap' })
   })
 
   it("caps at the lower of the campaign's percentage and the workspace's ceiling", async () => {
