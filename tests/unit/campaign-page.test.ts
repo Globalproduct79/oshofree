@@ -8,6 +8,7 @@ import { endNow } from '@/components/campaign/EndCampaignModal'
 import { takeToast } from '@/components/shell/toast-store'
 import { auth } from '@/lib/auth'
 import { approveCampaign, approveRevision, editOffer, rejectCampaign, rejectRevision, submitCampaign, type OfferFields } from '@/lib/campaigns'
+import { previewOffer } from '@/lib/campaign-card'
 import { db } from '@/lib/db'
 import { localAmount } from '@/lib/format'
 
@@ -563,6 +564,39 @@ describe('The offer', () => {
     expect(markup).toContain(`<a class="btn g" href="/app/campaigns/${c.id}/edit">Edit offer and resubmit</a>`)
   })
 
+  it('shows the image it runs, the same file See it on Phoenix draws', async () => {
+    const { ws } = await setup()
+    clock('2026-11-14T08:00:00Z')
+    const key = '0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.jpg'
+    const c = await mkCampaign(ws.id, 'live', { creativeImageKey: key })
+    const { markup } = await page(c.id)
+    const offer = markup.slice(markup.indexOf('<h3>The offer</h3>'))
+    expect(offer).toMatch(new RegExp(`<img src="/uploads/${key}" alt="The campaign&#x27;s image"`))
+    expect(offer).not.toContain('<video')
+    expect(previewOffer(c).creative).toEqual({ image: `/uploads/${key}`, video: null, color: null })
+  })
+
+  it('plays a video creative with its controls, opened at its first frame', async () => {
+    const { ws } = await setup()
+    clock('2026-11-14T08:00:00Z')
+    const key = '0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.mp4'
+    const c = await mkCampaign(ws.id, 'review', { placement: 'video', creativeVideoKey: key, cpmCents: 300 })
+    const { markup } = await page(c.id)
+    const offer = markup.slice(markup.indexOf('<h3>The offer</h3>'))
+    expect(offer).toMatch(new RegExp(`<video src="/uploads/${key}#t=0.1" aria-label="The campaign&#x27;s video" controls=""`))
+    expect(offer).not.toContain('<img')
+    expect(previewOffer(c).creative).toMatchObject({ image: null, video: `/uploads/${key}` })
+  })
+
+  it('draws no creative when the offer has none: the card shows its tile colour', async () => {
+    const { ws } = await setup()
+    clock('2026-11-14T08:00:00Z')
+    const c = await mkCampaign(ws.id, 'live')
+    const { markup } = await page(c.id)
+    const offer = markup.slice(markup.indexOf('<h3>The offer</h3>'))
+    expect(offer).not.toMatch(/<img|<video/)
+  })
+
   it("prices a campaign with no snapshot at Phoenix's current rate, and a link offer reads Link", async () => {
     const { ws } = await setup()
     clock('2026-11-14T08:00:00Z')
@@ -605,6 +639,30 @@ describe('History', () => {
         '5 Nov · Rejected: Misleading or unclear terms: Say where the offer can be redeemed.',
       ].join(' '),
     )
+  })
+
+  it('says who created the campaign and on which day, over the decisions', async () => {
+    const { ws, admin } = await setup()
+    const ada = await mkUser('Ada Eze')
+    await db.workspaceMember.create({ data: { userId: ada.id, workspaceId: ws.id, role: 'Manager' } })
+    const c = await mkCampaign(ws.id, 'review', {
+      createdById: ada.id, createdAt: at('2026-11-04T23:30:00Z'), cpmCents: null, fxPerUsd: null,
+      startsAt: at('2026-11-05T23:00:00Z'), endsAt: at('2026-11-19T23:00:00Z'),
+    })
+    await approveCampaign(c.id, admin.id, at('2026-11-06T10:00:00Z'))
+    clock('2026-11-14T08:00:00Z')
+    const { markup } = await page(c.id)
+    // The day is Lagos's: 23:30 UTC on 4 Nov is already the 5th there.
+    expect(markup).toContain('<h3>History</h3><p class="sub">Created by Ada Eze on 5 Nov</p><ul class="hist"><li>6 Nov · Approved by Global</li></ul>')
+  })
+
+  it('names no creator for a campaign from before creators were recorded', async () => {
+    const { ws } = await setup()
+    clock('2026-11-14T08:00:00Z')
+    const c = await mkCampaign(ws.id, 'live')
+    const { markup } = await page(c.id)
+    expect(markup).toContain('<h3>History</h3><p class="hist-none">No decisions yet.</p>')
+    expect(markup).not.toContain('Created by')
   })
 
   it('reads "No decisions yet." before anything happened', async () => {

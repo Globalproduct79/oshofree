@@ -80,7 +80,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             readOnly={!canAct}
           />
           <OfferBox offer={r.offer} editHref={canAct ? `/app/campaigns/${c.id}/edit` : null} />
-          <HistoryList lines={r.history} />
+          <HistoryList lines={r.history} created={r.created} />
         </div>
       </div>
     </>

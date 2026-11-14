@@ -10,6 +10,7 @@ import { fd, fmt, loc, localAmount, pct, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
 import { currentCpmCents, currentFx } from '@/lib/rates'
 import { campaignMetrics, type CampaignMetrics, type Sharer } from '@/lib/reports'
+import { creativeUrl } from '@/lib/storage'
 
 // The campaign page (ADV §2) as text and numbers, from campaignMetrics and campaignFacts. Every
 // formula is the prototype's; the History list and the revision status lines are ours (spec §6.8,
@@ -45,7 +46,10 @@ export type CampaignReport = {
     topSharers: Sharer[]
   }
   change: ChangeModel
-  offer: { items: { label: string; value: string }[]; description: string }
+  // The creative the offer runs (its URL from storage), or none: then the card shows the tile colour.
+  offer: { items: { label: string; value: string }[]; description: string; creative: { kind: 'image' | 'video'; url: string } | null }
+  // "Created by {name} on {date}", or null for a campaign from before creators were recorded.
+  created: string | null
   history: string[]
 }
 
@@ -181,16 +185,30 @@ async function fxOf(c: Campaign, now: Date): Promise<number> {
   return c.fxPerUsd !== null ? Number(c.fxPerUsd) : currentFx(c.country, now).catch(() => 0)
 }
 
+// Who created the campaign; null when no one was recorded (a campaign from before the column, or a deleted user).
+async function creatorOf(c: Campaign): Promise<string | null> {
+  if (!c.createdById) return null
+  const user = await db.user.findUnique({ where: { id: c.createdById }, select: { name: true } })
+  return user?.name ?? null
+}
+
+// A video when it has one (a video or a splash video), else the image.
+function creativeOf(c: Campaign): CampaignReport['offer']['creative'] {
+  if (c.creativeVideoKey) return { kind: 'video', url: creativeUrl(c.creativeVideoKey) }
+  return c.creativeImageKey ? { kind: 'image', url: creativeUrl(c.creativeImageKey) } : null
+}
+
 export async function campaignReport(
   c: Campaign, ws: Pick<Workspace, 'pointsPerShare'>, now: Date,
 ): Promise<CampaignReport> {
-  const [m, f, revisions, actions, cpmCents, fxPerUsd] = await Promise.all([
+  const [m, f, revisions, actions, cpmCents, fxPerUsd, creator] = await Promise.all([
     campaignMetrics(c.id, now),
     campaignFacts(c.id, now),
     db.campaignRevision.findMany({ where: { campaignId: c.id }, orderBy: { submittedAt: 'desc' } }),
     db.reviewAction.findMany({ where: { targetType: 'Campaign', targetId: c.id }, orderBy: { at: 'desc' } }),
     placementCpmCents(c, now),
     fxOf(c, now),
+    creatorOf(c),
   ])
   const { name: country, currency, timezone } = MARKETS[c.country]
   const placement = PLACEMENT_LABEL[c.placement]
@@ -230,7 +248,9 @@ export async function campaignReport(
         { label: O.placement, value: cpmCents === null ? placement : O.placementAt(placement, (cpmCents / 100).toFixed(2)) },
       ],
       description: c.description,
+      creative: creativeOf(c),
     },
+    created: creator === null ? null : C.history.created(creator, fd(c.createdAt, timezone)),
     history: history(c, actions, revisions),
   }
 }

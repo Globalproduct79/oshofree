@@ -94,10 +94,14 @@ export const CAMPAIGN_COPY = {
     // "Featured tile · $2.20": the CPM in dollars.
     placementAt: (placement: string, cpmDollars: string) => `${placement} · $${cpmDollars}`,
     edit: 'Edit offer and resubmit',
+    // Ours: the creative the offer runs, as a screen reader names it.
+    creative: { image: "The campaign's image", video: "The campaign's video" },
   },
   // Ours (spec §6.8): Global's decisions on the campaign and its revised offers, newest first.
   history: {
     title: 'History',
+    // Ours (Prompt 6): the box's sub-line, over the decisions; a campaign from before creators were recorded has none.
+    created: (name: string, date: string) => `Created by ${name} on ${date}`,
     empty: 'No decisions yet.',
     line: (date: string, what: string) => `${date} · ${what}`,
     approved: 'Approved by Global',
