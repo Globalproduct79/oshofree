@@ -62,9 +62,9 @@ export default async function SettlementPage({ searchParams }: { searchParams?: 
           </LinkButton>
         }
       />
-      <nav aria-label={S.monthNav} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+      <nav aria-label={S.monthNav} className="months">
         {monthLinks.map(([k, label]) => (
-          <Link key={k} href={`/admin/settlement?month=${k}`} aria-current={k === selected ? 'page' : undefined} style={k === selected ? { fontWeight: 700 } : { color: 'var(--ink2)' }}>
+          <Link key={k} href={`/admin/settlement?month=${k}`} aria-current={k === selected ? 'page' : undefined}>
             {label}
           </Link>
         ))}

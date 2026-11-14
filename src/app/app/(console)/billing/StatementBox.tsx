@@ -23,9 +23,9 @@ export function StatementBox({
   ])
   return (
     <Box title={MONEY.billing.statementTitle} sub={MONEY.billing.statementSub}>
-      <nav aria-label="Statement month" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+      <nav aria-label={MONEY.billing.monthNav} className="months">
         {months.map((x) => (
-          <Link key={x.key} href={`/app/billing?month=${x.key}`} aria-current={x.key === selected ? 'page' : undefined} style={x.key === selected ? { fontWeight: 700 } : { color: tokens.ink2 }}>
+          <Link key={x.key} href={`/app/billing?month=${x.key}`} aria-current={x.key === selected ? 'page' : undefined}>
             {x.label}
           </Link>
         ))}

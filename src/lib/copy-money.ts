@@ -40,6 +40,7 @@ export const MONEY = {
     statementTitle: 'Statement',
     statementSub: 'Every charge this month. Delivery and share rewards are separate lines.',
     statementHead: (currency: string) => ['Date', 'Description', 'USD', currency],
+    monthNav: 'Statement month',
     // Ours (the prototype's was "No charges yet."): what the statement will hold, and when.
     noCharges: 'Nothing charged yet. Delivery and rewards appear here daily once a campaign is live.',
     howYouPayTitle: 'How you pay',

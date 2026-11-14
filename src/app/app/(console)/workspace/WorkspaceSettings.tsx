@@ -26,12 +26,12 @@ export function WorkspaceSettings({
     if (state?.saved) toast(COPY.workspace.toastSaved)
   }, [state])
   return (
-    <form action={formAction}>
+    <form action={formAction} className="stack">
       <label className="f">
         {COPY.workspace.nameLabel}
         <input name="name" defaultValue={initial.name} minLength={2} maxLength={80} required readOnly={readOnly} />
       </label>
-      <label className="f" style={{ marginTop: 12 }}>
+      <label className="f">
         {COPY.workspace.typeLabel}
         {typeCountryLocked && <small> {COPY.workspace.locked}</small>}
         <select name="type" defaultValue={initial.type} disabled={readOnly || typeCountryLocked}>
@@ -39,7 +39,7 @@ export function WorkspaceSettings({
           <option value="Agency">{COPY.workspace.types.Agency}</option>
         </select>
       </label>
-      <label className="f" style={{ marginTop: 12 }}>
+      <label className="f">
         {COPY.workspace.countryLabel}
         {typeCountryLocked && <small> {COPY.workspace.locked}</small>}
         <select name="country" defaultValue={initial.country} disabled={readOnly || typeCountryLocked}>
@@ -48,7 +48,7 @@ export function WorkspaceSettings({
           ))}
         </select>
       </label>
-      <label className="f" style={{ marginTop: 12 }}>
+      <label className="f">
         {COPY.workspace.registrationLabel} <small>{COPY.workspace.registrationHint}</small>
         <input
           name="registrationNumber"
@@ -59,13 +59,15 @@ export function WorkspaceSettings({
         />
       </label>
       {state?.error && state.error !== 'LOCKED' && (
-        <p role="alert" style={{ marginTop: 12 }}>{state.error}</p>
+        <p role="alert">{state.error}</p>
       )}
-      {state?.error === 'LOCKED' && <p role="alert" style={{ marginTop: 12 }}>{COPY.workspace.locked}</p>}
+      {state?.error === 'LOCKED' && <p role="alert">{COPY.workspace.locked}</p>}
       {!readOnly && (
-        <Button variant="primary" type="submit" disabled={pending} style={{ marginTop: 14 }}>
-          {COPY.workspace.save}
-        </Button>
+        <div className="btns">
+          <Button variant="primary" type="submit" disabled={pending}>
+            {COPY.workspace.save}
+          </Button>
+        </div>
       )}
     </form>
   )

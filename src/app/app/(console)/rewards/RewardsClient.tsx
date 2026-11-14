@@ -71,9 +71,9 @@ export function CapsForm({ initial, editable }: { initial: CapsValues; editable:
       toast('ok' in res ? C.toast : res.error)
     })
   return (
-    <>
-      {fields.map(([k, label, min], i) => (
-        <label key={k} className="f" style={i ? { marginTop: 12 } : undefined}>
+    <div className="stack">
+      {fields.map(([k, label, min]) => (
+        <label key={k} className="f">
           {label}
           {editable ? (
             <input type="number" min={min} max={k === 'capPct' ? 100 : undefined} value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value })} />
@@ -83,10 +83,10 @@ export function CapsForm({ initial, editable }: { initial: CapsValues; editable:
         </label>
       ))}
       {editable && (
-        <Button variant="primary" style={{ width: '100%', marginTop: 12 }} disabled={pending} onClick={save}>
+        <Button variant="primary" disabled={pending} onClick={save}>
           {C.save}
         </Button>
       )}
-    </>
+    </div>
   )
 }
