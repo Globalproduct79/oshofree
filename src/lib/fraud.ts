@@ -1,4 +1,5 @@
 import type { Campaign, PayoutStatus, ShareLink, Workspace } from '@prisma/client'
+import { audit } from '@/lib/audit'
 import { db, type Tx } from '@/lib/db'
 import { dayBounds } from '@/lib/market-clock'
 
@@ -121,4 +122,14 @@ export async function evaluate(input: FraudInput, client: Tx = db): Promise<Verd
   if ((_sum.amountCents ?? 0) + amountCents > rewardCapCents(campaign, workspace)) return { status: 'rejected', reason: 'cap' }
 
   return { status: 'queued', reason: null }
+}
+
+// Global switches one of the three checks on or off; audited with the before and after.
+export async function setFraudRule(key: string, enabled: boolean, byUserId: string): Promise<void> {
+  if (!FRAUD_RULES.some((r) => r.key === key)) throw 'INVALID'
+  await ensureFraudRules()
+  const before = await db.fraudRule.findUniqueOrThrow({ where: { key } })
+  if (before.enabled === enabled) return
+  await db.fraudRule.update({ where: { key }, data: { enabled } })
+  await audit(byUserId, 'fraud.rule', { type: 'FraudRule', id: key }, { enabled: before.enabled }, { enabled })
 }
