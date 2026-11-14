@@ -6,20 +6,21 @@ import { editOfferAction, previewOffers, submitAction } from '@/app/app/(console
 import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { Box, Button, type PickerStatus } from '@/components/og'
 import { toast } from '@/components/shell/toast-store'
-import { ageGated, checkCampaign, ruleContext, todayIn, type CreditPosition, type FormEdit } from '@/lib/campaign-schema'
+import { ageGated, todayIn, type CreditPosition, type FormEdit } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import type { PlacementKey } from '@/lib/copy-components'
 import { clearDraft, loadDraft, saveDraft, startOver } from '@/lib/draft-store'
-import { MARKETS } from '@/lib/markets'
 import type { PreviewOffer } from '@/lib/preview-merge'
 import type { MarketRates } from '@/lib/rates'
 import { CardPreview } from './form/CardPreview'
 import { CostBox } from './form/CostBox'
 import { OfferFields } from './form/OfferFields'
 import { PlacementFields } from './form/PlacementFields'
+import { formProblem, type FormStage } from './form/problem'
+import { ReviewStep } from './form/ReviewStep'
 import { TermsFields } from './form/TermsFields'
 import { clearedNote, pickCreative } from './form/upload'
-import { fits, offerInput, revisionInput, sameValues, toInput, type FormValues } from './form/values'
+import { fits, offerInput, sameValues, toInput, type FormValues } from './form/values'
 
 export type FormMode =
   // ?brand= prefills an agency's client and focus=brand puts the cursor there (Workspace › Add client brand).
@@ -36,10 +37,13 @@ type Props = {
 
 const AUTOSAVE_MS = 400
 const P = F.previewBox
+const HOME = '/app'
 
-// The New campaign form and Edit offer (ADV §3): one page, the first failing rule as the only hint,
-// Submit disabled until there is none, and the card and the cost redrawn on every change. A new
-// campaign's draft autosaves to this browser (spec §6.3).
+// The New campaign form and Edit offer (ADV §3): the first failing rule as the only hint, the primary disabled until
+// there is none, and the card and the cost redrawn on every change. Edit offer is one page. A new campaign is edited
+// on one page, then reviewed (Prompt 6): "Review before submitting" opens a read-only summary with the confirmation,
+// "Submit for review" and "Back to edit". Its draft autosaves to this browser (spec §6.3); "Save draft", at either
+// step, keeps it and goes to Campaigns home, where it waits as a card.
 export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props) {
   const router = useRouter()
   const [values, setValues] = useState(defaults)
@@ -51,6 +55,12 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
   // Whether this browser holds a draft of the New form (Start over shows while it does).
   const [hasDraft, setHasDraft] = useState(false)
   const [pending, startTransition] = useTransition()
+  // A new campaign's step: editing, or reviewing before Submit. Edit offer stays on 'edit'.
+  const [stage, setStage] = useState<FormStage>('edit')
+  // Moving between the steps hands focus to the Review heading, or back to the button that opened it.
+  const reviewHeading = useRef<HTMLHeadingElement>(null)
+  const primary = useRef<HTMLButtonElement>(null)
+  const moved = useRef(false)
   const brandRef = useRef<HTMLInputElement>(null)
   const restored = useRef(false)
   const sent = useRef(false)
@@ -59,10 +69,17 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
   useEffect(() => {
     latest.current = values
   }, [values])
+  useEffect(() => {
+    if (!moved.current) return
+    moved.current = false
+    if (stage === 'review') reviewHeading.current?.focus()
+    else primary.current?.focus()
+  }, [stage])
 
   const isNew = mode.kind === 'new'
   const edit: FormEdit | undefined = mode.kind === 'edit' ? { running: mode.running, heldCents: mode.heldCents } : undefined
   const locked = edit?.running ?? false
+  const reviewing = isNew && stage === 'review'
 
   // Once: this workspace's draft (a new campaign only), keeping a brand's own name and the client
   // Add client brand asked for.
@@ -124,28 +141,36 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
     setNotice(null)
     if (!uploading) setCreativeStatus({ state: 'idle' })
   }
+  // The confirmation is for what was reviewed: going back to change anything asks for it again.
+  function onBack() {
+    moved.current = true
+    setStage('edit')
+    update({ termsAccepted: false })
+  }
+  // Kept in this browser now (it autosaves anyway) and waiting on Campaigns home as a card.
+  function onSaveDraft() {
+    saveDraft(workspace.id, values)
+    toast(F.toasts.draftSaved)
+    router.push(HOME)
+  }
 
   const cpmCents = rates.cpmCents[values.country]
   const fxPerUsd = rates.fxPerUsd[values.country]
-  const country = MARKETS[values.country].name
-  const checked = checkCampaign(
-    locked ? revisionInput(values) : toInput(values),
-    ruleContext(workspace.type, credit, values.country, edit),
-  )
-  const problem = !checked.ok
-    ? checked.message
-    : cpmCents[values.placement] === null
-      ? F.errors.noRate(country)
-      : fxPerUsd === null
-        ? F.errors.noFx(country)
-        : workspace.declined
-          ? F.errors.workspaceDeclined
-          : null
+  const problem = formProblem({
+    values, isNew, stage, edit, workspace, credit, cpmCents: cpmCents[values.placement], fxPerUsd,
+  })
   const hint = uploading ? F.upload.uploading : (notice ?? problem ?? '')
+  const dirty = hasDraft || !sameValues(values, defaults)
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
     if (problem || pending || uploading) return
+    if (isNew && stage === 'edit') {
+      moved.current = true
+      setNotice(null)
+      setStage('review')
+      return
+    }
     startTransition(async () => {
       if (mode.kind === 'new') {
         const res = await submitAction(toInput(values))
@@ -178,73 +203,110 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
     },
   }
 
+  const buttons = (
+    <div className="full" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <Button ref={primary} type="submit" variant="primary" disabled={problem !== null || pending || uploading} aria-describedby="cf-hint">
+        {!isNew ? F.buttons.saveResubmit : reviewing ? F.buttons.submit : F.buttons.review}
+      </Button>
+      {reviewing && (
+        <Button type="button" variant="ghost" disabled={pending} onClick={onBack}>
+          {F.buttons.back}
+        </Button>
+      )}
+      <PreviewButton
+        mine={mine}
+        country={values.country}
+        load={() => previewOffers(values.country)}
+        trigger={(show) => (
+          <Button type="button" variant="ghost" onClick={show}>
+            {F.buttons.preview}
+          </Button>
+        )}
+      />
+      {mode.kind === 'edit' && (
+        <Button type="button" variant="ghost" onClick={() => router.push(`/app/campaigns/${mode.id}`)}>
+          {F.buttons.cancel}
+        </Button>
+      )}
+      {isNew && (
+        <Button type="button" variant="ghost" disabled={!dirty || pending || uploading} onClick={onSaveDraft}>
+          {F.buttons.saveDraft}
+        </Button>
+      )}
+      <span
+        id="cf-hint"
+        role={notice ? 'alert' : undefined}
+        style={{ marginLeft: 'auto', color: 'var(--ink3)', fontSize: 13 }}
+      >
+        {hint}
+      </span>
+      {isNew && !reviewing && dirty && (
+        <Button type="button" variant="ghost" onClick={onStartOver}>
+          {F.buttons.startOver}
+        </Button>
+      )}
+    </div>
+  )
+
   return (
     <form className="two" onSubmit={onSubmit} noValidate>
       <div className="box">
-        <div className="form">
-          <OfferFields values={values} update={update} agency={workspace.type === 'Agency'} locked={locked} brandRef={brandRef} />
-          <PlacementFields
+        {reviewing ? (
+          <ReviewStep
             values={values}
-            cpmCents={cpmCents}
-            choose={choose}
-            status={creativeStatus}
-            pick={pick}
-            remove={removeCreative}
+            cpmCents={cpmCents[values.placement]}
+            fxPerUsd={fxPerUsd}
+            credit={credit}
             mine={mine}
-            loadLive={() => previewOffers(values.country)}
-          />
-          <TermsFields values={values} update={update} locked={locked} minStart={isNew ? todayIn(values.country) : undefined} />
-          <label className="chk full">
-            <input type="checkbox" checked={values.termsAccepted} onChange={(e) => update({ termsAccepted: e.target.checked })} />{' '}
-            {F.fields.terms}
-          </label>
-          <div className="full" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <Button type="submit" variant="primary" disabled={problem !== null || pending || uploading} aria-describedby="cf-hint">
-              {isNew ? F.buttons.submit : F.buttons.saveResubmit}
-            </Button>
-            <PreviewButton
-              mine={mine}
-              country={values.country}
-              load={() => previewOffers(values.country)}
-              trigger={(show) => (
-                <Button type="button" variant="ghost" onClick={show}>
-                  {F.buttons.preview}
-                </Button>
+            update={update}
+            headingRef={reviewHeading}
+          >
+            {buttons}
+          </ReviewStep>
+        ) : (
+          <>
+            {isNew && <p className="sub">{F.oneOffer}</p>}
+            <div className="form">
+              <OfferFields values={values} update={update} agency={workspace.type === 'Agency'} locked={locked} brandRef={brandRef} />
+              <PlacementFields
+                values={values}
+                cpmCents={cpmCents}
+                choose={choose}
+                status={creativeStatus}
+                pick={pick}
+                remove={removeCreative}
+                mine={mine}
+                loadLive={() => previewOffers(values.country)}
+              />
+              <TermsFields values={values} update={update} locked={locked} minStart={isNew ? todayIn(values.country) : undefined} />
+              {/* A new campaign is confirmed on its Review step. */}
+              {!isNew && (
+                <label className="chk full">
+                  <input type="checkbox" checked={values.termsAccepted} onChange={(e) => update({ termsAccepted: e.target.checked })} />{' '}
+                  {F.fields.terms}
+                </label>
               )}
-            />
-            {mode.kind === 'edit' && (
-              <Button type="button" variant="ghost" onClick={() => router.push(`/app/campaigns/${mode.id}`)}>
-                {F.buttons.cancel}
-              </Button>
-            )}
-            <span
-              id="cf-hint"
-              role={notice ? 'alert' : undefined}
-              style={{ marginLeft: 'auto', color: 'var(--ink3)', fontSize: 13 }}
-            >
-              {hint}
-            </span>
-            {isNew && (hasDraft || !sameValues(values, defaults)) && (
-              <Button type="button" variant="ghost" onClick={onStartOver}>
-                {F.buttons.startOver}
-              </Button>
-            )}
-          </div>
-        </div>
+              {buttons}
+            </div>
+          </>
+        )}
       </div>
       <div>
         <Box title={P.title} sub={P.subtitle}>
           <CardPreview values={values} />
         </Box>
-        <Box title={F.cost.title}>
-          <CostBox
-            values={values}
-            cpmCents={cpmCents[values.placement]}
-            fxPerUsd={fxPerUsd}
-            credit={credit}
-            heldCents={edit?.heldCents}
-          />
-        </Box>
+        {/* On the Review step the estimate is part of the summary. */}
+        {!reviewing && (
+          <Box title={F.cost.title}>
+            <CostBox
+              values={values}
+              cpmCents={cpmCents[values.placement]}
+              fxPerUsd={fxPerUsd}
+              credit={credit}
+              heldCents={edit?.heldCents}
+            />
+          </Box>
+        )}
       </div>
     </form>
   )

@@ -115,3 +115,13 @@ export function loadDraft(workspaceId: string, defaults: FormValues): FormValues
     return null
   }
 }
+
+// This workspace's draft, read without touching any other: Campaigns home shows it as a card, and only opening the
+// form clears another workspace's draft.
+export function peekDraft(workspaceId: string, defaults: FormValues): FormValues | null {
+  try {
+    return parseDraft(storage()?.getItem(draftKey(workspaceId)) ?? null, workspaceId, defaults)
+  } catch {
+    return null
+  }
+}

@@ -159,6 +159,11 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
 /* The offer's creative over its facts (the campaign page's The offer, the form's review): the file as it is, never
    wider than its box, a video at a height its controls fit. */
 .box .cr{display:block;max-width:100%;max-height:220px;border-radius:10px;margin:0 0 14px;background:var(--bg)}
+/* The New form's Review step: its sections (the offer, creative, targeting, money) a rhythm apart, each titled, a
+   long link wrapping inside its cell at phone width; the heading takes focus without a ring when the step opens
+   (keyboard focus still shows one). */
+.summary{display:grid;gap:18px}.summary .subt{display:block;margin-bottom:8px}.summary .desc{margin:10px 0 0}.summary .est{margin-top:12px}
+.summary .cr{margin:0}.summary .kv b{overflow-wrap:anywhere}.box h3[tabindex="-1"]:focus:not(:focus-visible){outline:none}
 /* Who created a campaign: its own line under a card's sub-line; a Review row's video cover at its first frame. */
 .cc .b .by{display:block}
 .q .cv video{width:100%;height:100%;object-fit:cover;border-radius:9px}

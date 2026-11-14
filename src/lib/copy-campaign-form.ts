@@ -129,10 +129,40 @@ export const CAMPAIGN_FORM_COPY = {
     cancel: 'Cancel',
     // Ours: the New form's way to drop its draft (spec §6.3).
     startOver: 'Start over',
+    // Ours (Prompt 6): the New form's step to its Review, the way back, and keeping the draft for later.
+    review: 'Review before submitting',
+    back: 'Back to edit',
+    saveDraft: 'Save draft',
   },
   toasts: {
     submitted: 'Submitted — Global reviews within one working day',
     resubmitted: 'Resubmitted — Global reviews within one working day',
+    // Ours (Prompt 6).
+    draftSaved: 'Draft saved — open it from Campaigns home to carry on',
+  },
+
+  // Ours (Prompt 6): a campaign is one offer on one market, said once over the New form.
+  oneOffer: 'One offer per campaign. Add another campaign for another offer.',
+  // Ours (Prompt 6): the New form's Review step, a read-only summary before Submit. Its labels are the fields'.
+  review: {
+    title: 'Review your campaign',
+    sub: 'Nothing goes to Global until you submit. Go back to change anything.',
+    offer: 'The offer',
+    creative: 'Creative',
+    targeting: 'Targeting',
+    money: 'Money',
+    image: 'The image you attached',
+    video: 'The video you attached',
+    noCreative: 'No image. The card shows your tile colour and initials.',
+    placementAt: (placement: string, cpm: string) => `${placement} · ${cpm}`,
+    age: 'Age gate',
+    ageGated: '18+ on the card',
+    open: 'None',
+    licence: 'Licence or approval number',
+    licenceFound: 'In the description ✓',
+    flight: 'Flight',
+    flightValue: (start: string, end: string, days: number) => `${start} – ${end} · ${days} ${days === 1 ? 'day' : 'days'}`,
+    reward: (amount: string) => `${amount} airtime per successful share`,
   },
 
   // Edit offer on a live, scheduled or paused campaign: the revision carries the offer only (spec §6.14.3).

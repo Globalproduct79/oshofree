@@ -1,3 +1,5 @@
+import { DraftCard } from '@/components/campaign/DraftCard'
+import { newCampaignDefaults } from '@/components/campaign/form/values'
 import { HomeFilterPills } from '@/components/campaign/HomeFilterPills'
 import { PauseResume } from '@/components/campaign/PauseResume'
 import { SimulateDayButton } from '@/components/demo/SimulateDayButton'
@@ -82,6 +84,8 @@ export default async function CampaignsHome({ searchParams }: { searchParams: Pr
         {home.cards.map((c) => (
           <CampaignCard key={c.id} campaign={c} href={campaignHref(c.id)} />
         ))}
+        {/* The New form's draft waits here, in this browser, before the tile that starts another. */}
+        {filter === 'all' && canAct && <DraftCard workspaceId={ws.id} defaults={newCampaignDefaults(ws, now)} />}
         {filter === 'all' && canAct && <NewCampaignTile href={NEW} />}
       </div>
       {home.counts.all === 0 && (

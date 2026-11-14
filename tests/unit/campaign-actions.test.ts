@@ -384,6 +384,21 @@ describe('the pages', () => {
     expect(html).not.toContain('Start over')
   })
 
+  it('New campaign: one offer per campaign, said once; the edit step leads to the Review step, which asks for the confirmation', async () => {
+    await setup('Owner')
+    const html = renderToStaticMarkup(await NewCampaignPage({ searchParams: Promise.resolve({}) }))
+    expect(html).toContain('<div class="box"><p class="sub">One offer per campaign. Add another campaign for another offer.</p><div class="form">')
+    expect(html).toMatch(/<button class="btn p" type="submit" disabled=""[^>]*>Review before submitting<\/button>/)
+    expect(html).not.toContain('Submit for review')
+    // Nothing to save yet: a fresh form is the defaults.
+    expect(html).toMatch(/<button class="btn g" type="button" disabled="">Save draft<\/button>/)
+    // The confirmation is given on the Review step, not here.
+    expect(html).not.toContain('type="checkbox"')
+    expect(html).not.toContain('This offer is genuine')
+    // The Cost box sits beside the edit step.
+    expect(html).toContain('<h3>Cost</h3>')
+  })
+
   it('New campaign: ?brand= prefills an agency client', async () => {
     await setup('Owner', { type: 'Agency', name: 'MediaSpec (agency)' })
     const html = renderToStaticMarkup(await NewCampaignPage({ searchParams: Promise.resolve({ brand: '777Bet', focus: 'brand' }) }))
@@ -406,6 +421,9 @@ describe('the pages', () => {
     expect(html).toMatch(/<input type="number"[^>]*disabled=""[^>]*value="300"/)
     expect(html).toContain('value="Buy 2 get 1"')
     expect(html).not.toMatch(/type="checkbox"[^>]*checked=""/)
+    // Edit offer is one page: its confirmation is on it, and there is no Review step, draft or one-offer line.
+    expect(html).toContain('This offer is genuine, available in the country and dates above, and the brand will honour it.')
+    for (const absent of ['Review before submitting', 'Save draft', 'One offer per campaign']) expect(html).not.toContain(absent)
   })
 })
 
