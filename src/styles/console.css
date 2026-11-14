@@ -153,3 +153,7 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
    text and puts the actions in a row underneath, so the page never scrolls sideways (D14). */
 .q.ws{grid-template-columns:1fr auto}
 @media(max-width:980px){.q{grid-template-columns:72px minmax(0,1fr)}.q .cv{height:56px;font-size:16px}.q > .acts{grid-column:1/-1;flex-direction:row;flex-wrap:wrap}.q.ws{grid-template-columns:minmax(0,1fr)}.tagp{overflow-wrap:anywhere}}
+/* Advertisers › workspace: campaign cards inside a box end with the box, not with the page's section gap; a
+   key-value cell holding a field lets it shrink at phone width instead of widening the page. */
+.box > .cards{margin-bottom:0}
+.kv > div{min-width:0}

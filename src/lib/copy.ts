@@ -54,8 +54,6 @@ export const COPY = {
       "Your workspace is waiting for Global's approval. You can draft campaigns now; they go live once both are approved.",
     declined: (reason: string | null) =>
       `Global declined this workspace${reason?.trim() ? `: ${reason.trim().replace(/[.!?]+$/, '')}` : ''}. Campaigns can't go live until that changes.`,
-    impersonating: (name: string) => `You are viewing ${name} as Global.`,
-    exit: 'Exit',
   },
   nav: {
     menu: 'Menu',
@@ -64,11 +62,6 @@ export const COPY = {
     items: { campaigns: 'Campaigns', newCampaign: 'New campaign', sharing: 'Sharing', workspace: 'Workspace' },
   },
   admin: { platform: 'Platform', global: 'Global', review: 'Review', advertisers: 'Advertisers', api: 'Phoenix API' },
-  advertisers: {
-    columns: ['Name', 'Type', 'Country', 'Status', 'Campaigns'],
-    open: 'Open workspace',
-    empty: 'No advertisers yet.',
-  },
   campaignForm: CAMPAIGN_FORM_COPY,
   campaign: CAMPAIGN_COPY,
   preview: PREVIEW_COPY,
@@ -128,10 +121,6 @@ export const COPY = {
     workspace: {
       title: 'Workspace',
       subtitle: 'The name, type and billing country Global sees. Invoices will use the billing country.',
-    },
-    advertisers: {
-      title: 'Advertisers',
-      subtitle: 'Every workspace on OshoFree, its status and what it is running.',
     },
   },
 } as const

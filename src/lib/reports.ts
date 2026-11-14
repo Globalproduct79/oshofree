@@ -356,10 +356,8 @@ export async function homeCards(workspaceId: string, filter: HomeFilter, now: Da
   }
 }
 
-// Every live campaign on the platform as its card (GLB §2.1 "Live now"), in list order, with the workspace
-// it belongs to.
-export async function liveCards(now: Date): Promise<(CardData & { workspaceId: string })[]> {
-  const campaigns = await db.campaign.findMany({ where: { status: 'live' }, orderBy: LIST_ORDER })
+async function cardsWhere(where: Prisma.CampaignWhereInput, now: Date): Promise<(CardData & { workspaceId: string })[]> {
+  const campaigns = await db.campaign.findMany({ where, orderBy: LIST_ORDER })
   const ids = campaigns.map((c) => c.id)
   const [event, spend] = await Promise.all([channelEventsBy(ids, ['Impression', 'Open']), chargedBy(ids, CHARGES)])
   return campaigns.map((c) => ({
@@ -367,6 +365,13 @@ export async function liveCards(now: Date): Promise<(CardData & { workspaceId: s
     workspaceId: c.workspaceId,
   }))
 }
+
+// Every live campaign on the platform as its card (GLB §2.1 "Live now"), in list order, with the workspace
+// it belongs to.
+export const liveCards = (now: Date) => cardsWhere({ status: 'live' }, now)
+
+// Every campaign of one workspace as its card, in list order (Advertisers › workspace › Campaigns).
+export const workspaceCards = (workspaceId: string, now: Date) => cardsWhere({ workspaceId }, now)
 
 // ---- Platform (GLB §2.1 block 1, §2.4, §2.5) ----
 

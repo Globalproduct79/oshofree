@@ -1,5 +1,5 @@
 import 'server-only'
-import type { Workspace, WorkspaceType } from '@prisma/client'
+import type { Workspace, WorkspaceStatus, WorkspaceType } from '@prisma/client'
 import { audit } from '@/lib/audit'
 import { NOTIFY } from '@/lib/copy-notifications'
 import { db, type Tx } from '@/lib/db'
@@ -33,7 +33,7 @@ export async function requireWorkspace(): Promise<Workspace> {
   return (await requireMember('view')).workspace
 }
 
-export type WorkspaceUpdate = Partial<WorkspaceInput> & { registrationNumber?: string | null }
+export type WorkspaceUpdate = Partial<WorkspaceInput> & { registrationNumber?: string | null; accountManager?: string }
 
 export async function updateWorkspace(id: string, input: WorkspaceUpdate): Promise<Workspace> {
   return db.workspace.update({ where: { id }, data: input })
@@ -45,10 +45,11 @@ export async function isImpersonating(userId: string, workspaceId: string): Prom
   return m.user.id === userId && m.workspace.id === workspaceId && m.role === 'Global'
 }
 
-async function decide(
-  tx: Tx, id: string, data: { status: 'approved'; approvedAt: Date } | { status: 'declined'; declineReason: string },
-) {
-  const { count } = await tx.workspace.updateMany({ where: { id, status: 'pending' }, data })
+type Decision = { status: 'approved'; approvedAt: Date; declineReason: null } | { status: 'declined'; declineReason: string }
+
+// Only from `from`: a decision someone already made (or a status that moved on) is refused.
+async function decide(tx: Tx, id: string, from: WorkspaceStatus, data: Decision) {
+  const { count } = await tx.workspace.updateMany({ where: { id, status: from }, data })
   if (count === 0) throw 'INVALID_TRANSITION'
   return tx.workspace.findUniqueOrThrow({ where: { id } })
 }
@@ -56,25 +57,34 @@ async function decide(
 // The Workspace page shows the decision, so its notification links there.
 const WORKSPACE_PAGE = '/app/workspace'
 
-// Global's decision on a new advertiser: the status and the decision commit together, then it is audited and
-// the workspace's members hear it (GLB §1.6; the prototype told nobody about a decline, D4).
-export async function approveWorkspace(id: string, byUserId: string, now = new Date()): Promise<Workspace> {
+async function approveFrom(from: 'pending' | 'declined', id: string, byUserId: string, now: Date): Promise<Workspace> {
   const ws = await db.$transaction(async (tx) => {
-    const row = await decide(tx, id, { status: 'approved', approvedAt: now })
+    const row = await decide(tx, id, from, { status: 'approved', approvedAt: now, declineReason: null })
     await tx.reviewAction.create({ data: { targetType: 'Workspace', targetId: id, action: 'Approve', byUserId, at: now } })
     return row
   })
-  await audit(byUserId, 'workspace.approve', { type: 'Workspace', id, workspaceId: id }, { status: 'pending' }, { status: 'approved' })
+  await audit(byUserId, 'workspace.approve', { type: 'Workspace', id, workspaceId: id }, { status: from }, { status: 'approved' })
   const told = NOTIFY.workspaceApproved()
   await notifyWorkspace(id, 'approved', told.title, told.detail, WORKSPACE_PAGE)
   return ws
+}
+
+// Global's decision on a new advertiser: the status and the decision commit together, then it is audited and
+// the workspace's members hear it (GLB §1.6; the prototype told nobody about a decline, D4).
+export function approveWorkspace(id: string, byUserId: string, now = new Date()): Promise<Workspace> {
+  return approveFrom('pending', id, byUserId, now)
+}
+
+// Advertisers › workspace: Global changes its mind about a declined workspace (the reason is cleared).
+export function reapproveWorkspace(id: string, byUserId: string, now = new Date()): Promise<Workspace> {
+  return approveFrom('declined', id, byUserId, now)
 }
 
 export async function declineWorkspace(id: string, byUserId: string, reason: string, now = new Date()): Promise<Workspace> {
   const why = reason.trim()
   if (!why) throw 'REASON_REQUIRED'
   const ws = await db.$transaction(async (tx) => {
-    const row = await decide(tx, id, { status: 'declined', declineReason: why })
+    const row = await decide(tx, id, 'pending', { status: 'declined', declineReason: why })
     await tx.reviewAction.create({
       data: { targetType: 'Workspace', targetId: id, action: 'Decline', reason: why, byUserId, at: now },
     })

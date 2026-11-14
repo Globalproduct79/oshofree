@@ -55,6 +55,14 @@ function calendarMonth(period: Date): { year: number; month: number } {
   return { year: latest.year, month: latest.month }
 }
 
+// The month "Close month" closes: the one before the month it already is in the market furthest ahead, so a
+// click just after midnight there names the month that has not yet ended everywhere (closeMonth refuses it).
+// As the 1st at 00:00 UTC, which calendarMonth reads back as that month.
+export function monthToClose(now: Date): Date {
+  const { year, month } = calendarMonth(now)
+  return new Date(Date.UTC(year, month - 1, 1))
+}
+
 // ---- Ledger ----
 
 export type LedgerInput = {
@@ -379,14 +387,19 @@ export async function decideCredit(
   if (!request) throw 'NOT_FOUND'
   if (request.status !== 'open') return request
   if (decision === 'approved' && !isLimit(newLimitCents)) throw 'INVALID'
-  const before = await db.$transaction(async (tx) => {
+  // null when another decision got there first; otherwise the limit before an approval (null on a dismissal).
+  const won = await db.$transaction(async (tx) => {
     const { count } = await tx.creditRequest.updateMany({
       where: { id, status: 'open' },
       data: { status: decision, decidedAt: new Date(), decidedById: byUserId },
     })
-    if (!count || decision !== 'approved') return null
-    return writeLimit(tx, request.workspaceId, newLimitCents!)
+    if (!count) return null
+    return { before: decision === 'approved' ? await writeLimit(tx, request.workspaceId, newLimitCents!) : null }
   })
-  if (before !== null) await limitChanged(request.workspaceId, byUserId, before, newLimitCents!)
+  if (won) {
+    await audit(byUserId, 'credit.decide', { type: 'CreditRequest', id, workspaceId: request.workspaceId },
+      { status: 'open' }, { status: decision })
+    if (won.before !== null) await limitChanged(request.workspaceId, byUserId, won.before, newLimitCents!)
+  }
   return db.creditRequest.findUniqueOrThrow({ where: { id } })
 }
