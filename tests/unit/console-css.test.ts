@@ -11,3 +11,7 @@ it('declares every token', () => {
     expect(css.replace(/\s/g, '')).toContain(t)
 })
 it('adds the missing declined pill', () => expect(css).toMatch(/\.st-declined\{background:var\(--red2\);color:var\(--red\)\}/))
+it('stacks a team row under 600 px: who on the first line, the controls on the second', () => {
+  expect(css).toMatch(/@media\(max-width:600px\)\{[^@]*\.team-row \.nm\{flex-basis:calc\(100% - 42px\)\}[^@]*\.team-row \.ctl\{flex-basis:100%;padding-left:42px\}/)
+})
+it("keeps the head's primary on one line", () => expect(css).toContain('.head .acts .btn.p{white-space:nowrap}'))

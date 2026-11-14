@@ -151,6 +151,10 @@ describe('Organisation › Overview', () => {
     expect(t).not.toContain('Kemi Balogun you')
     expect(html).toContain('aria-label="Role for Kemi Balogun"')
     expect(html.match(/<select/g)).toHaveLength(2)
+    // Each row is a team row (stacked under 600 px), its select and Remove together in one block.
+    const teamBox = html.slice(html.indexOf('<h3>Team</h3>'), html.indexOf('<h3>Pending invitations</h3>'))
+    expect(teamBox.match(/<li class="team-row">/g)).toHaveLength(2)
+    expect(teamBox.match(/<div class="ctl"><select[^>]*>[^]*?<\/select><button[^>]*>Remove<\/button><\/div>/g)).toHaveLength(2)
     expect(html.match(/>Remove</g)).toHaveLength(2)
     expect(html).toContain('title="The last Owner can&#x27;t be demoted."')
   })

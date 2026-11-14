@@ -32,33 +32,35 @@ export function TeamList({ canManage, members, meId }: { canManage: boolean; mem
   return (
     <ul className="roles">
       {members.map((m) => (
-        <li key={m.userId}>
+        <li key={m.userId} className="team-row">
           <span className="av">{initials(m.name)}</span>
           <div className="nm">
             <b>{m.name}</b>
             {m.userId === meId && <span className="tagp">{PEOPLE.you}</span>}
             <small>{m.email}</small>
           </div>
-          {canManage ? (
-            <select
-              aria-label={PEOPLE.roleFor(m.name)}
-              value={m.role}
-              disabled={busy || m.isLastOwner}
-              title={m.isLastOwner ? PEOPLE.lastOwner : undefined}
-              onChange={(e) => change(m.userId, e.target.value)}
-            >
-              {(['Owner', 'Manager', 'Viewer'] satisfies Role[]).map((r) => (
-                <option key={r}>{r}</option>
-              ))}
-            </select>
-          ) : (
-            <span className="tagp">{m.role}</span>
-          )}
-          {canManage && (
-            <Button variant="ghost" size="s" disabled={busy || m.isLastOwner} onClick={() => remove(m.userId)}>
-              {PEOPLE.remove}
-            </Button>
-          )}
+          <div className="ctl">
+            {canManage ? (
+              <select
+                aria-label={PEOPLE.roleFor(m.name)}
+                value={m.role}
+                disabled={busy || m.isLastOwner}
+                title={m.isLastOwner ? PEOPLE.lastOwner : undefined}
+                onChange={(e) => change(m.userId, e.target.value)}
+              >
+                {(['Owner', 'Manager', 'Viewer'] satisfies Role[]).map((r) => (
+                  <option key={r}>{r}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="tagp">{m.role}</span>
+            )}
+            {canManage && (
+              <Button variant="ghost" size="s" disabled={busy || m.isLastOwner} onClick={() => remove(m.userId)}>
+                {PEOPLE.remove}
+              </Button>
+            )}
+          </div>
         </li>
       ))}
     </ul>

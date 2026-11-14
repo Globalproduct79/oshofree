@@ -168,3 +168,9 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
 .roles li{flex-wrap:wrap}.roles .av{width:32px;height:32px;border-radius:50%;background:var(--blu2);color:var(--blu);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex:none}
 .roles .nm{flex:1;min-width:0;overflow-wrap:anywhere}.roles .nm small{display:block;color:var(--ink3);font-size:12px}.roles .nm .tagp{margin:0 0 0 6px;font-size:11px;padding:1px 7px}
 .roles .link{flex-basis:100%}
+/* A team or invite row keeps its controls (role select or pill, Remove; Resend, Revoke) together. Under 600 px
+   the row stacks: initials with name and email on the first line, the controls on a second line under the name,
+   so an email stays whole (overflow-wrap only when one line cannot hold it). The head's primary never wraps. */
+.team-row .ctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.team-row .ctl .tagp{margin:0}
+.head .acts .btn.p{white-space:nowrap}
+@media(max-width:600px){.team-row .nm{flex-basis:calc(100% - 42px)}.team-row .ctl{flex-basis:100%;padding-left:42px}}
