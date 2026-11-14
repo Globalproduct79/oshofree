@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { copyInviteLink, InviteLinkField } from '@/app/app/(console)/people/InviteLink'
+import { InviteRowView, resendRow, revokeRow } from '@/app/app/(console)/people/InvitesList'
 import PeoplePage from '@/app/app/(console)/people/page'
 import { getToast, takeToast } from '@/components/shell/toast-store'
 import {
@@ -10,7 +11,7 @@ import {
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { fd } from '@/lib/format'
-import { inviteUrl } from '@/lib/invitations'
+import { acceptInvite, inviteUrl } from '@/lib/invitations'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
@@ -71,7 +72,7 @@ describe('people actions', () => {
     })
     expect(inv.role).toBe('Manager')
     expect(await db.auditEvent.count({ where: { action: 'member.invite' } })).toBe(1)
-    await revokeInviteAction(inv.id)
+    expect(await revokeInviteAction(inv.id)).toEqual({})
     expect((await db.invitation.findUniqueOrThrow({ where: { id: inv.id } })).revokedAt).not.toBeNull()
     const m = await db.user.create({ data: { email: 'm@x.test', name: 'M', passwordHash: 'x' } })
     await db.workspaceMember.create({ data: { userId: m.id, workspaceId: ws.id, role: 'Viewer' } })
@@ -100,6 +101,30 @@ describe('people actions', () => {
     if (!('ok' in sent)) throw new Error('invite failed')
     await revokeInviteAction(sent.id)
     expect(await resendInviteAction(sent.id)).toEqual({ error: 'GONE' })
+  })
+
+  it('Revoke or Resend of an invite no longer open, or not in this workspace, says GONE and changes nothing', async () => {
+    const { ws, owner } = await setup('Owner')
+    const revoked = await inviteAction('r@x.test', 'Viewer')
+    const joined = await inviteAction('j@x.test', 'Viewer')
+    if (!('ok' in revoked) || !('ok' in joined)) throw new Error('invite failed')
+    expect(await revokeInviteAction(revoked.id)).toEqual({})
+    expect(await revokeInviteAction(revoked.id)).toEqual({ error: 'GONE' })
+    const u = await db.user.create({ data: { email: 'j@x.test', name: 'J', passwordHash: 'x' } })
+    await acceptInvite(joined.url.split('/invite/')[1], u)
+    expect(await revokeInviteAction(joined.id)).toEqual({ error: 'GONE' })
+    expect(await resendInviteAction(joined.id)).toEqual({ error: 'GONE' })
+    expect((await db.invitation.findUniqueOrThrow({ where: { id: joined.id } })).revokedAt).toBeNull()
+    // Another workspace's invite, as when the active workspace changed in another tab.
+    const other = await db.workspace.create({ data: { name: 'Other', type: 'Brand', country: 'NG', status: 'approved' } })
+    const theirs = await db.invitation.create({
+      data: { workspaceId: other.id, email: 'p@x.test', role: 'Viewer', token: 'c0ffee'.repeat(5) + 'ab', invitedById: owner.id, expiresAt: new Date(Date.now() + 1e8) },
+    })
+    expect(await resendInviteAction(theirs.id)).toEqual({ error: 'GONE' })
+    expect(await revokeInviteAction(theirs.id)).toEqual({ error: 'GONE' })
+    expect(await resendInviteAction('missing')).toEqual({ error: 'GONE' })
+    expect(await db.invitation.findUniqueOrThrow({ where: { id: theirs.id } })).toMatchObject({ token: theirs.token, revokedAt: null })
+    expect(await db.auditEvent.count({ where: { action: { in: ['invite.resend', 'invite.revoke'] }, workspaceId: { not: ws.id } } })).toBe(0)
   })
 
   it('Global can resend', async () => {
@@ -160,6 +185,74 @@ describe('people actions', () => {
     expect(html).not.toContain('Revoke')
     expect(html).not.toContain('>Remove<')
     expect(html).not.toContain('Send invite')
+  })
+})
+
+// One invite's row on People, Overview and the invite page: what a Resend or Revoke answer does to it.
+describe('an invite row', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    takeToast()
+  })
+  const row = { id: 'i1', email: 'n@x.test', role: 'Manager' as const, invitedBy: 'Tunde Okafor', expires: '21 Nov', expired: false }
+  const view = (state: Parameters<typeof InviteRowView>[0]['state'], canManage = true) => {
+    const html = renderToStaticMarkup(createElement(InviteRowView, { invite: row, canManage, state, busy: false, onResend: () => {}, onRevoke: () => {} }))
+    return { html, text: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() }
+  }
+
+  it('Resend shows the new link and says the old one stopped working; the toast carries no link', async () => {
+    const { ws } = await setup('Owner')
+    const sent = await inviteAction('n@x.test', 'Manager')
+    if (!('ok' in sent)) throw new Error('invite failed')
+    takeToast()
+    const next = await resendRow(sent.id)
+    const inv = await db.invitation.findUniqueOrThrow({ where: { id: sent.id } })
+    expect(next).toEqual({ status: 'open', fresh: { link: inviteUrl(inv.token), expires: fd(inv.expiresAt, 'Africa/Lagos') } })
+    expect(takeToast()?.message).toBe('New link made. The old one no longer works.')
+    expect(ws.id).toBeTruthy()
+  })
+
+  it('Revoke ends the row as revoked, without a toast', async () => {
+    await setup('Owner')
+    const sent = await inviteAction('n@x.test', 'Manager')
+    if (!('ok' in sent)) throw new Error('invite failed')
+    takeToast()
+    expect(await revokeRow(sent.id)).toEqual({ status: 'revoked' })
+    expect(getToast()).toBeNull()
+  })
+
+  it.each([['Resend', resendRow], ['Revoke', revokeRow]] as const)(
+    '%s of an invite someone has already taken up ends the row as gone and says so',
+    async (_, act) => {
+      await setup('Owner')
+      const sent = await inviteAction('n@x.test', 'Manager')
+      if (!('ok' in sent)) throw new Error('invite failed')
+      const u = await db.user.create({ data: { email: 'n@x.test', name: 'N', passwordHash: 'x' } })
+      await acceptInvite(sent.url.split('/invite/')[1], u)
+      takeToast()
+      expect(await act(sent.id)).toEqual({ status: 'gone' })
+      expect(takeToast()?.message).toBe('That invite was already accepted or revoked.')
+    },
+  )
+
+  it('an open row has its date, Resend and Revoke, and a link only after its own Send or Resend', () => {
+    expect(view({ status: 'open', fresh: null }).text).toBe('N n@x.test Manager · invited by Tunde Okafor · expires 21 Nov Resend Revoke')
+    const fresh = view({ status: 'open', fresh: { link: 'http://x/invite/abc', expires: '28 Nov' } })
+    expect(fresh.text).toBe('N n@x.test Manager · invited by Tunde Okafor · expires 28 Nov Resend Revoke Link Copy')
+    expect(fresh.html).toContain('value="http://x/invite/abc"')
+    expect(view({ status: 'open', fresh: null }, false).text).toBe('N n@x.test Manager · invited by Tunde Okafor · expires 21 Nov')
+  })
+
+  it('a revoked row and a gone row are final: no date, no buttons, no link', () => {
+    const revoked = view({ status: 'revoked' })
+    expect(revoked.text).toBe('N n@x.test Manager · invited by Tunde Okafor · revoked, the link no longer works')
+    const gone = view({ status: 'gone' })
+    expect(gone.text).toBe('N n@x.test Manager · invited by Tunde Okafor · already accepted or revoked')
+    for (const r of [revoked, gone]) {
+      expect(r.html).not.toContain('<button')
+      expect(r.html).not.toContain('<input')
+      expect(r.text).not.toContain('expires')
+    }
   })
 })
 

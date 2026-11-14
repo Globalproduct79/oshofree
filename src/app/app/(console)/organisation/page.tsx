@@ -2,6 +2,7 @@ import { Box, KVGrid, LinkButton, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { COPY } from '@/lib/copy'
 import { ORGANISATION as O } from '@/lib/copy-organisation'
+import { PEOPLE } from '@/lib/copy-people'
 import { SHELL } from '@/lib/copy-shell'
 import { longDate, usd } from '@/lib/format'
 import { members, openInvites } from '@/lib/invitations'
@@ -34,7 +35,7 @@ export default async function OrganisationPage() {
         actions={
           canManage && (
             <LinkButton variant="primary" href="/app/people/invite">
-              {O.inviteUser}
+              {PEOPLE.inviteUser}
             </LinkButton>
           )
         }

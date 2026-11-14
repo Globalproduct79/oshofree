@@ -25,7 +25,7 @@ export default async function PeoplePage() {
         actions={
           canManage && (
             <LinkButton variant="primary" href="/app/people/invite">
-              {PEOPLE.inviteSomeone}
+              {PEOPLE.inviteUser}
             </LinkButton>
           )
         }

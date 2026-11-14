@@ -3,8 +3,8 @@ export const PEOPLE = {
   crumb: 'People',
   title: 'People',
   lead: 'Owners manage billing and people. Managers create and submit campaigns. Viewers see reports.',
-  // The head's primary: the invite form has its own page.
-  inviteSomeone: 'Invite someone',
+  // The head's primary (People and Organisation › Overview) and the invite page's title.
+  inviteUser: 'Invite user',
   members: 'Members',
   openInvites: 'Open invites',
   noOpenInvites: 'No open invites.',
@@ -26,12 +26,17 @@ export const PEOPLE = {
   remove: 'Remove',
   you: 'you',
   roleFor: (name: string) => `Role for ${name}`,
-  // An invite's line: its role, who sent it (on a list), and when its link stops working.
-  inviteLine: (i: { role: string; by?: string | null; expires: string; expired?: boolean; revoked?: boolean }) =>
+  // An invite's line: its role, who sent it (on a list), and when its link stops working; or, once the row is
+  // final, that this person revoked it, or that it was already taken up or revoked elsewhere.
+  inviteLine: (i: { role: string; by?: string | null; status: 'open' | 'revoked' | 'gone'; expires?: string; expired?: boolean }) =>
     [
       i.role,
       i.by ? `invited by ${i.by}` : null,
-      i.revoked ? 'revoked, the link no longer works' : `${i.expired ? 'expired' : 'expires'} ${i.expires}`,
+      i.status === 'revoked'
+        ? 'revoked, the link no longer works'
+        : i.status === 'gone'
+          ? 'already accepted or revoked'
+          : `${i.expired ? 'expired' : 'expires'} ${i.expires}`,
     ]
       .filter(Boolean)
       .join(' · '),
@@ -44,7 +49,7 @@ export const PEOPLE = {
   // never in a toast.
   invitePage: {
     crumb: 'Invite',
-    title: 'Invite someone',
+    title: 'Invite user',
     lead: 'Choose their role and send the invite. You get a link to pass on; they join when they open it and sign in.',
     pendingTitle: 'Pending invitation',
     sent: (email: string) => `Invite sent to ${email}. Copy the link and send it to them.`,

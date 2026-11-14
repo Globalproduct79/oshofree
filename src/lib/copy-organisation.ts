@@ -1,11 +1,11 @@
+import { COPY } from '@/lib/copy'
+
 // Organisation › Overview (/app/organisation): the company, its team and who is still to join. The team and invite
-// lists' own words are People's (copy-people.ts), since both pages show them.
+// lists' own words, and Invite user, are People's (copy-people.ts), since both pages show them.
 export const ORGANISATION = {
   crumb: 'Overview',
   title: 'Organisation',
   lead: 'Who you are on the platform, who works here, and who is still to join.',
-  // The head's primary, for those who manage people: the invite form's own page.
-  inviteUser: 'Invite user',
   company: {
     title: 'Company',
     name: 'Name',
@@ -18,7 +18,7 @@ export const ORGANISATION = {
     since: 'Member since',
     clients: 'Client brands',
     noClients: 'No client brands yet.',
-    client: (brand: string, campaigns: number) => `${brand} · ${campaigns === 1 ? '1 campaign' : `${campaigns} campaigns`}`,
+    client: (brand: string, campaigns: number) => `${brand} · ${COPY.workspace.clientCount(campaigns)}`,
     edit: 'Edit workspace',
   },
   team: { title: 'Team' },

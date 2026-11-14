@@ -42,7 +42,7 @@ test('F5: an invite from the Overview, resent, brings a new Manager into the wor
   })
 
   await test.step('Invite user opens the invite page, under Organisation', async () => {
-    await tunde.getByRole('link', { name: ORGANISATION.inviteUser, exact: true }).click()
+    await tunde.getByRole('link', { name: PEOPLE.inviteUser, exact: true }).click()
     await tunde.waitForURL('**/app/people/invite')
     await expect(tunde.getByRole('heading', { name: PEOPLE.invitePage.title, exact: true })).toBeVisible()
     await expect(tunde.locator('.crumb').getByRole('link', { name: SHELL.groups.organisation })).toHaveAttribute(

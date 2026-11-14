@@ -154,7 +154,7 @@ const PAGES: Record<string, PageCase> = {
   '/app/invoices': { as: 'owner', render: () => render(InvoicesPage()), head: { controls: ['Billing & credit'] } },
   '/app/invoices/[id]/print': { as: 'owner', render: (w) => render(InvoicePrintPage(params(w.invoiceId))), head: { controls: ['Print'] } },
   '/app/organisation': { as: 'owner', render: () => render(OrganisationPage()), head: { controls: ['Invite user'], primary: 'Invite user' } },
-  '/app/people': { as: 'owner', render: () => render(PeoplePage()), head: { controls: ['Invite someone'], primary: 'Invite someone' } },
+  '/app/people': { as: 'owner', render: () => render(PeoplePage()), head: { controls: ['Invite user'], primary: 'Invite user' } },
   '/app/people/invite': { as: 'owner', render: () => render(InvitePage()), head: { controls: ['People'] } },
   '/app/workspace': { as: 'owner', render: () => render(WorkspacePage()), head: { controls: ['People'] } },
   '/app/notifications': { as: 'owner', render: () => render(NotificationsPage()), head: { controls: ['Home'] } },
@@ -225,7 +225,7 @@ describe('page heads', () => {
     expect(head(await render(NotificationsPage())).labels).toEqual(['Home'])
   })
 
-  it('gives a Manager New campaign but not Invite someone or Invite user', async () => {
+  it('gives a Manager New campaign but not Invite user', async () => {
     const w = await world()
     signIn(await member(w, 'Manager'), w.ws.id)
     expect(head(await render(HomePage(search))).primaries).toEqual(['+ New campaign'])
@@ -236,7 +236,7 @@ describe('page heads', () => {
 })
 
 describe('the two new pages', () => {
-  it('Invite someone opens the invite form on its own page; People no longer holds it', async () => {
+  it('Invite user opens the invite form on its own page; People no longer holds it', async () => {
     const w = await world()
     signIn(w.owner, w.ws.id)
     const people = await render(PeoplePage())
@@ -250,6 +250,7 @@ describe('the two new pages', () => {
     expect(invite).toContain('placeholder="name@company.com"')
     expect(invite).toMatch(/<select[^>]*>[^]*?<option[^>]*>Manager<\/option>/)
     expect(invite).toContain('Send invite')
+    expect(invite).toContain('<h1>Invite user</h1>')
   })
 
   it('sends a Manager or a Viewer who opens the invite page back to People', async () => {
