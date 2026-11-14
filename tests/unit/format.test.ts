@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageLabel, daysLeft, fd, fmt, initials, isoInZone, loc, longDate, maskPhone, pct, usd, usdFromDollars } from '@/lib/format'
+import { ageLabel, daysLeft, fd, fdt, fmt, hm, initials, isoInZone, loc, longDate, maskPhone, pct, usd, usdFromDollars } from '@/lib/format'
 
 describe('prototype formatting', () => {
   it('fmt abbreviates counts', () => {
@@ -74,5 +74,19 @@ describe('isoInZone', () => {
     expect(isoInZone(at, 'Africa/Lagos')).toBe('2026-11-16T22:00:00+01:00')
     expect(isoInZone(at, 'Africa/Accra')).toBe('2026-11-16T21:00:00+00:00')
     for (const tz of ['Africa/Nairobi', 'Africa/Lagos', 'Africa/Dakar']) expect(new Date(isoInZone(at, tz))).toEqual(at)
+  })
+})
+
+describe('fdt and hm', () => {
+  it('is the day, short month and 24-hour time on the wall clock of the zone', () => {
+    const at = new Date('2026-11-13T23:42:10Z')
+    expect(fdt(at, 'Africa/Lagos')).toBe('14 Nov, 00:42')
+    expect(fdt(at, 'Africa/Nairobi')).toBe('14 Nov, 02:42')
+    expect(fdt(at, 'Africa/Accra')).toBe('13 Nov, 23:42')
+    expect(fdt(new Date('2026-09-03T08:05:00Z'), 'Africa/Lagos')).toBe('3 Sep, 09:05')
+  })
+  it('hm is the time alone', () => {
+    expect(hm(new Date('2026-11-13T23:00:00Z'), 'Africa/Lagos')).toBe('00:00')
+    expect(hm(new Date('2026-11-13T09:30:00Z'), 'Africa/Nairobi')).toBe('12:30')
   })
 })

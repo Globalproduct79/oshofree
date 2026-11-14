@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { previewOffers } from '@/app/app/(console)/campaigns/actions'
+import { ActivityBox } from '@/components/campaign/ActivityBox'
 import { ChangePanel } from '@/components/campaign/ChangePanel'
 import { HistoryList } from '@/components/campaign/HistoryList'
 import { OfferBox } from '@/components/campaign/OfferBox'
@@ -8,24 +9,42 @@ import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { SharingBox } from '@/components/campaign/SharingBox'
 import { BarChart14d, Box, Funnel, LinkButton, MetricCard, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
+import { campaignActivity, linesWanted } from '@/lib/activity'
 import { offerPreview } from '@/lib/campaign-card'
 import { campaignReport } from '@/lib/campaign-report'
 import { CAMPAIGN_COPY as C } from '@/lib/copy-report'
 import { db } from '@/lib/db'
+import { MARKETS } from '@/lib/markets'
 import { can, requireMember } from '@/lib/permissions'
 
 const HOME = '/app'
 
-// The campaign page (ADV §2): head and status line, the KPI row, impressions per day, the funnel and
-// Sharing on the left; Change without review, The offer and History on the right. A Viewer sees it
-// all without the controls that change anything (spec §6.2).
-export default async function CampaignPage({ params }: { params: Promise<{ id: string }> }) {
+type Search = { activity?: string | string[]; line?: string | string[] }
+
+// A line a link asks for is an activity key: a kind and an id.
+const lineParam = (v: Search['line']) => (typeof v === 'string' && /^[\w:-]{1,120}$/.test(v) ? v : null)
+
+// The campaign page (ADV §2): head and status line, the KPI row, impressions per day, the funnel,
+// Sharing and Recent activity on the left; Change without review, The offer and History on the right. A Viewer sees it
+// all without the controls that change anything (spec §6.2). ?activity= is how many activity lines to show (Show more
+// adds 30); ?line= lights one (Global's held rewards link to theirs).
+export default async function CampaignPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams?: Promise<Search>
+}) {
   const { id } = await params
+  const search = (await searchParams) ?? {}
   const { workspace: ws, role } = await requireMember('view')
   // Scoped here; everything below reads only a campaign this workspace owns.
   const c = await db.campaign.findFirst({ where: { id, workspaceId: ws.id } })
   if (!c) notFound()
-  const r = await campaignReport(c, ws, new Date())
+  const [r, activity] = await Promise.all([
+    campaignReport(c, ws, new Date()),
+    campaignActivity(c, { limit: linesWanted(search.activity), line: lineParam(search.line) }),
+  ])
   const canAct = can(role, 'campaigns')
   const running = c.status === 'live' || c.status === 'paused' ? c.status : null
   const { change } = r
@@ -69,6 +88,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             <Funnel rows={r.funnel.rows} base={r.funnel.base} />
           </Box>
           <SharingBox sharing={r.sharing} />
+          <ActivityBox campaignId={c.id} market={MARKETS[c.country].name} {...activity} />
         </div>
         <div>
           {/* Keyed by the stored values, so a save redraws the fields from what was applied. */}

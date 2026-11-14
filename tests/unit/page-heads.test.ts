@@ -148,7 +148,7 @@ const PAGES: Record<string, PageCase> = {
     head: { controls: ['Pause', 'See it on Phoenix', '← Campaigns'] },
   },
   '/app/campaigns/[id]/edit': { as: 'owner', render: (w) => render(EditOfferPage(params(w.campaignId))), head: { controls: ['Campaigns'] } },
-  '/app/sharing': { as: 'owner', render: () => render(SharingPage()), head: { controls: [] } },
+  '/app/sharing': { as: 'owner', render: () => render(SharingPage({})), head: { controls: [] } },
   '/app/rewards': { as: 'owner', render: () => render(RewardsPage()), head: { controls: ['New campaign'], primary: 'New campaign' } },
   '/app/billing': { as: 'owner', render: () => render(BillingPage(search)), head: { controls: ['Invoices'] } },
   '/app/invoices': { as: 'owner', render: () => render(InvoicesPage()), head: { controls: ['Billing & credit'] } },
@@ -347,7 +347,7 @@ describe('empty states', () => {
   it('Sharing and Rewards, before any campaign, say what is missing and link to New campaign', async () => {
     const w = await world({ empty: true })
     signIn(w.owner, w.ws.id)
-    const sharing = await render(SharingPage())
+    const sharing = await render(SharingPage({}))
     expect(text(sharing)).toContain('No shares yet. Shares start once a campaign is live on Phoenix.')
     expect(sharing).toMatch(/<a [^>]*href="\/app\/campaigns\/new"[^>]*>New campaign<\/a>/)
     const rewards = await render(RewardsPage())
@@ -358,14 +358,14 @@ describe('empty states', () => {
   it('Sharing and Rewards with a live campaign show it, not the empty line', async () => {
     const w = await world()
     signIn(w.owner, w.ws.id)
-    expect(text(await render(SharingPage()))).not.toContain('No shares yet.')
+    expect(text(await render(SharingPage({})))).not.toContain('No shares yet.')
     expect(text(await render(RewardsPage()))).not.toContain('No rewards yet.')
   })
 
   it('a Viewer gets the empty line without a link they cannot follow', async () => {
     const w = await world({ empty: true })
     signIn(await member(w, 'Viewer'), w.ws.id)
-    expect(await render(SharingPage())).not.toContain('href="/app/campaigns/new"')
+    expect(await render(SharingPage({}))).not.toContain('href="/app/campaigns/new"')
     expect(await render(RewardsPage())).not.toContain('href="/app/campaigns/new"')
   })
 

@@ -47,6 +47,13 @@ export const pct = (a: number, b: number): string => (b === 0 ? '0%' : ((a / b) 
 export const fd = (d: Date, tz: string): string =>
   new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: tz }).format(d)
 
+// The 24-hour time on the wall clock of `tz`: '09:05'.
+export const hm = (d: Date, tz: string): string =>
+  new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz }).format(d)
+
+// fd with the time, for an event: '14 Nov, 09:05' (en-GB's 'Sept' read as 'Sep').
+export const fdt = (d: Date, tz: string): string => `${fd(d, tz).replace(/\bSept\b/, 'Sep')}, ${hm(d, tz)}`
+
 // fd with the year, for a date that may be in another year: '3 Sep 2026' (en-GB's 'Sept' read as 'Sep').
 export const longDate = (d: Date, tz: string): string =>
   new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: tz })

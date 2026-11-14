@@ -55,3 +55,12 @@ it('makes the preview a full-screen sheet under 720 px, every tab in view, Close
   expect(css).toContain('.pv-stage{container-type:inline-size;min-width:0}')
   expect(css).toMatch(/@container \(max-width:259px\)\{\.pv-stage \.phone\{zoom:\.85\}\}/)
 })
+it("lights the activity line a link asked for, spaces Show more under a list, and draws a sharer as a row that opens", () => {
+  expect(css).toContain('.hist li.on{background:var(--phx2);color:var(--ink);border-radius:8px;padding-left:8px;padding-right:8px}')
+  expect(css).toContain('.box > .btns{margin-top:12px}')
+  for (const sel of ['.shr details{border-bottom:1px solid var(--line)}', '.shr summary{display:flex;flex-wrap:wrap', '.shr summary::-webkit-details-marker{display:none}',
+    '.shr details[open] > summary::before{content:"▾"}', '.shr .ph{font-family:ui-monospace', '.shr .v{margin-left:auto', '.shr details > .hist'])
+    expect(css).toContain(sel)
+  // Keyboard focus on a row shows the ring inside the box.
+  expect(css).toContain('.shr summary:focus-visible{outline-offset:-2px')
+})

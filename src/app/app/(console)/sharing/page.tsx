@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { SimulateDayButton } from '@/components/demo/SimulateDayButton'
 import { Box, DataTable, EstimatePanel, HBarList, MetricCard, Steps, TokenChip } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
+import { SharerList } from '@/components/sharing/SharerList'
+import { linesWanted, workspaceSharers } from '@/lib/activity'
 import { SHARING } from '@/lib/copy-sharing'
 import { db } from '@/lib/db'
 import { demoControlsOn } from '@/lib/demo/controls'
@@ -14,14 +16,18 @@ import { simulateDayAction } from '../campaigns/actions'
 const S = SHARING
 
 // Sharing (ADV §5): totals over every campaign of the workspace, how a share works, the
-// by-campaign table, where people share and the points issued. Until a campaign has been live on Phoenix the
-// table holds one line saying so, with New campaign for those who can make one.
-export default async function SharingPage() {
+// by-campaign table, the sharers (each opening to what their friends did, Prompt 8), where people share and the points
+// issued. Until a campaign has been live on Phoenix the table holds one line saying so, with New campaign for those who
+// can make one. ?sharers= is how many sharers to list (Show more adds 30).
+export default async function SharingPage({ searchParams }: { searchParams?: Promise<{ sharers?: string | string[] }> }) {
+  const search = (await searchParams) ?? {}
   const { user, workspace: ws, role } = await requireMember('view')
-  const [s, points, wentLive] = await Promise.all([
+  const limit = linesWanted(search.sharers)
+  const [s, points, wentLive, sharers] = await Promise.all([
     workspaceSharing(ws.id),
     pointsIssued(ws.id),
     db.campaign.count({ where: { workspaceId: ws.id, status: { in: ['live', 'paused', 'ended'] } } }),
+    workspaceSharers(ws.id, { limit }),
   ])
   const viral = (s.opens === 0 ? 0 : s.sOpens / s.opens).toFixed(2)
   const steps = [
@@ -98,6 +104,7 @@ export default async function SharingPage() {
               rowHref={(i) => `/app/campaigns/${s.byCampaign[i].id}`}
             />
           </Box>
+          <SharerList rows={sharers.rows} more={sharers.more} limit={limit} />
         </div>
         <div>
           <Box title={S.where.title} sub={S.where.sub}>

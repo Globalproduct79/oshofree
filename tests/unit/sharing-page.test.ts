@@ -37,8 +37,8 @@ async function setup(o: { pointsPerShare?: number } = {}) {
   return ws
 }
 
-async function page() {
-  const markup = renderToStaticMarkup(await SharingPage())
+async function page(search: { sharers?: string } = {}) {
+  const markup = renderToStaticMarkup(await SharingPage({ searchParams: Promise.resolve(search) }))
   return { markup, text: text(markup) }
 }
 
@@ -140,5 +140,66 @@ describe('Sharing page', () => {
     expect(markup).toContain('<span class="tok">share_claim</span>')
     expect(t).toContain('Where people share Tagged on the token, so you know which platform works.')
     expect(ws.id).toBeTruthy()
+  })
+})
+
+describe('Sharers (Prompt 8)', () => {
+  // Ada shared on WhatsApp; a friend opened and claimed (₦50 queued), left a number and passed it on by SMS.
+  async function chain(wsId: string) {
+    const phoenix = await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'h', isLive: true } })
+    const c = await mkCampaign(wsId, 'Buy 2 get 1', 'live', { rewardLocal: 50 })
+    const root = await db.shareLink.create({ data: { code: `L${next()}`, campaignId: c.id, channelId: phoenix.id, depth: 0, sharerType: 'Root' } })
+    const ada = await db.consumer.create({ data: { phone: '+2348031234567', country: 'NG' } })
+    const bayo = await db.consumer.create({ data: { phone: '+2348051112222', country: 'NG' } })
+    const mine = await db.shareLink.create({
+      data: { code: `L${next()}`, campaignId: c.id, channelId: phoenix.id, parentId: root.id, depth: 1, sharerType: 'Channel', consumerId: ada.id, sharerSessionId: 'anon-ada1', via: 'whatsapp', createdAt: at('2026-11-13T09:00:00Z') },
+    })
+    const ev = (type: 'Open' | 'Claim' | 'DetailsLeft', iso: string) =>
+      db.linkEvent.create({ data: { linkId: mine.id, type, visitorId: 'bayo-phone', ipHash: 'i', userAgent: 'u', at: at(iso) } })
+    await ev('Open', '2026-11-13T09:10:00Z')
+    const claim = await ev('Claim', '2026-11-13T09:12:00Z')
+    await ev('DetailsLeft', '2026-11-13T09:13:00Z')
+    await db.shareLink.create({
+      data: { code: `L${next()}`, campaignId: c.id, channelId: phoenix.id, parentId: mine.id, depth: 2, sharerType: 'Consumer', consumerId: bayo.id, sharerSessionId: 'bayo-phone', via: 'sms' },
+    })
+    const payout = await db.rewardPayout.create({
+      data: { campaignId: c.id, workspaceId: wsId, shareLinkId: mine.id, sharerConsumerId: ada.id, sharerSessionId: 'anon-ada1', claimEventKey: claim.id, amountLocal: 50, amountCents: 3, status: 'queued', createdAt: at('2026-11-13T09:12:00Z') },
+    })
+    return { claim, payout }
+  }
+
+  it('lists each sharer with what their friends did, and opens to the chain, for a Viewer too', async () => {
+    const ws = await setup()
+    await db.workspaceMember.updateMany({ data: { role: 'Viewer' } })
+    const { claim, payout } = await chain(ws.id)
+    const { markup, text: t } = await page()
+    expect(t).toContain("Sharers Each sharer, newest first. Open one to follow the chain")
+    expect(markup).toContain(
+      '<summary><span class="ph">+234 80• ••• 4567</span><span class="of">Buy 2 get 1 · shared via WhatsApp</span><span class="v">1 friend opened · 1 claimed · ₦50 queued</span></summary>',
+    )
+    expect(markup).toContain(`<li title="${claim.id} · ${payout.id}">A friend took claim code PHX-••••, ₦50 airtime queued · 13 Nov, 10:12</li>`)
+    expect(t).toContain('+234 80• ••• 2222, a friend, got a link of their own and shared it via SMS · 13 Nov, 10:13')
+    expect(t).toContain('A friend opened the offer · 13 Nov, 10:10')
+    expect(markup).toContain(
+      '<span class="ph">+234 80• ••• 2222</span><span class="of">Buy 2 get 1 · friend of +234 80• ••• 4567 · shared via SMS</span>',
+    )
+    expect(markup).not.toMatch(/8031234567|8051112222/)
+  })
+
+  it('says there are none yet, and pages by 30', async () => {
+    const ws = await setup()
+    expect((await page()).text).toContain('Sharers Each sharer')
+    expect((await page()).text).toContain('No sharers yet. They appear once someone shares one of your offers.')
+    const phoenix = await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'h', isLive: true } })
+    const c = await mkCampaign(ws.id, 'Buy 2 get 1', 'live')
+    await db.shareLink.createMany({
+      data: Array.from({ length: 31 }, (_, i) => ({ code: `L${next()}`, campaignId: c.id, channelId: phoenix.id, depth: 1, sharerType: 'Channel' as const, sharerSessionId: `anon-${i}`, via: 'sms' as const })),
+    })
+    const first = await page()
+    expect(first.markup.match(/<details>/g)).toHaveLength(30)
+    expect(first.markup).toMatch(/<a class="btn g s" href="\/app\/sharing\?sharers=60"[^>]*>Show more<\/a>/)
+    const all = await page({ sharers: '60' })
+    expect(all.markup.match(/<details>/g)).toHaveLength(31)
+    expect(all.markup).not.toContain('Show more')
   })
 })

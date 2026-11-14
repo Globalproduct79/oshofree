@@ -87,8 +87,8 @@ const charge = (workspaceId: string, campaignId: string, kind: 'delivery' | 'rew
 const text = (markup: string) =>
   markup.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').replace(/&#x27;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"')
 
-async function page(id: string) {
-  const markup = renderToStaticMarkup(await CampaignPage({ params: Promise.resolve({ id }) }))
+async function page(id: string, search?: Record<string, string>) {
+  const markup = renderToStaticMarkup(await CampaignPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve(search ?? {}) }))
   return { markup, text: text(markup) }
 }
 
@@ -680,5 +680,70 @@ describe('History', () => {
     const { markup } = await page(c.id)
     const box = markup.match(/<h3>History<\/h3>(.*?)<\/div><\/div>/)?.[1] ?? ''
     expect(text(box).trim()).toBe('No decisions yet.')
+  })
+})
+
+describe('Recent activity', () => {
+  // A Phoenix sharer with no number shares on WhatsApp; a friend opens and claims; the payout is held.
+  async function journey(role: Role = 'Owner') {
+    const { ws, phoenix } = await setup(role)
+    const c = await mkCampaign(ws.id, 'live')
+    const root = await db.shareLink.create({ data: { code: `R${next()}`, campaignId: c.id, channelId: phoenix.id, depth: 0, sharerType: 'Root' } })
+    const link = await db.shareLink.create({
+      data: { code: `L${next()}`, campaignId: c.id, channelId: phoenix.id, parentId: root.id, depth: 1, sharerType: 'Channel', sharerSessionId: 'anon-77ab', via: 'whatsapp', createdAt: at('2026-11-13T09:00:00Z') },
+    })
+    await db.linkEvent.create({ data: { linkId: link.id, type: 'Open', visitorId: 'f1', ipHash: 'i', userAgent: 'u', at: at('2026-11-13T09:10:00Z') } })
+    const claim = await db.linkEvent.create({ data: { linkId: link.id, type: 'Claim', visitorId: 'f1', ipHash: 'i', userAgent: 'u', at: at('2026-11-13T09:12:00Z') } })
+    const held = await db.rewardPayout.create({
+      data: { campaignId: c.id, workspaceId: ws.id, shareLinkId: link.id, sharerSessionId: 'anon-77ab', claimEventKey: claim.id, amountLocal: 50, amountCents: 3, status: 'held', reason: 'no_phone', createdAt: at('2026-11-13T09:12:00Z') },
+    })
+    clock('2026-11-14T08:00:00Z')
+    return { ws, phoenix, c, held }
+  }
+  const activity = (markup: string) => markup.match(/<div class="box" id="activity">(.*?)<\/div>(?:<\/div>|<div class="box")/)?.[1] ?? ''
+
+  it('is on the page for a Viewer too: every event, newest first, in the market\'s time, ids as tooltips', async () => {
+    const { c, held } = await journey('Viewer')
+    const { markup, text: t } = await page(c.id)
+    expect(t).toContain('Recent activity Every event on this campaign, newest first, in Nigeria time. Hover a line for its record id.')
+    expect(text(activity(markup)).trim()).toContain(
+      [
+        '₦50 airtime for Phoenix user ••77ab held — No phone number · 13 Nov, 10:12',
+        'A friend of Phoenix user ••77ab took claim code PHX-•••• · 13 Nov, 10:12',
+        'A friend of Phoenix user ••77ab opened the offer · 13 Nov, 10:10',
+        'Phoenix user ••77ab shared via WhatsApp · 13 Nov, 10:00',
+      ].join(' '),
+    )
+    expect(markup).toContain(`<li id="act-reward-${held.id}" title="${held.id}">`)
+  })
+
+  it('shows 30 lines, then 30 more for each Show more', async () => {
+    const { c, phoenix } = await journey()
+    await db.channelEvent.createMany({
+      data: Array.from({ length: 70 }, (_, i) => ({ campaignId: c.id, channelId: phoenix.id, type: 'Open' as const, sessionId: `s${i}`, at: new Date(Date.UTC(2026, 10, 14, 6, i % 60, Math.floor(i / 60))), dedupeKey: `o${i}` })),
+    })
+    const first = activity((await page(c.id)).markup)
+    expect(first.match(/<li /g)).toHaveLength(30)
+    expect(first).toMatch(/<a class="btn g s" href="\/app\/campaigns\/[^"?]+\?activity=60"/)
+    const second = activity((await page(c.id, { activity: '60' })).markup)
+    expect(second.match(/<li /g)).toHaveLength(60)
+    expect(second).toContain('?activity=90')
+    const all = activity((await page(c.id, { activity: '90' })).markup)
+    expect(all.match(/<li /g)).toHaveLength(74)
+    expect(all).not.toContain('Show more')
+  })
+
+  it('lights the line a held reward links to, a page down if need be', async () => {
+    const { c, phoenix, held } = await journey()
+    await db.channelEvent.createMany({
+      data: Array.from({ length: 40 }, (_, i) => ({ campaignId: c.id, channelId: phoenix.id, type: 'Open' as const, sessionId: `s${i}`, at: new Date(Date.UTC(2026, 10, 14, 6, i)), dedupeKey: `o${i}` })),
+    })
+    const box = activity((await page(c.id, { line: `reward-${held.id}` })).markup)
+    expect(box.match(/<li /g)).toHaveLength(44)
+    expect(box).toContain(`<li id="act-reward-${held.id}" title="${held.id}" class="on" aria-current="true">`)
+    // A malformed line is ignored, not looked up.
+    const plain = activity((await page(c.id, { line: "x' OR 1=1" })).markup)
+    expect(plain.match(/<li /g)).toHaveLength(30)
+    expect(plain).not.toContain('class="on"')
   })
 })

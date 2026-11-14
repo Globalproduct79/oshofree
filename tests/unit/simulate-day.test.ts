@@ -320,7 +320,7 @@ describe('simulateDayAction', { timeout: 60_000 }, () => {
 describe('the Simulate a day button', { timeout: 30_000 }, () => {
   const BUTTON = '>Simulate a day</button>'
   const home = async () => renderToStaticMarkup(await HomePage({ searchParams: Promise.resolve({}) }))
-  const sharing = async () => renderToStaticMarkup(await SharingPage())
+  const sharing = async () => renderToStaticMarkup(await SharingPage({}))
   const review = async () => renderToStaticMarkup(await ReviewPage())
 
   it('shows on Campaigns home and Sharing for Global with DEMO_CONTROLS, and for no one else', async () => {

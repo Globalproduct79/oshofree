@@ -223,3 +223,16 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
 @container (max-width:259px){.pv-stage .phone{zoom:.85}}
 @container (max-width:221px){.pv-stage .phone{zoom:.7}}
 @media(max-width:720px){.modal .in.sheet{width:100%;height:100%;max-height:none;border-radius:0;padding:18px 16px}.tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:12px 0 16px}.tab{padding:6px 8px;font-size:12px}.tab i{font-size:10px}.pv-side{order:-1}.pv-side .ex{display:none}}
+/* Recent activity and Sharers (Prompt 8): the activity line a link from Global's held rewards asked for is lit; Show more
+   sits under its list. A sharer is one ruled row (who, campaign and what they shared on, then their friends' counts) that
+   opens to the chain behind it, indented under the row; its ring stays inside the box. */
+.hist li.on{background:var(--phx2);color:var(--ink);border-radius:8px;padding-left:8px;padding-right:8px}
+.box > .btns{margin-top:12px}
+.shr details{border-bottom:1px solid var(--line)}.shr details:last-child{border:0}
+.shr summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;padding:10px 0;font-size:13px;cursor:pointer;list-style:none}
+.shr summary::-webkit-details-marker{display:none}
+.shr summary::before{content:"▸";color:var(--ink3);width:10px}.shr details[open] > summary::before{content:"▾"}
+.shr summary:focus-visible{outline-offset:-2px;border-radius:8px}
+.shr .ph{font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--ink)}.shr .of{color:var(--ink3)}
+.shr .v{margin-left:auto;font-weight:600;color:var(--ink2)}
+.shr details > .hist,.shr details > .hist-none{margin:0 0 10px 20px}
