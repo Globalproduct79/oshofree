@@ -14,6 +14,13 @@ export const PEOPLE = {
   alreadyMember: 'Already a member',
   copyLink: 'Copy invite link',
   linkCopied: 'Invite link copied',
+  // When the browser refuses the clipboard: the link is shown in a modal, never in a toast (it is a credential).
+  linkTitle: 'Invite link',
+  linkBody: 'Your browser blocked copying. Select the link and copy it, then send it to them.',
+  linkLabel: 'Link',
+  copy: 'Copy',
+  done: 'Done',
+  copyFailed: 'Copy the link above before closing.',
   revoke: 'Revoke',
   remove: 'Remove',
   invited: (role: string) => `Invited · ${role}`,

@@ -1,6 +1,9 @@
+import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { copyInviteLink, InviteLinkModal } from '@/app/app/(console)/people/InviteLink'
 import PeoplePage from '@/app/app/(console)/people/page'
+import { getToast, takeToast } from '@/components/shell/toast-store'
 import { changeRoleAction, inviteAction, removeMemberAction, revokeInviteAction } from '@/app/app/(console)/people/actions'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
@@ -102,5 +105,39 @@ describe('people actions', () => {
     expect(html).not.toContain('Revoke')
     expect(html).not.toContain('>Remove<')
     expect(html).not.toContain('Send invite')
+  })
+})
+
+// An invite link is a bearer credential: a toast outlives the page that raised it, so the link never goes in one.
+describe('copying an invite link', () => {
+  const url = 'http://localhost:3101/invite/c0ffeec0ffeec0ffeec0ffeec0ffeeab'
+  const refused = async () => {
+    throw new Error('NotAllowedError')
+  }
+
+  it('says it was copied, without the link', async () => {
+    takeToast()
+    const written: string[] = []
+    const shown: string[] = []
+    await copyInviteLink(url, (u) => shown.push(u), async (t) => void written.push(t))
+    expect(written).toEqual([url])
+    expect(shown).toEqual([])
+    expect(takeToast()?.message).toBe('Invite link copied')
+  })
+
+  it('when the browser refuses, shows the link in a read-only field with Copy and toasts nothing', async () => {
+    takeToast()
+    const shown: string[] = []
+    await copyInviteLink(url, (u) => shown.push(u), refused)
+    expect(shown).toEqual([url])
+    expect(getToast()).toBeNull()
+
+    const html = renderToStaticMarkup(createElement(InviteLinkModal, { url, onClose: () => {} }))
+    expect(html).toContain('role="dialog"')
+    const field = html.match(/<input[^>]*>/)?.[0] ?? ''
+    expect(field).toMatch(/readonly=""/i)
+    expect(field).toContain(`value="${url}"`)
+    expect(html).toMatch(/<button[^>]*>Copy<\/button>/)
+    expect(renderToStaticMarkup(createElement(InviteLinkModal, { url: null, onClose: () => {} }))).toBe('')
   })
 })

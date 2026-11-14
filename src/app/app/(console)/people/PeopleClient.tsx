@@ -13,6 +13,7 @@ import {
   removeMemberAction,
   revokeInviteAction,
 } from "./actions";
+import { copyInviteLink, InviteLinkModal } from "./InviteLink";
 
 type Role = "Owner" | "Manager" | "Viewer";
 type Member = {
@@ -54,6 +55,8 @@ export function PeopleClient({
   const [busy, start] = useTransition();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("Manager");
+  // The invite link the clipboard refused, shown in a modal (never a toast: the link is a credential).
+  const [shownUrl, setShownUrl] = useState<string | null>(null);
 
   const send = () =>
     start(async () => {
@@ -85,14 +88,7 @@ export function PeopleClient({
       await revokeInviteAction(id);
       router.refresh();
     });
-  const copy = async (url: string) => {
-    try {
-      await navigator.clipboard.writeText(url);
-      toast(PEOPLE.linkCopied);
-    } catch {
-      toast(url);
-    }
-  };
+  const copy = (url: string) => copyInviteLink(url, setShownUrl);
 
   return (
     <div className="two">
@@ -192,6 +188,7 @@ export function PeopleClient({
         )}
         {children}
       </div>
+      <InviteLinkModal url={shownUrl} onClose={() => setShownUrl(null)} />
     </div>
   );
 }
