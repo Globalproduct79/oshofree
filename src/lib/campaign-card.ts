@@ -1,7 +1,9 @@
 import 'server-only'
 import type { Campaign } from '@prisma/client'
 import type { OfferCardProps } from '@/components/campaign/OfferCard'
-import type { PreviewOffer } from '@/lib/preview-merge'
+import { PREVIEW_CODE } from '@/lib/landing/preview'
+import { linkUrl } from '@/lib/links'
+import type { PreviewCampaign, PreviewOffer } from '@/lib/preview-merge'
 import { imageUrl } from '@/lib/storage'
 
 // A stored campaign as its Offers-wall card, with its id so the Phoenix preview can find it among the live offers.
@@ -33,5 +35,21 @@ export function previewOffer(c: Campaign): PreviewOffer {
       video: c.creativeVideoKey ? imageUrl(c.creativeVideoKey) : null,
       color: c.tileColor,
     },
+  }
+}
+
+// The sample link the preview's share sheet holds: a sharer's link in shape, opening only the preview's refusal.
+export const sampleShareLink = () => linkUrl(PREVIEW_CODE)
+
+// A stored campaign as every tab of the preview draws it (Prompt 7): the card, its page and its share sheet.
+export function offerPreview(c: Campaign): PreviewCampaign {
+  return {
+    ...previewOffer(c),
+    description: c.description,
+    rewardLabel: c.shareRewardLabel,
+    redeemMethod: c.redeemMethod,
+    endsAt: c.endsAt.toISOString(),
+    country: c.country,
+    sampleLink: sampleShareLink(),
   }
 }

@@ -80,6 +80,9 @@ export const COPY = {
     error: 'Something went wrong on our side. Try again in a minute.',
     phoneErrorNG: 'Enter a Nigerian mobile number, like 0803 123 4567.',
     phoneError: (country: string) => `Enter a mobile number for ${country}, like +254 712 345 678`,
+    // Ours (Prompt 7): the console's preview of this page, and what a preview link answers.
+    preview: 'Preview — nothing is recorded',
+    previewOnly: 'This is a preview link. Nothing was counted, and no code or link was made.',
   },
   wall: {
     note: "This is OshoFree's stand-in for the Phoenix Offers wall. Every tap here goes through the same API Phoenix will call.",

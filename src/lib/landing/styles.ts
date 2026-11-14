@@ -34,3 +34,10 @@ export const landingCss = [
   `.status{margin-top:32px;font-size:17px;text-align:center;color:${t.ink2}}`,
   '.status .brand{margin-top:0}',
 ].join('')
+
+// Added to a preview only (Prompt 7), so the real page's stylesheet is unchanged: the line saying nothing is recorded,
+// and a control that does nothing says so to the pointer.
+export const previewCss = [
+  `.pv{margin:0 0 16px;padding:8px 12px;border:1px dashed ${t.accentLine};border-radius:${t.radius};background:${t.accentSoft};color:${t.bannerText};font-size:13px;font-weight:600;text-align:center}`,
+  'button:disabled,input:disabled,a[aria-disabled]{cursor:not-allowed}',
+].join('')

@@ -1,3 +1,5 @@
+import type { Country } from '@/lib/markets'
+
 // No database here: the Phoenix preview imports this in the browser.
 
 export type PreviewPlacement = 'card' | 'featured' | 'video' | 'splash'
@@ -11,6 +13,19 @@ export type PreviewOffer = {
   placement: PreviewPlacement
   ageGated: boolean
   creative: { image: string | null; video: string | null; color: string | null }
+}
+
+// The campaign being previewed, as every tab of the preview draws it (Prompt 7): its card fields, and what its landing
+// page and share sheet print. All of it is the campaign's own; only the sample link stands in for a sharer's link.
+export type PreviewCampaign = PreviewOffer & {
+  description: string
+  rewardLabel: string
+  redeemMethod: 'code' | 'link'
+  // The flight's exclusive end, as an ISO instant; the pages print the day before it.
+  endsAt: string
+  country: Country
+  // A link of the shape a sharer gets, which opens nothing (/o/preview).
+  sampleLink: string
 }
 
 const SLOT = new Set<PreviewPlacement>(['featured', 'video', 'splash'])

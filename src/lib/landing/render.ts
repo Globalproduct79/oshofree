@@ -1,13 +1,14 @@
 import { COPY } from '@/lib/copy'
 import type { ShareTargets } from '@/lib/landing/share-targets'
-import { landingCss } from '@/lib/landing/styles'
+import { landingCss, previewCss } from '@/lib/landing/styles'
 import { tokens } from '@/lib/tokens'
 
 // Plain template strings, not React: Next refuses react-dom/server inside a route handler.
 // Every value that came from a person goes through esc(); the page carries no script at all.
 
 export type LandingView = {
-  state: 'offer' | 'code' | 'shared' | 'ended' | 'error'
+  // 'preview' is what a preview link (/o/preview) answers: nothing to show, nothing recorded.
+  state: 'offer' | 'code' | 'shared' | 'ended' | 'error' | 'preview'
   code: string
   brand: string
   headline: string
@@ -21,6 +22,8 @@ export type LandingView = {
   myUrl?: string
   shareTargets?: ShareTargets
   error?: string
+  // The console's preview (Prompt 7): the same page with a line saying nothing is recorded, and every control inert.
+  preview?: boolean
 }
 
 const L = COPY.landing
@@ -50,11 +53,14 @@ function art(v: LandingView) {
 
 const reward = (label: string) => `<p class="reward">${GIFT}${esc(label)}</p>`
 
+// In a preview every control stays as it is drawn but does nothing.
+const inert = (v: LandingView) => (v.preview ? ' disabled' : '')
+
 function claim(v: LandingView) {
   if (v.state === 'code' && v.claimCode)
     return `<p class="code"><small>${esc(L.yourCode)}</small>${esc(v.claimCode)}</p>`
   const label = v.redeemMethod === 'code' ? L.showCode : L.openOffer
-  return `<form method="post" action="/o/${esc(v.code)}/claim"><button class="btn primary">${esc(label)}</button></form>`
+  return `<form method="post" action="/o/${esc(v.code)}/claim"><button class="btn primary"${inert(v)}>${esc(label)}</button></form>`
 }
 
 function detailsForm(v: LandingView) {
@@ -63,15 +69,18 @@ function detailsForm(v: LandingView) {
     `<form method="post" action="/o/${esc(v.code)}/details">`,
     v.error ? `<p class="error" role="alert">${esc(v.error)}</p>` : '',
     `<label for="name">${esc(L.nameLabel)}</label>`,
-    '<input id="name" name="name" autocomplete="name" maxlength="80">',
+    `<input id="name" name="name" autocomplete="name" maxlength="80"${inert(v)}>`,
     `<label for="phone">${esc(L.phoneLabel)}</label>`,
-    '<input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="20" required>',
-    `<button class="btn secondary">${esc(L.getLink)}</button></form>`,
+    `<input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="20" required${inert(v)}>`,
+    `<button class="btn secondary"${inert(v)}>${esc(L.getLink)}</button></form>`,
   ].join('')
 }
 
-function yourLink(url: string, t: ShareTargets) {
-  const button = (href: string, label: string) => `<a class="btn secondary" href="${esc(href)}">${esc(label)}</a>`
+function yourLink(url: string, t: ShareTargets, preview?: boolean) {
+  const button = (href: string, label: string) =>
+    preview
+      ? `<a class="btn secondary" aria-disabled="true">${esc(label)}</a>`
+      : `<a class="btn secondary" href="${esc(href)}">${esc(label)}</a>`
   return [
     `<h3>${esc(L.yourLink)}</h3>`,
     `<div class="stack">${button(t.whatsapp, L.whatsapp)}${button(t.sms, L.sms)}${button(t.x, L.x)}</div>`,
@@ -81,7 +90,7 @@ function yourLink(url: string, t: ShareTargets) {
 }
 
 function share(v: LandingView) {
-  const mine = v.state === 'shared' && v.myUrl && v.shareTargets ? yourLink(v.myUrl, v.shareTargets) : detailsForm(v)
+  const mine = v.state === 'shared' && v.myUrl && v.shareTargets ? yourLink(v.myUrl, v.shareTargets, v.preview) : detailsForm(v)
   return `<section><h2>${esc(L.shareTitle)}</h2>${reward(v.rewardLabel)}${mine}</section>`
 }
 
@@ -98,23 +107,27 @@ function offer(v: LandingView) {
   ].join('')
 }
 
-function status(v: LandingView) {
+const STATUS: Partial<Record<LandingView['state'], string>> = { ended: L.ended, error: L.error, preview: L.previewOnly }
+
+function status(v: LandingView, said: string) {
   const brand = v.brand ? `<p class="brand">${esc(v.brand)}</p>` : ''
-  return `<div class="status">${brand}<p>${esc(v.state === 'ended' ? L.ended : L.error)}</p></div>`
+  return `<div class="status">${brand}<p>${esc(said)}</p></div>`
 }
 
 function title(v: LandingView) {
-  if (v.state !== 'ended' && v.state !== 'error') return L.title(v.brand, v.headline)
-  const said = v.state === 'ended' ? L.ended : L.error
+  const said = STATUS[v.state]
+  if (said === undefined) return L.title(v.brand, v.headline)
   return v.brand ? L.title(v.brand, said) : said
 }
 
 export function renderLanding(v: LandingView): string {
-  const body = v.state === 'ended' || v.state === 'error' ? status(v) : offer(v)
+  const said = STATUS[v.state]
+  const body = said === undefined ? offer(v) : status(v, said)
+  const note = v.preview ? `<p class="pv" role="note">${esc(L.preview)}</p>` : ''
   return (
     '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">' +
-    `<title>${esc(title(v))}</title><style>${landingCss}</style></head>` +
-    `<body><main>${body}</main></body></html>`
+    `<title>${esc(title(v))}</title><style>${landingCss}${v.preview ? previewCss : ''}</style></head>` +
+    `<body><main>${note}${body}</main></body></html>`
   )
 }
