@@ -126,3 +126,8 @@ label.f{display:block;font-size:13px;color:var(--ink2);font-weight:600}label.f i
 .st-declined{background:var(--red2);color:var(--red)}
 /* A campaign card that is a link keeps the card's ink text, not the link blue. */
 a.cc{display:block;color:var(--ink)}
+/* The form's card preview is not a link: no lift (ADV §3). A video creative previews like an image.
+   A locked field (Link for a code offer, a running campaign's money and timing) reads as locked. */
+label.f input:disabled,label.f select:disabled,label.f textarea:disabled{background:var(--bg);color:var(--ink3)}
+.cc[data-static]:hover{transform:none;box-shadow:none}
+.drop video{max-height:90px;border-radius:8px;display:block;margin:0 auto 6px}

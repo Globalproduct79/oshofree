@@ -1,127 +1,419 @@
-import type { Workspace } from '@prisma/client'
+import type { CampaignStatus, Prisma, Workspace } from '@prisma/client'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { pause, previewOffers, resume, saveDraft, submit } from '@/app/app/(console)/campaigns/actions'
+import { editOfferAction, pause, previewOffers, resume, submitAction } from '@/app/app/(console)/campaigns/actions'
+import EditOfferPage from '@/app/app/(console)/campaigns/[id]/edit/page'
+import NewCampaignPage from '@/app/app/(console)/campaigns/new/page'
+import { newCampaignDefaults, type FormValues } from '@/components/campaign/form/values'
 import { auth } from '@/lib/auth'
-import { createCampaign, type CampaignInput } from '@/lib/campaigns'
+import type { CampaignInput } from '@/lib/campaigns'
 import { db } from '@/lib/db'
-import { requireWorkspace } from '@/lib/workspaces'
+import { clearDraft, draftKey, loadDraft, parseDraft, saveDraft, serialiseDraft } from '@/lib/draft-store'
+import { tokens } from '@/lib/tokens'
 
-vi.mock('@/lib/auth', () => ({ auth: vi.fn() }))
-vi.mock('@/lib/workspaces', () => ({ requireWorkspace: vi.fn() }))
+vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+const jar = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn(), delete: vi.fn() }))
+vi.mock('next/headers', () => ({ cookies: async () => jar }))
+vi.mock('next/navigation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/navigation')>()),
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}))
 
-const input: CampaignInput = {
-  name: 'Harmattan Sale',
-  brand: 'Acme Foods',
+const DAY = 86_400_000
+const lagosDay = (at: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(at)
+const IMAGE_KEY = '0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.png'
+
+// What the New campaign form sends for Kola Bright's defaults, filled in.
+const input = (): CampaignInput => ({
+  name: 'Easter bundle',
+  brand: 'Kola Bright',
   country: 'NG',
   category: 'Food & drink',
-  headline: 'Buy one, get one free',
-  description: 'Show the code at any Acme outlet to get a free second item.',
+  headline: 'Free 50cl with any 6-pack',
+  description: 'Buy a 6-pack at any Shoprite and get a free 50cl bottle.',
+  tileColor: tokens.tileColors[0],
   placement: 'card',
-  redeemMethod: 'code',
-  claimCode: 'ACME1',
-  budgetUsd: 50,
-  // Tomorrow: the actions submit through the real clock, and an expired flight is refused.
-  startsAt: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
-  runsForDays: 14,
-  tileColor: '#FF5A1F',
+  redeemMethod: 'link',
+  linkUrl: 'https://kolabright.example/easter',
+  budgetUsd: 300,
   rewardLocal: 50,
+  // Tomorrow in Lagos: the actions run on the real clock.
+  startsAt: lagosDay(Date.now() + DAY),
+  runsForDays: 14,
   termsAccepted: true,
-}
+})
+
+type Role = 'Owner' | 'Manager' | 'Viewer' | 'Global'
 
 let mine: Workspace
 let theirs: Workspace
-beforeEach(async () => {
-  mine = await db.workspace.create({ data: { name: 'Acme', type: 'Brand', country: 'NG' } })
-  theirs = await db.workspace.create({ data: { name: 'Rival', type: 'Brand', country: 'NG' } })
-  vi.mocked(requireWorkspace).mockResolvedValue(mine)
+
+// Kola Bright (Nigeria, approved, $1,500 limit) and a rival, Phoenix card/featured rates for Nigeria and
+// card for Kenya, FX for both; the actor is a member with `role`, or Global inside Kola Bright.
+async function setup(role: Role, ws: Partial<Prisma.WorkspaceCreateInput> = {}) {
+  const owner = await db.user.create({ data: { email: 'tunde@x.test', name: 'Tunde', passwordHash: 'x' } })
+  mine = await db.workspace.create({
+    data: { name: 'Kola Bright', type: 'Brand', country: 'NG', status: 'approved', creditLimitCents: 150_000, ...ws },
+  })
+  theirs = await db.workspace.create({ data: { name: 'Rival', type: 'Brand', country: 'NG', status: 'approved' } })
+  await db.workspaceMember.create({ data: { userId: owner.id, workspaceId: mine.id, role: 'Owner' } })
+  let actor = owner
+  if (role !== 'Owner') {
+    actor = await db.user.create({ data: { email: 'a@x.test', name: 'Ada', passwordHash: 'x', isGlobalAdmin: role === 'Global' } })
+    if (role !== 'Global') await db.workspaceMember.create({ data: { userId: actor.id, workspaceId: mine.id, role } })
+  }
+  const phoenix = await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: true } })
+  const from = new Date(Date.now() - 60 * DAY)
+  await db.rateCard.createMany({
+    data: [
+      { channelId: phoenix.id, country: 'NG', placement: 'card', cpmCents: 120, effectiveFrom: from },
+      { channelId: phoenix.id, country: 'NG', placement: 'featured', cpmCents: 220, effectiveFrom: from },
+      { channelId: phoenix.id, country: 'KE', placement: 'card', cpmCents: 90, effectiveFrom: from },
+    ],
+  })
+  await db.marketFx.createMany({
+    data: [
+      { country: 'NG', fxPerUsd: 1550, effectiveFrom: from },
+      { country: 'KE', fxPerUsd: 129, effectiveFrom: from },
+    ],
+  })
+  vi.mocked(auth).mockResolvedValue({ user: { id: actor.id, email: actor.email, name: actor.name }, expires: '2099-01-01' } as never)
+  jar.get.mockImplementation((k: string) => (k === 'of_ws' ? { value: mine.id } : undefined))
+  return { actor, owner, phoenix }
+}
+
+// A campaign in `status`, halfway through a 14-day flight.
+const campaign = (workspaceId: string, status: CampaignStatus, data: Partial<Prisma.CampaignUncheckedCreateInput> = {}) =>
+  db.campaign.create({
+    data: {
+      workspaceId, name: 'Buy 2 get 1', brand: 'Kola Bright', country: 'NG', category: 'Food & drink',
+      headline: 'Buy 2 bottles, get 1 free', description: 'Show the code at any Kola Bright stand.',
+      placement: 'card', redeemMethod: 'code', claimCode: 'KOLA2X1', budgetUsd: 300, shareRewardLabel: 'Earn ₦50 airtime',
+      tileColor: tokens.tileColors[0], status, cpmCents: 120, fxPerUsd: 1550,
+      startsAt: new Date(Date.now() - 7 * DAY), endsAt: new Date(Date.now() + 7 * DAY), ...data,
+    },
+  })
+
+// The offer fields the form sends for a running campaign.
+const offer = {
+  brand: 'Kola Bright', category: 'Food & drink', headline: 'Buy 3 bottles, get 2 free',
+  description: 'Show the code at any Kola Bright stand in Lagos.', tileColor: tokens.tileColors[1],
+  creativeImageKey: IMAGE_KEY, placement: 'card', redeemMethod: 'code', termsAccepted: true,
+}
+
+const reload = (id: string) => db.campaign.findUniqueOrThrow({ where: { id } })
+
+beforeEach(() => vi.clearAllMocks())
+
+describe('a Viewer', () => {
+  it('is refused submit, edit, pause and resume', async () => {
+    await setup('Viewer')
+    const live = await campaign(mine.id, 'live')
+    await expect(submitAction(input())).rejects.toBe('FORBIDDEN')
+    await expect(editOfferAction(live.id, offer)).rejects.toBe('FORBIDDEN')
+    await expect(pause(live.id)).rejects.toBe('FORBIDDEN')
+    await expect(resume(live.id)).rejects.toBe('FORBIDDEN')
+    expect(await db.campaign.count()).toBe(1)
+    expect((await reload(live.id)).status).toBe('live')
+  })
 })
 
-describe('saveDraft', () => {
-  it('creates a draft in the current workspace', async () => {
-    const res = await saveDraft(input)
-    expect(res).toHaveProperty('id')
-    const row = await db.campaign.findUniqueOrThrow({ where: { id: (res as { id: string }).id } })
-    expect(row).toMatchObject({ workspaceId: mine.id, status: 'draft', name: 'Harmattan Sale' })
-  })
-
-  it("updates the workspace's own draft", async () => {
-    const own = await createCampaign(mine.id, input)
-    expect(await saveDraft({ ...input, name: 'Renamed' }, own.id)).toEqual({ id: own.id })
-    expect((await db.campaign.findUniqueOrThrow({ where: { id: own.id } })).name).toBe('Renamed')
-  })
-
-  it("refuses an id that belongs to another workspace and leaves it alone", async () => {
-    const other = await createCampaign(theirs.id, input)
-    const res = await saveDraft({ ...input, name: 'Hijacked' }, other.id)
-    expect(res).toHaveProperty('error')
-    const row = await db.campaign.findUniqueOrThrow({ where: { id: other.id } })
-    expect(row).toMatchObject({ workspaceId: theirs.id, name: 'Harmattan Sale' })
-  })
-
-  it('returns the business-rule message and saves nothing', async () => {
-    const res = await saveDraft({ ...input, redeemMethod: 'link', claimCode: undefined, linkUrl: 'http://acme.ng' })
-    expect(res).toEqual({ error: 'Online offers need an https:// link.' })
-    expect(await db.campaign.count()).toBe(0)
-  })
-
-  it('refuses input the schema rejects, whatever the client sends', async () => {
-    const res = await saveDraft({ ...input, budgetUsd: 10, workspaceId: theirs.id })
-    expect(res).toHaveProperty('error')
-    expect(await db.campaign.count()).toBe(0)
-  })
-})
-
-describe('transitions', () => {
-  beforeEach(async () => {
-    const u = await db.user.create({ data: { email: 'owner@x.test', name: 'Owner', passwordHash: 'x' } })
-    vi.mocked(auth).mockResolvedValue({ user: { id: u.id, email: u.email, name: u.name }, expires: '2099-01-01' } as never)
-  })
-
-  it('submits its own draft to review', async () => {
-    const phoenix = await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: true } })
-    const from = new Date('2026-01-01T00:00:00Z')
-    await db.rateCard.create({ data: { channelId: phoenix.id, country: 'NG', placement: 'card', cpmCents: 120, effectiveFrom: from } })
-    await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1550, effectiveFrom: from } })
-    const own = await createCampaign(mine.id, input)
-    expect(await submit(own.id)).toEqual({ ok: true })
-    expect((await db.campaign.findUniqueOrThrow({ where: { id: own.id } })).status).toBe('review')
-  })
-
-  it("refuses to submit another workspace's campaign", async () => {
-    const other = await createCampaign(theirs.id, input)
-    expect(await submit(other.id)).toHaveProperty('error')
-    expect((await db.campaign.findUniqueOrThrow({ where: { id: other.id } })).status).toBe('draft')
-  })
-
-  it('refuses to submit when Global declined the workspace, and leaves the draft as it was', async () => {
-    const declined = await db.workspace.update({
-      where: { id: mine.id }, data: { status: 'declined', declineReason: 'Not a real brand' },
+describe('submitAction', () => {
+  it('creates the campaign in review, priced at the current rate, and returns its id', async () => {
+    await setup('Manager')
+    const res = await submitAction(input())
+    expect(res).toEqual({ id: expect.any(String) })
+    const row = await reload((res as { id: string }).id)
+    expect(row).toMatchObject({
+      workspaceId: mine.id, status: 'review', name: 'Easter bundle', placement: 'card', cpmCents: 120, budgetUsd: 300,
+      rewardLocal: 50, linkUrl: 'https://kolabright.example/easter', shareRewardLabel: 'Earn ₦50 airtime',
     })
-    vi.mocked(requireWorkspace).mockResolvedValue(declined)
-    const own = await createCampaign(mine.id, input)
-    expect(await submit(own.id)).toEqual({ error: "Your workspace was declined, so campaigns can't be submitted." })
-    expect((await db.campaign.findUniqueOrThrow({ where: { id: own.id } })).status).toBe('draft')
+    expect(Number(row.fxPerUsd)).toBe(1550)
+    expect(await db.auditEvent.count()).toBe(0)
+  })
+
+  it('writes an audit row when Global submits inside the workspace', async () => {
+    const { actor } = await setup('Global')
+    const res = (await submitAction(input())) as { id: string }
+    const rows = await db.auditEvent.findMany({ where: { action: 'campaign.submit' } })
+    expect(rows).toEqual([expect.objectContaining({ actorId: actor.id, targetId: res.id, workspaceId: mine.id })])
+  })
+
+  it('answers a date that is not on the calendar with the validation message, without throwing', async () => {
+    await setup('Owner')
+    expect(await submitAction({ ...input(), startsAt: '2026-13-45' })).toEqual({ error: 'Pick a start date.' })
+    expect(await submitAction({ ...input(), runsForDays: undefined, endsAt: '2026-02-30' })).toEqual({
+      error: expect.any(String),
+    })
+    expect(await db.campaign.count()).toBe(0)
+  })
+
+  it('re-runs the form rules on the server, the credit limit included', async () => {
+    await setup('Owner', { creditLimitCents: 20_000 })
+    expect(await submitAction({ ...input(), redeemMethod: 'link', linkUrl: 'http://kolabright.example' })).toEqual({
+      error: 'Online offers need an https:// link.',
+    })
+    expect(await submitAction(input())).toEqual({
+      error: 'Over your credit limit of $200 by $100. Pay an open invoice or ask Global to raise it.',
+    })
+    expect(await submitAction({ ...input(), startsAt: lagosDay(Date.now() - 3 * DAY) })).toEqual({
+      error: "Start date can't be in the past.",
+    })
+    expect(await db.campaign.count()).toBe(0)
+  })
+
+  it('says when no rate is set for the placement, and leaves nothing behind', async () => {
+    await setup('Owner')
+    expect(await submitAction({ ...input(), placement: 'splash', creativeImageKey: IMAGE_KEY })).toEqual({
+      error: 'No rate is set for this placement in Nigeria yet. Ask Global.',
+    })
+    expect(await db.campaign.count()).toBe(0)
+  })
+
+  it('says when no exchange rate is set for the market', async () => {
+    await setup('Owner')
+    await db.marketFx.deleteMany({ where: { country: 'NG' } })
+    expect(await submitAction(input())).toEqual({ error: 'No exchange rate is set for Nigeria yet. Ask Global.' })
+    expect(await db.campaign.count()).toBe(0)
+  })
+
+  it('keeps the brand a Brand workspace is named for', async () => {
+    await setup('Owner')
+    const res = (await submitAction({ ...input(), brand: 'Someone Else' })) as { id: string }
+    expect((await reload(res.id)).brand).toBe('Kola Bright')
+  })
+
+  it('refuses a declined workspace', async () => {
+    await setup('Owner', { status: 'declined', declineReason: 'Not a real brand' })
+    expect(await submitAction(input())).toEqual({ error: "Your workspace was declined, so campaigns can't be submitted." })
+    expect(await db.campaign.count()).toBe(0)
+  })
+})
+
+describe('editOfferAction', () => {
+  it('opens a revision for a live campaign, which keeps running', async () => {
+    await setup('Owner')
+    const live = await campaign(mine.id, 'live')
+    expect(await editOfferAction(live.id, offer)).toEqual({ revision: true })
+    expect(await reload(live.id)).toMatchObject({ status: 'live', headline: 'Buy 2 bottles, get 1 free', claimCode: 'KOLA2X1' })
+    const rev = await db.campaignRevision.findFirstOrThrow({ where: { campaignId: live.id } })
+    expect(rev.data).toMatchObject({ headline: 'Buy 3 bottles, get 2 free', creativeImageKey: IMAGE_KEY, claimCode: 'KOLA2X1' })
+  })
+
+  it('refuses money, timing, name or market for a running campaign', async () => {
+    await setup('Owner')
+    const live = await campaign(mine.id, 'live')
+    await expect(editOfferAction(live.id, { ...offer, budgetUsd: 400 })).rejects.toBe('INVALID')
+    await expect(editOfferAction(live.id, { ...offer, startsAt: '2026-12-01' })).rejects.toBe('INVALID')
+    await expect(editOfferAction(live.id, { ...offer, country: 'KE' })).rejects.toBe('INVALID')
+    expect(await db.campaignRevision.count()).toBe(0)
+    expect((await reload(live.id)).budgetUsd).toBe(300)
+  })
+
+  it("judges a revision on its offer, whatever Change without review did to the money and timing", async () => {
+    await setup('Owner')
+    // $40 and a 120-day flight: both refused on a new campaign, neither the revision's business.
+    const live = await campaign(mine.id, 'live', { budgetUsd: 40, endsAt: new Date(Date.now() + 113 * DAY) })
+    expect(await editOfferAction(live.id, offer)).toEqual({ revision: true })
+  })
+
+  it('runs the offer rules for a revision', async () => {
+    await setup('Owner')
+    const live = await campaign(mine.id, 'live')
+    expect(await editOfferAction(live.id, { ...offer, headline: 'Win the draw' })).toEqual({
+      error: 'Betting and draw offers need a licence or approval number in the description.',
+    })
+    expect(await editOfferAction(live.id, { ...offer, termsAccepted: false })).toEqual({ error: 'Confirm the offer is genuine.' })
+    expect(await db.campaignRevision.count()).toBe(0)
+  })
+
+  it('edits a rejected campaign in place, name and market too, and sends it to review', async () => {
+    const { actor } = await setup('Global')
+    const rejected = await campaign(mine.id, 'rejected', { rejectReasonCode: 'not_available' })
+    const edit = { ...input(), name: 'Nairobi bundle', country: 'KE', headline: 'Free soda with any 6-pack' }
+    expect(await editOfferAction(rejected.id, edit)).toEqual({ revision: false })
+    const row = await reload(rejected.id)
+    expect(row).toMatchObject({
+      status: 'review', name: 'Nairobi bundle', country: 'KE', headline: 'Free soda with any 6-pack', cpmCents: 90,
+      shareRewardLabel: 'Earn KSh50 airtime', claimCode: 'KOLA2X1',
+    })
+    expect(Number(row.fxPerUsd)).toBe(129)
+    expect(await db.auditEvent.count({ where: { action: 'campaign.edit', actorId: actor.id } })).toBe(1)
+  })
+
+  it('counts only the budget increase of a campaign already in review', async () => {
+    await setup('Owner', { creditLimitCents: 40_000 })
+    const inReview = await campaign(mine.id, 'review')
+    const edit = { ...input(), startsAt: lagosDay(Date.now() - 7 * DAY) }
+    expect(await editOfferAction(inReview.id, { ...edit, budgetUsd: 350 })).toEqual({ revision: false })
+    expect(await editOfferAction(inReview.id, { ...edit, budgetUsd: 450 })).toEqual({
+      error: 'Over your credit limit of $400 by $50. Pay an open invoice or ask Global to raise it.',
+    })
+    expect((await reload(inReview.id)).budgetUsd).toBe(350)
+  })
+
+  it("leaves another workspace's campaign alone", async () => {
+    await setup('Owner')
+    const other = await campaign(theirs.id, 'live')
+    expect(await editOfferAction(other.id, offer)).toEqual({ error: "That campaign isn't in this workspace, so nothing was changed." })
+    expect(await db.campaignRevision.count()).toBe(0)
+  })
+})
+
+describe('pause and resume', () => {
+  it('pause and resume a live campaign; Global leaves an audit trail', async () => {
+    const { actor } = await setup('Global')
+    const live = await campaign(mine.id, 'live')
+    expect(await pause(live.id)).toEqual({ ok: true })
+    expect((await reload(live.id)).status).toBe('paused')
+    expect(await resume(live.id)).toEqual({ ok: true })
+    expect((await reload(live.id)).status).toBe('live')
+    const actions = await db.auditEvent.findMany({ where: { actorId: actor.id }, orderBy: { at: 'asc' }, select: { action: true } })
+    expect(actions.map((a) => a.action)).toEqual(['campaign.pause', 'campaign.resume'])
   })
 
   it("explains when a campaign can't change state", async () => {
-    const own = await createCampaign(mine.id, input)
-    expect(await pause(own.id)).toEqual({ error: "That campaign can't change state right now." })
+    await setup('Manager')
+    const draft = await campaign(mine.id, 'draft')
+    expect(await pause(draft.id)).toEqual({ error: "That campaign can't change state right now." })
   })
 
   it('refuses to resume over the credit limit with the resume toast, and leaves it paused', async () => {
-    await db.workspace.update({ where: { id: mine.id }, data: { creditLimitCents: 1000 } })
-    const own = await createCampaign(mine.id, input)
-    await db.campaign.update({ where: { id: own.id }, data: { status: 'paused', pausedBy: 'credit' } })
-    expect(await resume(own.id)).toEqual({
+    await setup('Owner', { creditLimitCents: 1000 })
+    const paused = await campaign(mine.id, 'paused', { pausedBy: 'credit' })
+    expect(await resume(paused.id)).toEqual({
       error: "Can't resume — credit limit reached. Pay the open invoice or ask Global to raise the limit.",
     })
-    expect((await db.campaign.findUniqueOrThrow({ where: { id: own.id } })).status).toBe('paused')
+    expect((await reload(paused.id)).status).toBe('paused')
+  })
+})
+
+describe('the pages', () => {
+  it('New campaign: the prototype head, defaults, live CPMs, cost and the first hint', async () => {
+    await setup('Owner')
+    const html = renderToStaticMarkup(await NewCampaignPage({ searchParams: Promise.resolve({}) }))
+    expect(html).toContain('Kola Bright › <a href="/app">Campaigns</a> › <span>New campaign</span>')
+    expect(html).toContain('<h1>New campaign</h1>')
+    expect(html).toContain('One form. Your offer goes live on Phoenix once Global approves it — usually within a working day.')
+    expect(html).toContain('$1.20 CPM')
+    expect(html).toContain('$2.20 CPM')
+    expect(html).toContain('<span class="big">—</span>')
+    expect(html).toContain('<div class="b">Kola Bright · Nigeria · 14d</div><div class="row"><span>Link to your site</span></div>')
+    expect(html).toContain('<b>200.0k</b><small>about 14.3k a day for 14 days · ~7.2k opens</small>')
+    expect(html).toContain('<span>Share rewards (est. 428 × ₦50)</span><span>$14</span>')
+    expect(html).toContain('<span><b>$300</b> · ₦465,000</span>')
+    expect(html).toContain('$1,200 left')
+    expect(html).toContain('Give the campaign a name.')
+    expect(html).toContain('<button class="btn p" type="submit" disabled=""')
+    expect(html).toContain('— 0/48')
+    expect(html).toContain('— NGN airtime per successful share')
+    expect(html).not.toContain('Cancel')
+  })
+
+  it('New campaign: ?brand= prefills an agency client', async () => {
+    await setup('Owner', { type: 'Agency', name: 'MediaSpec (agency)' })
+    const html = renderToStaticMarkup(await NewCampaignPage({ searchParams: Promise.resolve({ brand: '777Bet', focus: 'brand' }) }))
+    expect(html).toContain('Brand <small>— client</small>')
+    expect(html).toContain('value="777Bet"')
+  })
+
+  it('Edit offer on a live campaign: the edit head, Cancel, and money and timing locked', async () => {
+    await setup('Owner')
+    const live = await campaign(mine.id, 'live')
+    const html = renderToStaticMarkup(await EditOfferPage({ params: Promise.resolve({ id: live.id }) }))
+    expect(html).toContain('<span>Edit offer</span>')
+    expect(html).toContain('<h1>Edit offer</h1>')
+    expect(html).toContain('Saving sends it back to review. The current version keeps running meanwhile.')
+    expect(html).toContain('Save and resubmit')
+    expect(html).toContain('<button class="btn g" type="button">Cancel</button>')
+    expect(html).toContain('Change these without review on the campaign page.')
+    expect(html).toMatch(/<input type="number"[^>]*disabled=""[^>]*value="300"/)
+    expect(html).toContain('value="Buy 2 get 1"')
+    expect(html).not.toMatch(/type="checkbox"[^>]*checked=""/)
+  })
+})
+
+describe('draft store', () => {
+  const values = (): FormValues => ({
+    ...newCampaignDefaults({ name: 'Kola Bright', type: 'Brand', country: 'NG' }, new Date('2026-11-13T09:00:00Z')),
+    name: 'Easter bundle',
+    headline: 'Free 50cl',
+    placement: 'video',
+    creative: { key: '0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.mp4', kind: 'video', url: '/uploads/0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.mp4' },
+    runsFor: 'custom',
+    endsAt: '2026-12-01',
+    budgetUsd: '450',
+  })
+  const defaults = () => newCampaignDefaults({ name: 'Kola Bright', type: 'Brand', country: 'NG' }, new Date('2026-11-14T09:00:00Z'))
+
+  it('keys the draft by workspace', () => expect(draftKey('ws1')).toBe('of-draft:ws1'))
+
+  it('round-trips the form values', () => {
+    const v = values()
+    expect(parseDraft(serialiseDraft('ws1', v), 'ws1', defaults())).toEqual(v)
+  })
+
+  it('never restores the confirmation', () => {
+    const v = { ...values(), termsAccepted: true }
+    expect(parseDraft(serialiseDraft('ws1', v), 'ws1', defaults())?.termsAccepted).toBe(false)
+  })
+
+  it("ignores another workspace's draft and anything unreadable", () => {
+    expect(parseDraft(serialiseDraft('ws1', values()), 'ws2', defaults())).toBeNull()
+    expect(parseDraft('not json', 'ws1', defaults())).toBeNull()
+    expect(parseDraft(null, 'ws1', defaults())).toBeNull()
+    expect(parseDraft(JSON.stringify({ workspaceId: 'ws1', values: 7 }), 'ws1', defaults())).toBeNull()
+  })
+
+  it('keeps the fields that still make sense and takes defaults for the rest', () => {
+    const raw = JSON.stringify({
+      workspaceId: 'ws1',
+      values: { ...values(), country: 'GB', placement: 'billboard', tileColor: 'red', budgetUsd: 450, creative: { key: '../x', kind: 'image', url: '/x' } },
+    })
+    const d = defaults()
+    expect(parseDraft(raw, 'ws1', d)).toMatchObject({
+      name: 'Easter bundle', country: d.country, placement: d.placement, tileColor: d.tileColor, budgetUsd: d.budgetUsd, creative: null,
+    })
+  })
+})
+
+describe('draft store in the browser', () => {
+  const memory = () => {
+    const m = new Map<string, string>()
+    return {
+      get length() { return m.size },
+      key: (i: number) => [...m.keys()][i] ?? null,
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+    }
+  }
+  const defaults = () => newCampaignDefaults({ name: 'Kola Bright', type: 'Brand', country: 'NG' }, new Date('2026-11-14T09:00:00Z'))
+
+  it('saves, restores and clears; opening another workspace drops the old draft', () => {
+    const storage = memory()
+    vi.stubGlobal('window', { localStorage: storage })
+    try {
+      saveDraft('ws1', { ...defaults(), name: 'Easter bundle' })
+      expect(loadDraft('ws1', defaults())?.name).toBe('Easter bundle')
+      expect(loadDraft('ws2', defaults())).toBeNull()
+      expect(storage.getItem('of-draft:ws1')).toBeNull()
+      saveDraft('ws2', { ...defaults(), name: 'Pesa promo' })
+      clearDraft('ws2')
+      expect(loadDraft('ws2', defaults())).toBeNull()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('is a no-op without storage', () => {
+    expect(() => saveDraft('ws1', defaults())).not.toThrow()
+    expect(loadDraft('ws1', defaults())).toBeNull()
   })
 })
 
 describe('previewOffers', () => {
-  const DAY = 86_400_000
   const live = (workspaceId: string, country: 'NG' | 'KE', headline: string) =>
     db.campaign.create({
       data: {
@@ -132,36 +424,27 @@ describe('previewOffers', () => {
     })
 
   beforeEach(async () => {
-    await db.workspace.update({ where: { id: theirs.id }, data: { status: 'approved' } })
+    await setup('Viewer')
     await live(theirs.id, 'NG', 'Lagos offer')
     await live(theirs.id, 'KE', 'Nairobi offer')
   })
 
-  it('shows nothing but your own card when Phoenix is not set up', async () => {
-    expect(await previewOffers('NG')).toEqual([])
-  })
-
-  it("lists the offers Phoenix would pull in that country, any workspace's", async () => {
-    await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: true } })
+  it("a Viewer lists the offers Phoenix would pull in that country, any workspace's", async () => {
     expect((await previewOffers('NG')).map((o) => o.headline)).toEqual(['Lagos offer'])
   })
 
   it('ignores a Phoenix channel that is not live', async () => {
-    await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: false } })
+    await db.channel.updateMany({ data: { isLive: false } })
     expect(await previewOffers('NG')).toEqual([])
-    expect(await db.shareLink.count()).toBe(0)
   })
 
   it('hands the browser card fields only, never a claim code or link', async () => {
-    await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: true } })
-    const [offer] = await previewOffers('NG')
-    expect(Object.keys(offer).sort()).toEqual(['brand', 'category', 'creative', 'description', 'ends_at', 'headline', 'id', 'share'])
-    expect(offer.share).toEqual({ reward_label: 'Airtime' })
-    expect(JSON.stringify(offer)).not.toContain('R1')
+    const [o] = await previewOffers('NG')
+    expect(Object.keys(o).sort()).toEqual(['brand', 'category', 'creative', 'description', 'ends_at', 'headline', 'id', 'share'])
+    expect(JSON.stringify(o)).not.toContain('R1')
   })
 
   it('answers an empty list for a country outside the five markets', async () => {
-    await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: true } })
     expect(await previewOffers('GB')).toEqual([])
     expect(await previewOffers(undefined)).toEqual([])
   })

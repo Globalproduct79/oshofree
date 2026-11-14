@@ -11,12 +11,16 @@ export type CardModel = {
   // null leaves the pill off (the form's card preview).
   status: StatusKey | null
   placement: PlacementKey
+  // The pill's own text when it differs from the placement's ("Splash ▶" on the form preview).
+  placementLabel?: string
   ageGated: boolean
   imageUrl?: string | null
   color: string
   initials: string
   // Adds " · {n}d left" to the sub-line (live and paused campaigns).
   daysLeft?: number
+  // Adds " · {n}d" instead: the flight's length, on the form preview.
+  flightDays?: number
   // The main row: bold left value (an empty string leaves it out) and the small right value.
   mainLeft: string
   mainRight?: string
@@ -36,11 +40,15 @@ export function CampaignCard({ campaign: c, href }: { campaign: CardModel; href?
         {!c.imageUrl && <span className="ph">{c.initials}</span>}
         {c.status && <StatusBadge status={c.status} />}
         {c.ageGated && <span className="age">{COMPONENTS.card.age}</span>}
-        <span className="plb">{COMPONENTS.card.placement(c.placement)}</span>
+        <span className="plb">{c.placementLabel ?? COMPONENTS.card.placement(c.placement)}</span>
       </div>
       <div className="bd">
         <div className="t">{c.headline}</div>
-        <div className="b">{COMPONENTS.card.sub(c.brand, c.country, c.daysLeft)}</div>
+        <div className="b">
+          {c.flightDays === undefined
+            ? COMPONENTS.card.sub(c.brand, c.country, c.daysLeft)
+            : COMPONENTS.card.subFlight(c.brand, c.country, c.flightDays)}
+        </div>
         <div className="row">
           {c.mainLeft && <b>{c.mainLeft}</b>}
           <span>{c.mainRight}</span>
@@ -58,7 +66,7 @@ export function CampaignCard({ campaign: c, href }: { campaign: CardModel; href?
       {body}
     </Link>
   ) : (
-    <div className="cc" data-static="">
+    <div className="cc" data-static="" style={{ cursor: 'default' }}>
       {body}
     </div>
   )

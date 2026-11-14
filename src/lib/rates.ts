@@ -71,3 +71,21 @@ export async function setShare(channelId: string, share: number, byUserId: strin
   await audit(byUserId, 'share.set', { type: 'ChannelShare', id: row.id }, { share: before }, { share })
   return row
 }
+
+export type MarketRates = {
+  cpmCents: Record<Country, Record<Placement, number | null>>
+  fxPerUsd: Record<Country, number | null>
+}
+
+// What the campaign form prices with (ADV §3): Phoenix's current CPM per market and placement, and each
+// market's FX, null wherever Global has set none (all CPMs while there is no Phoenix channel).
+export async function phoenixRates(at = new Date()): Promise<MarketRates> {
+  const phoenix = await db.channel.findUnique({ where: { key: 'phoenix' }, select: { id: true } })
+  const rows = phoenix ? await rateTable(phoenix.id, at) : []
+  const none = Object.fromEntries(PLACEMENTS.map((p) => [p, null])) as Record<Placement, null>
+  const fx = await Promise.all(COUNTRIES.map((c) => currentFx(c, at).catch(() => null)))
+  return {
+    cpmCents: Object.fromEntries(COUNTRIES.map((c) => [c, rows.find((r) => r.country === c)?.cpmCents ?? none])) as MarketRates['cpmCents'],
+    fxPerUsd: Object.fromEntries(COUNTRIES.map((c, i) => [c, fx[i]])) as MarketRates['fxPerUsd'],
+  }
+}

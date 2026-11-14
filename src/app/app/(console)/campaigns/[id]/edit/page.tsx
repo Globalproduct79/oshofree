@@ -1,36 +1,49 @@
+import type { Campaign } from '@prisma/client'
 import { notFound, redirect } from 'next/navigation'
 import { CampaignForm } from '@/components/campaign/CampaignForm'
 import { campaignDefaults } from '@/components/campaign/form/values'
-import { PageHead } from '@/components/console/PageHead'
-import { COPY } from '@/lib/copy'
+import { PageHead } from '@/components/shell/PageHead'
+import { pendingRevision, RUNNING } from '@/lib/campaigns'
+import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { db } from '@/lib/db'
-import { imageUrl } from '@/lib/storage'
-import { tokens } from '@/lib/tokens'
-import { requireWorkspace } from '@/lib/workspaces'
+import { campaignSpendCents, COMMITTED, creditSummary } from '@/lib/money'
+import { can, requireMember } from '@/lib/permissions'
+import { phoenixRates } from '@/lib/rates'
+import { creativeUrl } from '@/lib/storage'
 
-export default async function EditCampaignPage({ params }: { params: Promise<{ id: string }> }) {
+// ADV §3 "Edit offer mode": the same form, prefilled with every field of the campaign (or with the
+// revised offer still waiting for Global, so a second edit starts from it). A running campaign's money,
+// timing, name and market are locked: its revision carries the offer only (spec §6.14.3).
+export default async function EditOfferPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const ws = await requireWorkspace()
+  const { workspace: ws, role } = await requireMember('view')
+  if (!can(role, 'campaigns')) redirect(`/app/campaigns/${id}`)
   const campaign = await db.campaign.findFirst({ where: { id, workspaceId: ws.id } })
   if (!campaign) notFound()
-  if (campaign.status !== 'draft' && campaign.status !== 'rejected') redirect('/app')
+  const running = RUNNING.includes(campaign.status)
+  const now = new Date()
+  const [rates, credit, spendCents, revision] = await Promise.all([
+    phoenixRates(now),
+    creditSummary(ws.id),
+    campaignSpendCents(campaign.id),
+    running ? pendingRevision(campaign.id) : null,
+  ])
+  const current: Campaign = revision ? { ...campaign, ...(revision.data as Partial<Campaign>) } : campaign
+  // What the budget already holds in credit in use, so the rule and Credit after count only the increase.
+  const heldCents = COMMITTED.includes(campaign.status) ? campaign.budgetUsd * 100 : spendCents
   return (
     <>
-      <PageHead title={COPY.page.editCampaign.title} subtitle={COPY.page.editCampaign.subtitle} />
-      {campaign.status === 'rejected' && campaign.rejectReason && (
-        <p
-          role="status"
-          className="mb-6 rounded-xl border px-4 py-3 text-sm"
-          style={{ backgroundColor: tokens.amberSoft, borderColor: tokens.amberSoft, color: tokens.amber }}
-        >
-          {COPY.campaignForm.rejected(campaign.rejectReason)}
-        </p>
-      )}
+      <PageHead
+        crumb={[{ label: ws.name }, { label: F.head.edit.crumb[0], href: '/app' }, { label: F.head.edit.crumb[1] }]}
+        title={F.head.edit.title}
+        lead={F.head.edit.lead}
+      />
       <CampaignForm
-        campaignId={campaign.id}
-        defaults={campaignDefaults(campaign)}
-        initialImageUrl={campaign.creativeImageKey ? imageUrl(campaign.creativeImageKey) : null}
-        cannotSubmit={ws.status === 'declined' ? COPY.campaignForm.workspaceDeclined : null}
+        workspace={{ id: ws.id, type: ws.type, declined: ws.status === 'declined' }}
+        rates={rates}
+        credit={{ limitCents: credit.limitCents, inUseCents: credit.inUseCents }}
+        defaults={campaignDefaults(current, creativeUrl)}
+        mode={{ kind: 'edit', id: campaign.id, running, heldCents }}
       />
     </>
   )

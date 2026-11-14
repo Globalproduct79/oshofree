@@ -37,6 +37,8 @@ export const COMPONENTS = {
     age: '18+',
     sub: (brand: string, country: string, daysLeft?: number) =>
       daysLeft === undefined ? `${brand} · ${country}` : `${brand} · ${country} · ${daysLeft}d left`,
+    // The form preview's sub-line: the flight's length (ADV §3 "Card preview box").
+    subFlight: (brand: string, country: string, days: number) => `${brand} · ${country} · ${days}d`,
   },
   hero: {
     eyebrow: (country: string, placement: PlacementKey, when: string) =>

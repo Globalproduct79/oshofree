@@ -67,25 +67,18 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
 
   await test.step('the brand submits a campaign for review', async () => {
     await brand.goto('/app/campaigns/new')
+    // The one-page form (ADV §3): the brand is the workspace's, the country and category default.
+    await expect(brand.getByText('Give the campaign a name.')).toBeVisible()
     await brand.getByLabel('Campaign name').fill('E2E offer')
-    await brand.getByLabel('Brand', { exact: true }).fill('Brand Demo')
-    await brand.getByLabel('Country', { exact: true }).selectOption('NG')
-    await brand.getByLabel('Category').selectOption('Food & drink')
-    await brand.getByLabel('Headline').fill(HEADLINE)
-    await brand.getByLabel('What the consumer gets').fill('Show the code at the till.')
-    // The tile colour, placement and redeem radios are visually hidden inputs inside their tiles.
-    await brand.getByRole('radio', { name: 'Colour 1' }).check({ force: true })
-    await brand.getByRole('radio', { name: /^Wall card/ }).check({ force: true })
-    await brand.getByRole('radio', { name: /^Claim code/ }).check({ force: true })
-    await brand.getByLabel('Claim code', { exact: true }).fill('E2E123')
+    await brand.getByLabel('Offer headline').fill(HEADLINE)
+    await brand.getByLabel('What the consumer gets and how').fill('Show the code at the till.')
+    await brand.getByLabel('How consumers redeem').selectOption('code')
     await brand.getByLabel('Budget (USD)').fill('100')
-    // Today in UTC: a campaign starts at midnight UTC, so this is live the moment it is approved, at any hour.
-    await brand.getByLabel('Start date').fill(new Date().toISOString().slice(0, 10))
-    await brand.getByLabel('Runs for (days)').fill('14')
-    await brand.getByLabel('Share reward').fill('Share with 5 friends, get ₦20 airtime')
+    // Today in Lagos: the campaign starts at the market's midnight, so it is live the moment it is approved.
+    await brand.getByLabel('Start date').fill(new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date()))
     await brand.getByRole('checkbox', { name: /This offer is genuine/ }).check()
     await brand.getByRole('button', { name: 'Submit for review' }).click()
-    await brand.waitForURL((url) => url.pathname === '/app')
+    await brand.waitForURL(/\/app\/campaigns\/[^/]+$/)
   })
 
   await test.step('Global approves the campaign', async () => {

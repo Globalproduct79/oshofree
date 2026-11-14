@@ -162,14 +162,6 @@ export const COPY = {
       title: 'Campaigns',
       subtitle: 'Everything this workspace is running on Phoenix. The one that matters most is at the top.',
     },
-    newCampaign: {
-      title: 'New campaign',
-      subtitle: 'One form. Your offer goes live on Phoenix once Global approves it, usually within a working day.',
-    },
-    editCampaign: {
-      title: 'Edit campaign',
-      subtitle: 'Nothing changes on Phoenix until you submit it and Global approves it.',
-    },
     sharing: {
       title: 'Sharing',
       subtitle:

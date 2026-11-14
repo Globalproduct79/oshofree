@@ -14,9 +14,11 @@ type Props = {
   label?: string
   size?: 'default' | 'lg'
   className?: string
+  // A button of the caller's own (the campaign form's ghost button), handed the opener.
+  trigger?: (show: () => void) => React.ReactNode
 }
 
-export function PreviewButton({ mine, load, label = COPY.preview.button, size = 'lg', className }: Props) {
+export function PreviewButton({ mine, load, label = COPY.preview.button, size = 'lg', className, trigger }: Props) {
   const [open, setOpen] = useState(false)
   const [offers, setOffers] = useState<PreviewOffer[]>([])
   const [state, setState] = useState<PreviewState>('loading')
@@ -40,9 +42,13 @@ export function PreviewButton({ mine, load, label = COPY.preview.button, size = 
 
   return (
     <>
-      <Button type="button" variant="outline" size={size} className={cn('px-4', className)} onClick={show}>
-        {label}
-      </Button>
+      {trigger ? (
+        trigger(show)
+      ) : (
+        <Button type="button" variant="outline" size={size} className={cn('px-4', className)} onClick={show}>
+          {label}
+        </Button>
+      )}
       <PhonePreview open={open} onOpenChange={setOpen} offers={offers} mine={mine} state={state} />
     </>
   )

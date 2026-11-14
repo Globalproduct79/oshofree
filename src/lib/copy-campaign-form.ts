@@ -1,6 +1,7 @@
 // The campaign form's words, split out of copy.ts to keep that file readable. Reached through COPY.campaignForm.
-// The prototype's New campaign page (ADV §3) is the `fields` … `toasts` keys below, strings verbatim.
-// Every key after the `legacy` marker is the slice-1 form's and is deleted by the form task.
+// The prototype's New campaign page (ADV §3) is the `head` … `toasts` keys, strings verbatim; the keys
+// after them are ours (spec §6.3: custom flights, real uploads, Edit offer on a running campaign, and the
+// server's refusals).
 export const CAMPAIGN_FORM_COPY = {
   head: {
     new: {
@@ -36,12 +37,14 @@ export const CAMPAIGN_FORM_COPY = {
     runsFor: {
       label: 'Runs for',
       options: [
-        { value: 7, label: '7 days' },
-        { value: 14, label: '14 days' },
-        { value: 30, label: '30 days' },
+        { value: '7', label: '7 days' },
+        { value: '14', label: '14 days' },
+        { value: '30', label: '30 days' },
+        { value: 'custom', label: 'Custom' },
       ],
     },
     startsAt: { label: 'Start date' },
+    endsAt: { label: 'End date' },
     reward: { label: 'Share reward', hint: (currency: string) => `— ${currency} airtime per successful share` },
     terms: 'This offer is genuine, available in the country and dates above, and the brand will honour it.',
   },
@@ -119,93 +122,35 @@ export const CAMPAIGN_FORM_COPY = {
     resubmitted: 'Resubmitted — Global reviews within one working day',
   },
 
-  // ---- legacy: removed by the form task ----
-  sections: {
-    offer: 'Offer',
-    consumer: 'What consumers see',
-    placement: 'Placement',
-    redeem: 'How consumers redeem',
-    money: 'Money and timing',
-    confirm: 'Confirm',
+  // Edit offer on a live, scheduled or paused campaign: the revision carries the offer only (spec §6.14.3).
+  locked: {
+    terms: 'Change these without review on the campaign page.',
+    running: '— fixed while the campaign runs',
   },
-  name: { label: 'Campaign name', hint: 'Only you see this. Consumers see the headline.' },
-  brand: { label: 'Brand', hint: 'Shown small above the headline on the card.' },
-  country: { label: 'Country', hint: 'Only Phoenix users in this country see the card.' },
-  category: { label: 'Category', choose: 'Choose a category' },
-  headline: { label: 'Headline', placeholder: 'Buy 2 bottles, get 1 free' },
-  description: {
-    label: 'What the consumer gets',
-    hint: 'Betting and draws: include the licence or approval number.',
-    placeholder: 'Buy any two 50cl bottles at a participating store and get a third free. Show your claim code at the till.',
-  },
-  image: {
-    label: 'Image',
-    hint: 'JPG, PNG or WebP, up to 2 MB. Without one, the card uses the tile colour.',
-    drop: 'Drop an image here, or choose a file',
+  upload: {
     uploading: 'Uploading…',
-    replace: 'Replace image',
-    remove: 'Remove image',
-    bad: "That image can't be used. Use a JPG, PNG or WebP under 2 MB.",
-    failed: "The image didn't upload, so the card keeps its colour. Try again.",
+    videoLength: 'Video must be 6–15 seconds.',
+    tooLarge: 'That file is over 2 MB.',
+    bad: "That file can't be used. Attach a JPG, PNG or WebP image, or an MP4 video.",
+    failed: "The upload didn't finish. Try again.",
   },
-  tileColor: { label: 'Tile colour', hint: 'Used when there is no image.', swatch: (n: number) => `Colour ${n}` },
-  placement: {
-    comingSoon: 'Coming soon',
-    options: [
-      { value: 'card', label: 'Wall card', detail: 'A card in the Offers grid', enabled: true },
-      { value: 'featured', label: 'Featured tile', detail: 'Full-width tile at the top of the wall', enabled: false },
-      { value: 'video', label: 'Video', detail: '6–15s clip in the featured slot', enabled: false },
-      { value: 'splash', label: 'Splash', detail: 'Full-screen on Phoenix open, once a day', enabled: false },
-    ],
-  },
-  redeem: {
-    code: { label: 'Claim code', detail: 'Consumers show a code in store' },
-    link: { label: 'Link', detail: 'Consumers go to your site or app' },
-    claimCode: { label: 'Claim code', hint: 'Consumers show this at the till.', placeholder: 'e.g. HARMATTAN' },
-    linkUrl: { label: 'Link', hint: 'Consumers are sent here. It must start with https://', placeholder: 'https://' },
-  },
-  budget: { label: 'Budget (USD)', hint: 'Minimum $50' },
-  startsAt: { label: 'Start date' },
-  runsForDays: { label: 'Runs for (days)', hint: '1 to 90 days' },
-  shareReward: {
-    label: 'Share reward',
-    hint: 'What a Phoenix user earns for sharing. It shows on the card.',
-    placeholder: (symbol: string) => `Share with 10 friends, get ${symbol}50 airtime`,
-  },
-  terms: (country: string) => `This offer is genuine and lawful in ${country}`,
-  submit: 'Submit for review',
-  saveDraft: 'Save draft',
-  saving: 'Saving…',
-  saved: 'Draft saved. Nothing shows on Phoenix until you submit it.',
-  rejected: (reason: string) => `Global sent this back: ${reason}. Fix it and resubmit.`,
-  invalid: "This campaign can't be saved until every field is filled in correctly.",
-  notFound: "That campaign isn't in this workspace, so nothing was changed.",
-  invalidTransition: "That campaign can't change state right now.",
-  workspaceDeclined: "Your workspace was declined, so campaigns can't be submitted.",
-  preview: {
-    title: 'Card preview',
-    subtitle: 'What a Phoenix user sees on the Offers wall.',
-    brand: 'Brand',
-    headline: 'Your headline',
-    reward: 'Your share reward',
-  },
+  // What the server answers when submitting or saving fails after the form's own rules passed.
   errors: {
+    noRate: (country: string) => `No rate is set for this placement in ${country} yet. Ask Global.`,
+    noFx: (country: string) => `No exchange rate is set for ${country} yet. Ask Global.`,
+    flightEnded: 'The flight has already ended. Pick new dates.',
+    notFound: "That campaign isn't in this workspace, so nothing was changed.",
+    invalidTransition: "That campaign can't change state right now.",
+    workspaceDeclined: "Your workspace was declined, so campaigns can't be submitted.",
+  },
+  // A field the schema refuses that no ADV §3 rule names.
+  invalid: {
     name: 'Give the campaign a name of 2 to 80 characters.',
-    brand: 'Which brand is this for?',
-    country: 'Choose the country the offer runs in.',
-    category: 'Choose a category.',
-    headline: 'Keep the headline to 48 characters.',
-    description: 'Keep the description to 240 characters.',
-    tileColor: 'Pick one of the seven colours.',
-    creativeImageKey: 'Upload the image again.',
-    placement: 'Wall card is the only placement for now.',
-    redeemMethod: 'Choose how consumers redeem.',
-    claimCode: 'Claim codes are 1 to 24 characters.',
-    linkUrl: 'Online offers need an https:// link.',
-    budgetUsd: 'Minimum budget is $50, in whole dollars.',
+    brand: 'Keep the brand to 80 characters.',
+    budgetUsd: 'Budget is in whole dollars.',
+    rewardLocal: 'Share reward is a whole number, 0 or more.',
     startsAt: 'Pick a start date.',
-    runsForDays: 'Run it for 1 to 90 days.',
-    shareRewardLabel: 'Say what a sharer earns, in 60 characters or fewer.',
-    termsAccepted: 'Confirm the offer is genuine.',
+    endsAt: 'Pick an end date.',
+    other: "This campaign can't be submitted until every field is filled in correctly.",
   },
 } as const

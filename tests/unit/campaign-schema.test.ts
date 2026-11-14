@@ -139,6 +139,13 @@ describe('campaignInput', () => {
     expect(campaignInput.safeParse(rest).success).toBe(false)
     expect(campaignInput.safeParse({ ...valid, runsForDays: 10 }).success).toBe(false)
   })
+  it('takes only days that are on the calendar', () => {
+    expect(campaignInput.safeParse({ ...valid, startsAt: '2026-02-30' }).success).toBe(false)
+    expect(campaignInput.safeParse({ ...valid, startsAt: '2026-13-45' }).success).toBe(false)
+    expect(campaignInput.safeParse({ ...valid, startsAt: '2028-02-29' }).success).toBe(true)
+    const custom = { ...valid, runsForDays: undefined }
+    expect(campaignInput.safeParse({ ...custom, endsAt: '2026-11-31' }).success).toBe(false)
+  })
   it('requires a tile colour and a whole, non-negative reward', () => {
     const noColour = { ...valid, tileColor: undefined }
     expect(campaignInput.safeParse(noColour).success).toBe(false)

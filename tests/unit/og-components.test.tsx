@@ -334,7 +334,7 @@ describe('CampaignCard', () => {
         }}
       />,
     )
-    expect(m).toMatch(/^<div class="cc" data-static="">/)
+    expect(m).toMatch(/^<div class="cc" data-static="" style="cursor:default">/)
     expect(m).toContain('<div class="cv" style="background-image:url(&quot;/uploads/a.jpg&quot;)"><span class="st st-review">In review</span>')
     expect(m).not.toContain('class="ph"')
     expect(m).not.toContain('class="age"')
@@ -347,6 +347,11 @@ describe('CampaignCard', () => {
     const m = html(<CampaignCard campaign={{ ...card, status: null, mainLeft: '', mainRight: 'Claim code in store' }} />)
     expect(m).not.toContain('class="st ')
     expect(m).toContain('<div class="row"><span>Claim code in store</span></div>')
+  })
+  it("the form preview's flight length and pill text", () => {
+    const m = html(<CampaignCard campaign={{ ...card, status: null, daysLeft: undefined, flightDays: 14, placement: 'splash', placementLabel: 'Splash ▶' }} />)
+    expect(m).toContain('<div class="b">Kola Bright · Nigeria · 14d</div>')
+    expect(m).toContain('<span class="plb">Splash ▶</span>')
   })
   it('clamps the spend bar at 100%', () => {
     expect(html(<CampaignCard campaign={{ ...card, spendPct: 108 }} />)).toContain('<i style="width:100%"></i>')
@@ -483,6 +488,10 @@ describe('DropZone', () => {
     expect(html(<DropZone {...briefProps} accept="image/*,video/mp4" />)).toMatch(
       /<input [^>]*type="file" [^>]*accept="image\/\*,video\/mp4"/,
     )
+  })
+  it('previews a video creative as a muted video', () => {
+    const m = html(<DropZone {...props} preview="/uploads/a.mp4" previewKind="video" />)
+    expect(m).toContain('<video src="/uploads/a.mp4" muted="" playsInline="" preload="metadata"></video>Tap to remove')
   })
   it('shows the preview with "Tap to remove"', () => {
     const m = html(<DropZone {...props} preview="blob:abc" />)

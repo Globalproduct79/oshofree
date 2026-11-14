@@ -19,6 +19,13 @@ export function normaliseUrl(raw: string): string {
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/
 
+// A calendar day that exists: Date.parse takes 2026-02-30 as 2 March, so the day must survive a round trip.
+export const isRealDay = (s: string) => {
+  const t = Date.parse(`${s}T00:00:00.000Z`)
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === s
+}
+const calendarDay = z.string().regex(YMD).refine(isRealDay)
+
 const base = z.object({
   name: z.string().trim().min(2).max(80),
   brand: z.string().trim().min(1).max(80),
@@ -35,19 +42,18 @@ const base = z.object({
   linkUrl: z.string().trim().transform(normaliseUrl).optional(),
   budgetUsd: z.number().int().min(50),
   rewardLocal: z.number().int().min(0),
-  startsAt: z.string().regex(YMD),
+  startsAt: calendarDay,
   // A preset flight, or a custom one that ends on a date: exactly one of the two.
   runsForDays: z.union([z.literal(7), z.literal(14), z.literal(30)]).optional(),
-  endsAt: z.string().regex(YMD).optional(),
-  /** legacy: ignored, derived at write time as "Earn {symbol}{rewardLocal} airtime". Removed by the form task. */
-  shareRewardLabel: z.string().optional(),
+  endsAt: calendarDay.optional(),
 })
 
 const oneFlight = (i: { runsForDays?: number; endsAt?: string }) => (i.runsForDays === undefined) !== (i.endsAt === undefined)
 const FLIGHT = { message: 'Give either runsForDays or endsAt', path: ['runsForDays'] }
 
 export const campaignInput = base.extend({ termsAccepted: z.literal(true) }).refine(oneFlight, FLIGHT)
-// A draft can be saved with the confirmation unticked; submission needs campaignInput.
+// The form's values with the confirmation unticked (the draft store checks restored fields against it);
+// submission needs campaignInput.
 export const campaignDraftInput = base.extend({ termsAccepted: z.boolean() }).refine(oneFlight, FLIGHT)
 export type CampaignInput = z.infer<typeof campaignInput>
 
@@ -125,4 +131,73 @@ export function campaignDates(startsAt: string, runsForDays: number | undefined,
   if (endsAt !== undefined) return { startsAt: start, endsAt: localMidnight(endsAt, country) }
   const end = new Date(start.getTime() + (runsForDays ?? 0) * DAY)
   return { startsAt: start, endsAt: end }
+}
+
+// The market's calendar day of an instant ('YYYY-MM-DD'). Campaign dates are the market's local
+// midnight, so a UTC slice can be a day out.
+export function ymd(at: Date, country: Country): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: MARKETS[country].timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(at)
+}
+
+export const todayIn = (country: Country, now = new Date()) => ymd(now, country)
+
+// The label the wall shows, derived from the reward so the two can never disagree.
+export const rewardLabel = (country: Country, rewardLocal: number) =>
+  `Earn ${MARKETS[country].symbol}${rewardLocal} airtime`
+
+// ---- The New campaign form and Edit offer, on both sides of the wire ----
+
+export type CreditPosition = { limitCents: number; inUseCents: number }
+// An edit: whether the campaign is running (a revision), and what its budget already holds in credit
+// in use (budget for a committed campaign, spend otherwise), so only the increase counts.
+export type FormEdit = { running: boolean; heldCents: number }
+
+// The rules' context. A new campaign cannot start before today in its market; an edit counts only what
+// it adds to credit in use; a running campaign's revision changes no money (spec §6.14.3), so it is
+// never over the limit.
+export function ruleContext(
+  workspaceType: ValidationContext['workspaceType'], credit: CreditPosition, country: Country, edit?: FormEdit, now = new Date(),
+): ValidationContext {
+  if (edit?.running) return { workspaceType, creditLimitCents: Number.POSITIVE_INFINITY, creditInUseCents: 0, isEdit: true }
+  const money = { workspaceType, creditLimitCents: credit.limitCents, creditInUseCents: credit.inUseCents }
+  if (edit) return { ...money, isEdit: true, previousBudgetUsd: edit.heldCents / 100 }
+  return { ...money, today: todayIn(country, now) }
+}
+
+// A revision is judged on its offer alone: its money and timing are not the form's to change (spec
+// §6.14.3), so the rules see these instead of whatever "Change without review" has made of the real
+// ones (a budget under $50, a flight stretched past 90 days), which would otherwise lock the offer.
+export const REVISION_TERMS = { budgetUsd: 50, rewardLocal: 0, startsAt: '2000-01-01', runsForDays: 7 } as const
+
+export type Checked = { ok: true; input: CampaignInput } | { ok: false; message: string }
+
+const str = (v: unknown) => (typeof v === 'string' ? v : '')
+const optStr = (v: unknown) => (typeof v === 'string' ? v : undefined)
+
+// Whatever arrives, typed so the rules can read it without throwing.
+function candidate(raw: unknown): CampaignInput {
+  const r = (raw !== null && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  return {
+    ...r,
+    name: str(r.name), brand: str(r.brand), category: str(r.category), headline: str(r.headline),
+    description: str(r.description), linkUrl: optStr(r.linkUrl), creativeImageKey: optStr(r.creativeImageKey),
+    creativeVideoKey: optStr(r.creativeVideoKey), budgetUsd: typeof r.budgetUsd === 'number' ? r.budgetUsd : Number.NaN,
+    startsAt: str(r.startsAt), endsAt: optStr(r.endsAt), termsAccepted: r.termsAccepted === true,
+  } as unknown as CampaignInput
+}
+
+// The form's verdict: the first ADV §3 rule that fails, in order, then any field the schema refuses
+// that the rules do not name (a one-letter name, a date not on the calendar). Never throws.
+export function checkCampaign(raw: unknown, ctx: ValidationContext): Checked {
+  const parsed = campaignInput.safeParse(raw)
+  if (parsed.success) {
+    const rule = validateCampaign(parsed.data, ctx)
+    return rule ? { ok: false, message: rule } : { ok: true, input: parsed.data }
+  }
+  const rule = validateCampaign(candidate(raw), ctx)
+  if (rule) return { ok: false, message: rule }
+  const field = String(parsed.error.issues[0]?.path[0] ?? '') as keyof typeof COPY.invalid
+  return { ok: false, message: Object.hasOwn(COPY.invalid, field) ? COPY.invalid[field] : COPY.invalid.other }
 }

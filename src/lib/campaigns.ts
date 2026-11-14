@@ -2,18 +2,18 @@ import type {
   Campaign, CampaignRevision, CampaignStatus, Placement, Prisma, RedeemMethod, RejectReason,
 } from '@prisma/client'
 import { audit } from '@/lib/audit'
-import { ageGated, campaignDates, type CampaignInput } from '@/lib/campaign-schema'
+import { ageGated, campaignDates, rewardLabel, type CampaignInput } from '@/lib/campaign-schema'
 import { isRejectReason, PACE, rejectReasonText } from '@/lib/copy-campaign'
 import { NOTIFY } from '@/lib/copy-notifications'
 import { db, type Tx } from '@/lib/db'
 import { daysLeft } from '@/lib/format'
 import { mintRootLink } from '@/lib/links'
-import { MARKETS, type Country } from '@/lib/markets'
+import { isCountry, MARKETS, type Country } from '@/lib/markets'
 import { campaignSpendCents, canSubmitBudget, COMMITTED, creditSummary } from '@/lib/money'
 import { notifyGlobal, notifyWorkspace } from '@/lib/notifications'
 import { currentCpmCents, currentFx } from '@/lib/rates'
 
-export { ageGated, campaignDraftInput, campaignInput, validateCampaign, type CampaignInput } from '@/lib/campaign-schema'
+export { ageGated, campaignDraftInput, campaignInput, rewardLabel, validateCampaign, type CampaignInput } from '@/lib/campaign-schema'
 export { campaignSpendCents } from '@/lib/money'
 
 // The campaign state machine (ADV "Object model → Status state machine", spec §6.3, §6.14.3):
@@ -28,7 +28,7 @@ export { campaignSpendCents } from '@/lib/money'
 // edited in place (offer, and money and timing too) and goes to review. Errors are plain string
 // codes, as in slice 1, except CREDIT_LIMIT, which always carries the limit and the excess.
 
-const RUNNING: CampaignStatus[] = ['live', 'scheduled', 'paused']
+export const RUNNING: CampaignStatus[] = ['live', 'scheduled', 'paused']
 const SUBMITTABLE: CampaignStatus[] = ['draft', 'rejected', 'ended']
 const EDITED_IN_PLACE: CampaignStatus[] = ['draft', 'review', 'rejected', 'ended']
 const CHANGEABLE: CampaignStatus[] = ['draft', 'review', 'scheduled', 'live', 'paused']
@@ -64,8 +64,9 @@ export type OfferFields = {
   ageGated: boolean
 }
 
-// Money and timing.
-type Terms = { budgetUsd: number; startsAt: Date; endsAt: Date; rewardLocal: number }
+// Money and timing, and (optionally) the campaign's own name and market, which only an in-place edit
+// may change.
+type Terms = { budgetUsd: number; startsAt: Date; endsAt: Date; rewardLocal: number; name?: string; country?: Country }
 
 // The whole campaign as the Edit offer form holds it. A campaign edited in place (draft, review,
 // rejected, ended) takes all of it, so an ended one gets new dates before it goes back to review; a
@@ -105,15 +106,13 @@ const hasTerms = (i: OfferFields | CampaignEdit): i is CampaignEdit =>
   'budgetUsd' in i || 'startsAt' in i || 'endsAt' in i || 'rewardLocal' in i
 
 function termsOf(i: CampaignEdit): Terms {
-  const { budgetUsd, startsAt, endsAt, rewardLocal } = i
+  const { budgetUsd, startsAt, endsAt, rewardLocal, name, country } = i
   if (!isCount(budgetUsd) || !isCount(rewardLocal) || !isDate(startsAt) || !isDate(endsAt)) throw 'INVALID'
+  if (name !== undefined && (typeof name !== 'string' || !name.trim())) throw 'INVALID'
+  if (country !== undefined && !isCountry(country)) throw 'INVALID'
   if (endsAt <= startsAt) throw 'END_BEFORE_START'
-  return { budgetUsd, startsAt, endsAt, rewardLocal }
+  return { budgetUsd, startsAt, endsAt, rewardLocal, ...(name !== undefined && { name }), ...(country !== undefined && { country }) }
 }
-
-// The label the wall shows, derived from the reward so the two can never disagree.
-export const rewardLabel = (country: Country, rewardLocal: number) =>
-  `Earn ${MARKETS[country].symbol}${rewardLocal} airtime`
 
 function fields(i: CampaignInput) {
   const { startsAt, endsAt } = campaignDates(i.startsAt, i.runsForDays, i.country, i.endsAt)
@@ -202,17 +201,18 @@ export function updateCampaign(id: string, i: CampaignInput): Promise<Campaign> 
 // ---- Submit ----
 
 // Submit and the in-place edit share one path: refuse a flight already over, snapshot Phoenix's CPM
-// and the market FX, check credit, then review. Credit in use counts a committed campaign's
-// budget − spend, so review adds the new remainder less what the campaign already holds: nothing for
-// an unchanged campaign in review, budget − spend for a draft, rejected or ended one.
+// and the FX of the campaign's market (the edited one, when an edit moves it), check credit, then
+// review. Credit in use counts a committed campaign's budget − spend, so review adds the new remainder
+// less what the campaign already holds: nothing for an unchanged campaign in review, budget − spend
+// for a draft, rejected or ended one.
 async function sendToReview(
   c: Campaign, workspaceName: string, from: CampaignStatus[], now: Date, offer?: OfferData, terms?: Terms,
 ): Promise<Campaign> {
   if (!from.includes(c.status)) throw 'INVALID_TRANSITION'
   const next = { ...c, ...offer, ...terms }
   if (next.endsAt <= now) throw 'FLIGHT_ENDED'
-  const cpmCents = await phoenixCpmCents(c.country, next.placement, now)
-  const fxPerUsd = await currentFx(c.country, now)
+  const cpmCents = await phoenixCpmCents(next.country, next.placement, now)
+  const fxPerUsd = await currentFx(next.country, now)
   const spendCents = await campaignSpendCents(c.id)
   const budgetCents = toCents(next.budgetUsd)
   if (terms && budgetCents < spendCents) throw 'BUDGET_BELOW_SPEND'
@@ -221,7 +221,7 @@ async function sendToReview(
   if (!credit.ok) throw creditLimit(credit.limitCents, credit.excessCents)
   const sent = await db.$transaction(async (tx) => {
     const row = await move(c.id, from, {
-      ...offer, ...terms, ...(terms && { shareRewardLabel: rewardLabel(c.country, terms.rewardLocal) }), cpmCents, fxPerUsd, status: 'review', submittedAt: now,
+      ...offer, ...terms, ...(terms && { shareRewardLabel: rewardLabel(next.country, terms.rewardLocal) }), cpmCents, fxPerUsd, status: 'review', submittedAt: now,
       decidedAt: null, endedAt: null, pausedBy: null, rejectReasonCode: null, rejectReason: null,
     }, tx)
     await dropPendingRevision(tx, c.id)
