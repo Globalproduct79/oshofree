@@ -7,6 +7,7 @@ import { getToast, takeToast } from '@/components/shell/toast-store'
 import { changeRoleAction, inviteAction, removeMemberAction, revokeInviteAction } from '@/app/app/(console)/people/actions'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { inviteUrl } from '@/lib/invitations'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
@@ -45,8 +46,10 @@ describe('people actions', () => {
 
   it('an Owner invites, changes a role, revokes and removes', async () => {
     const { ws } = await setup('Owner')
-    expect(await inviteAction('n@x.test', 'Manager')).toEqual({ ok: true })
+    const sent = await inviteAction('n@x.test', 'Manager')
     const inv = await db.invitation.findFirstOrThrow({ where: { workspaceId: ws.id } })
+    // The new invite's link goes back to the inviter who made it, and to no one else.
+    expect(sent).toEqual({ ok: true, url: inviteUrl(inv.token) })
     expect(inv.role).toBe('Manager')
     expect(await db.auditEvent.count({ where: { action: 'member.invite' } })).toBe(1)
     await revokeInviteAction(inv.id)
@@ -61,7 +64,7 @@ describe('people actions', () => {
 
   it('Global can invite', async () => {
     await setup('Global')
-    expect(await inviteAction('n@x.test', 'Viewer')).toEqual({ ok: true })
+    expect(await inviteAction('n@x.test', 'Viewer')).toEqual({ ok: true, url: expect.stringMatching(/\/invite\/[0-9a-f]{32}$/) })
   })
 
   it('invalid email and existing member are errors, the last Owner is protected', async () => {

@@ -1,6 +1,6 @@
 import { readdirSync } from 'node:fs'
 import path from 'node:path'
-import type { ReactNode } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AdvertiserPage from '@/app/admin/advertisers/[id]/page'
@@ -20,7 +20,7 @@ import InvoicePrintPage from '@/app/app/(console)/invoices/[id]/print/page'
 import InvoicesPage from '@/app/app/(console)/invoices/page'
 import NotificationsPage from '@/app/app/(console)/notifications/page'
 import HomePage from '@/app/app/(console)/page'
-import { newInviteLink } from '@/app/app/(console)/people/invite/InviteForm'
+import { InviteSent, sendInvite } from '@/app/app/(console)/people/invite/InviteForm'
 import InvitePage from '@/app/app/(console)/people/invite/page'
 import PeoplePage from '@/app/app/(console)/people/page'
 import RewardsPage from '@/app/app/(console)/rewards/page'
@@ -30,6 +30,7 @@ import NewWorkspacePage from '@/app/app/new-workspace/page'
 import { takeToast } from '@/components/shell/toast-store'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { inviteUrl } from '@/lib/invitations'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
@@ -253,15 +254,33 @@ describe('the two new pages', () => {
     }
   })
 
-  it('shows the link the invite just made, not an older one for the same address', () => {
-    const old = { email: 'ada@x.test', url: 'http://x/invite/old' }
-    const other = { email: 'bo@x.test', url: 'http://x/invite/bo' }
-    const fresh = { email: 'ada@x.test', url: 'http://x/invite/new' }
-    const sent = { email: 'ada@x.test', before: [old.url, other.url] }
-    expect(newInviteLink([old, other], null)).toBeNull()
-    // Before the page has the new invite, the replaced link is not shown.
-    expect(newInviteLink([old, other], sent)).toBeNull()
-    expect(newInviteLink([other, fresh], sent)).toBe(fresh.url)
+  it('shows the inviter the link their own invite made, in a field to copy, never in a toast', async () => {
+    const w = await world()
+    signIn(w.owner, w.ws.id)
+    expect(await sendInvite('nope', 'Viewer')).toBeNull()
+    expect(takeToast()?.message).toBe('Enter a valid email')
+
+    const sent = await sendInvite(' Ada@X.test ', 'Viewer')
+    const inv = await db.invitation.findFirstOrThrow({ where: { workspaceId: w.ws.id, email: 'ada@x.test' } })
+    expect(sent).toEqual({ email: 'ada@x.test', url: inviteUrl(inv.token) })
+    expect(inv.role).toBe('Viewer')
+    expect(takeToast()?.message).toBe('Invite sent')
+
+    const box = renderToStaticMarkup(createElement(InviteSent, { sent: sent! }))
+    expect(text(box)).toContain('Invite link Invite sent to ada@x.test. Copy the link and send it to them.')
+    expect(box).toContain(`readOnly="" value="${inviteUrl(inv.token)}"`)
+    expect(box).toContain('href="/app/people"')
+  })
+
+  it('ships no open invite link to the invite page', async () => {
+    const w = await world()
+    const inv = await db.invitation.create({
+      data: { workspaceId: w.ws.id, email: 'p@x.test', role: 'Viewer', token: 'c0ffee'.repeat(5) + 'ab', invitedById: w.owner.id, expiresAt: new Date(Date.now() + DAY) },
+    })
+    signIn(w.owner, w.ws.id)
+    const tree = await InvitePage()
+    expect(JSON.stringify(tree)).not.toContain(inv.token)
+    expect(renderToStaticMarkup(tree)).not.toContain(inv.token)
   })
 
   it('Top up aggregator opens the top-up form on its own page; the ledger no longer holds it', async () => {
