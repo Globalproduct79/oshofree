@@ -1,14 +1,17 @@
 import { OfferCard } from '@/components/campaign/OfferCard'
 import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { PageHead } from '@/components/console/PageHead'
+import { SimulateDayButton } from '@/components/demo/SimulateDayButton'
 import { campaignCard, previewOffer } from '@/lib/campaign-card'
 import { checkLink } from '@/lib/link-check'
 import { COPY } from '@/lib/copy'
 import { db } from '@/lib/db'
+import { demoControlsOn } from '@/lib/demo/controls'
 import { requireAdmin } from '@/lib/session'
 import { tokens } from '@/lib/tokens'
 import {
   approveCampaignAction, approveWorkspaceAction, declineWorkspaceAction, previewOffersAction, rejectCampaignAction,
+  simulateDayAction,
 } from './actions'
 import { DecisionButtons } from './decision-buttons'
 
@@ -40,7 +43,7 @@ const rowStyle = { backgroundColor: tokens.card, borderColor: tokens.line, borde
 
 // Gated here as well as in the layout: Next can render a page without its layout.
 export default async function ReviewPage() {
-  await requireAdmin()
+  const admin = await requireAdmin()
   const [workspaces, campaigns] = await Promise.all([
     db.workspace.findMany({
       where: { status: 'pending' },
@@ -59,7 +62,11 @@ export default async function ReviewPage() {
 
   return (
     <>
-      <PageHead title={COPY.page.review.title} subtitle={COPY.page.review.subtitle} />
+      <PageHead
+        title={COPY.page.review.title}
+        subtitle={COPY.page.review.subtitle}
+        actions={demoControlsOn(admin.isGlobalAdmin) && <SimulateDayButton action={simulateDayAction} />}
+      />
       <Section title={COPY.review.advertisersTitle} count={workspaces.length}>
         {workspaces.length === 0 && <Empty />}
         {workspaces.map((w) => {

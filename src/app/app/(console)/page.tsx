@@ -1,15 +1,18 @@
 import { HomeFilterPills } from '@/components/campaign/HomeFilterPills'
 import { PauseResume } from '@/components/campaign/PauseResume'
+import { SimulateDayButton } from '@/components/demo/SimulateDayButton'
 import { CampaignCard, EmptyState, HeroCampaignCard, LinkButton, NewCampaignTile } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { homePills, parseHomeFilter, pillShown, sectionTitle } from '@/lib/campaign-filters'
 import { HOME } from '@/lib/copy-home'
+import { demoControlsOn } from '@/lib/demo/controls'
 import { hourIn } from '@/lib/format'
 import { firstName, heroModel } from '@/lib/home'
 import { MARKETS } from '@/lib/markets'
 import { can, requireMember } from '@/lib/permissions'
 import { homeCards } from '@/lib/reports'
 import { ownerName } from '@/lib/shell'
+import { simulateDayAction } from './campaigns/actions'
 
 const NEW = '/app/campaigns/new'
 const campaignHref = (id: string) => `/app/campaigns/${id}`
@@ -26,6 +29,7 @@ export default async function CampaignsHome({ searchParams }: { searchParams: Pr
   const hero = home.hero && { id: home.hero.id, status: home.hero.status, model: await heroModel(home.hero, now) }
   // A Viewer sees the page without the controls that change anything (spec §6.2).
   const canAct = can(role, 'campaigns')
+  const demo = demoControlsOn(user.isGlobalAdmin)
   const greeting = HOME.greeting(hourIn(now, MARKETS[ws.country].timezone))
 
   return (
@@ -35,10 +39,15 @@ export default async function CampaignsHome({ searchParams }: { searchParams: Pr
         title={HOME.title(greeting, firstName(owner ?? user.name))}
         lead={HOME.lead}
         actions={
-          canAct && (
-            <LinkButton variant="primary" href={NEW}>
-              {HOME.newCampaign}
-            </LinkButton>
+          (demo || canAct) && (
+            <>
+              {demo && <SimulateDayButton action={simulateDayAction} />}
+              {canAct && (
+                <LinkButton variant="primary" href={NEW}>
+                  {HOME.newCampaign}
+                </LinkButton>
+              )}
+            </>
           )
         }
       />

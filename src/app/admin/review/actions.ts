@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { approveCampaign, rejectCampaign } from '@/lib/campaigns'
 import { COPY } from '@/lib/copy'
+import { simulateDayAs, type SimulateDayResult } from '@/lib/demo/controls'
 import { runDaily, type DailyResult } from '@/lib/jobs/daily'
 import { isCountry } from '@/lib/markets'
 import { previewOffersFor } from '@/lib/offers'
@@ -58,4 +59,11 @@ export async function runDailyJobAction(): Promise<{ ok: true; summary: DailyRes
   const summary = await runDaily(new Date())
   revalidatePath('/', 'layout')
   return { ok: true, summary }
+}
+
+// "Simulate a day" (Review header): Global only, and only with DEMO_CONTROLS=1. One day of synthetic Phoenix
+// traffic through the real pipeline, then the daily job; a second click the same UTC day is refused.
+export async function simulateDayAction(): Promise<SimulateDayResult> {
+  const user = await requireUser()
+  return simulateDayAs(user.id)
 }

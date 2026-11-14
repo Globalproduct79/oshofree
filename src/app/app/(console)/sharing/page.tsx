@@ -1,17 +1,20 @@
+import { SimulateDayButton } from '@/components/demo/SimulateDayButton'
 import { Box, DataTable, EstimatePanel, HBarList, MetricCard, Steps, TokenChip } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { SHARING } from '@/lib/copy-sharing'
+import { demoControlsOn } from '@/lib/demo/controls'
 import { fmt, pct, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
 import { requireMember } from '@/lib/permissions'
 import { pointsIssued, workspaceSharing } from '@/lib/reports'
+import { simulateDayAction } from '../campaigns/actions'
 
 const S = SHARING
 
 // Sharing (ADV §5): totals over every campaign of the workspace, how a share works, the
 // by-campaign table, where people share and the points issued.
 export default async function SharingPage() {
-  const { workspace: ws } = await requireMember('view')
+  const { user, workspace: ws } = await requireMember('view')
   const [s, points] = await Promise.all([workspaceSharing(ws.id), pointsIssued(ws.id)])
   const viral = (s.opens === 0 ? 0 : s.sOpens / s.opens).toFixed(2)
   const steps = [
@@ -52,7 +55,12 @@ export default async function SharingPage() {
 
   return (
     <>
-      <PageHead crumb={[{ label: ws.name }, { label: S.growth }, { label: S.crumb }]} title={S.title} lead={S.lead} />
+      <PageHead
+        crumb={[{ label: ws.name }, { label: S.growth }, { label: S.crumb }]}
+        title={S.title}
+        lead={S.lead}
+        actions={demoControlsOn(user.isGlobalAdmin) && <SimulateDayButton action={simulateDayAction} />}
+      />
       <div className="mgrid m4">
         <MetricCard title={S.kpi.shares.title} value={fmt(s.shares)} sub={S.kpi.shares.sub(s.campaigns)} fill={100} />
         <MetricCard title={S.kpi.opened.title} value={fmt(s.sOpens)} sub={S.kpi.opened.sub(viral)} fill={100} />

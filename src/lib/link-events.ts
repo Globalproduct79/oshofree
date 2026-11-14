@@ -1,13 +1,18 @@
-import type { LinkEventType } from '@prisma/client'
-import { db, type Tx } from '@/lib/db'
+import type { LinkEventType, ShareLink } from '@prisma/client'
+import { upsertConsumer } from '@/lib/consumers'
+import { db, isUniqueViolation, type Tx } from '@/lib/db'
+import { ensureConsumerLink } from '@/lib/links'
+import type { Country } from '@/lib/markets'
 import { onSuccessfulShare } from '@/lib/rewards'
 
 export function startOfUtcDay(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
 }
 
-function write(type: LinkEventType, linkId: string, visitorId: string, ipHash: string, userAgent: string, client: Tx = db) {
-  return client.linkEvent.create({ data: { linkId, type, visitorId, ipHash, userAgent } })
+function write(
+  type: LinkEventType, linkId: string, visitorId: string, ipHash: string, userAgent: string, client: Tx = db, at = new Date(),
+) {
+  return client.linkEvent.create({ data: { linkId, type, visitorId, ipHash, userAgent, at } })
 }
 
 // The raw row is always written; it is marked deduped when this visitor already
@@ -78,8 +83,33 @@ export async function recordDetails(
   ipHash: string,
   userAgent: string,
   client: Tx = db,
+  at: Date = new Date(),
 ): Promise<void> {
-  await write('DetailsLeft', linkId, visitorId, ipHash, userAgent, client)
+  await write('DetailsLeft', linkId, visitorId, ipHash, userAgent, client, at)
+}
+
+export type LinkVisitor = { id: string; ipHash: string; userAgent: string }
+
+// Share and earn: the friend leaves a (normalised) number and gets a link of their own, one level down, and
+// the first time a DetailsLeft row. Asking again (a resubmit, a double tap) hands back the same link and
+// counts nothing new. `at` dates the row (the demo's simulated day).
+export async function leaveDetails(
+  linkId: string,
+  country: Country,
+  phone: string,
+  name: string,
+  v: LinkVisitor,
+  at: Date = new Date(),
+): Promise<ShareLink> {
+  const save = () =>
+    db.$transaction(async (tx) => {
+      const consumer = await upsertConsumer(phone, country, name, tx)
+      const mine = await ensureConsumerLink(linkId, consumer.id, tx, v.id)
+      if (mine.created) await recordDetails(linkId, v.id, v.ipHash, v.userAgent, tx, at)
+      return mine.link
+    })
+  // A racing first submit can still win on a unique index; running again reads what it wrote.
+  return save().catch((e) => (isUniqueViolation(e) ? save() : Promise.reject(e)))
 }
 
 // What a link has earned: the landing page's own events, plus the share_open / share_claim events the

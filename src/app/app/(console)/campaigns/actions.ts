@@ -16,6 +16,7 @@ import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { MONEY } from '@/lib/copy-money'
 import { CAMPAIGN_COPY } from '@/lib/copy-report'
 import { db } from '@/lib/db'
+import { simulateDayAs, type SimulateDayResult } from '@/lib/demo/controls'
 import { isCountry, MARKETS, type Country } from '@/lib/markets'
 import { campaignSpendCents, COMMITTED, creditSummary } from '@/lib/money'
 import { previewOffersFor } from '@/lib/offers'
@@ -248,4 +249,13 @@ export async function endCampaignAction(id: unknown): Promise<Done | Failure> {
   revalidatePath('/app')
   revalidatePath(campaignPath(c.id))
   return { ok: true, toast: CAMPAIGN.ended(releasedCents) }
+}
+
+// ---- Simulate a day (demo control) ----
+
+// The Campaigns home and Sharing button. It acts on every workspace, so being in this one is not enough: the
+// user must be Global, and DEMO_CONTROLS must be on.
+export async function simulateDayAction(): Promise<SimulateDayResult> {
+  const m = await requireMember('view')
+  return simulateDayAs(m.user.id)
 }
