@@ -6,7 +6,7 @@ import { periodLabel } from '@/lib/copy-money'
 import { db } from '@/lib/db'
 import { fd, loc, localAmount, usd } from '@/lib/format'
 import { isCountry, MARKETS, type Country } from '@/lib/markets'
-import { creditSummary, invoiceStatus, type InvoiceDisplayStatus } from '@/lib/money'
+import { creditSummary, invoiceStatus, limitFromDollars, type InvoiceDisplayStatus } from '@/lib/money'
 import { workspaceCards } from '@/lib/reports'
 import type { LiveCard } from '@/lib/review'
 import { workspaceStatusBox } from '@/lib/workspaces'
@@ -15,6 +15,14 @@ import { workspaceStatusBox } from '@/lib/workspaces'
 
 const D = ADVERTISERS.detail
 export const HISTORY_ROWS = 50
+
+// A credit limit typed in whole dollars (the list's field, the detail's field, a credit request's new limit): the
+// cents to store, or the refusal to toast (D9).
+export function creditLimitInput(dollars: unknown): { cents: number } | { error: string } {
+  const limit = limitFromDollars(dollars)
+  if ('cents' in limit) return limit
+  return { error: limit.error === 'TOO_LARGE' ? ADVERTISERS.errors.tooLarge : ADVERTISERS.errors.limit }
+}
 
 // The first owner, as Review's "New advertisers" names them.
 const OWNER = {
@@ -69,6 +77,8 @@ export async function advertiserRows(): Promise<AdvertiserRow[]> {
 export type AdvertiserInvoice = {
   id: string
   number: string
+  // The country it was issued under: its currency, whatever the workspace's billing country is now.
+  country: Country
   period: string
   status: InvoiceDisplayStatus
   // "—" once paid.
@@ -120,6 +130,7 @@ function show(key: string, v: Prisma.JsonValue, country: Country): string {
   return String(v)
 }
 
+// `country` is the one a reward is in: the campaign's own for a campaign's row, else the workspace's.
 function change(e: AuditEvent, country: Country, invoiceNumbers: Map<string, string>): string {
   const before = fields(e.before)
   const after = fields(e.after)
@@ -150,11 +161,14 @@ export async function advertiserDetail(id: string, now: Date): Promise<Advertise
       include: { actor: { select: { name: true } } },
     }),
   ])
-  const requesters = await db.user.findMany({
-    where: { id: { in: requests.map((r) => r.requestedById) } },
-    select: { id: true, name: true },
-  })
+  // A campaign's reward is in its own market's currency, which need not be the workspace's billing country.
+  const campaignIds = [...new Set(events.filter((e) => e.targetType === 'Campaign').map((e) => e.targetId))]
+  const [requesters, campaigns] = await Promise.all([
+    db.user.findMany({ where: { id: { in: requests.map((r) => r.requestedById) } }, select: { id: true, name: true } }),
+    db.campaign.findMany({ where: { id: { in: campaignIds } }, select: { id: true, country: true } }),
+  ])
   const names = new Map(requesters.map((u) => [u.id, u.name]))
+  const campaignCountry = new Map(campaigns.map((c) => [c.id, c.country]))
   const numbers = new Map(invoices.map((i) => [i.id, i.number]))
 
   return {
@@ -173,14 +187,16 @@ export async function advertiserDetail(id: string, now: Date): Promise<Advertise
     cards: cards.map((c) => ({ ...c, href: `/app/campaigns/${c.id}` })),
     invoices: invoices.map((inv) => {
       const status = invoiceStatus(inv, now)
+      const issuedIn = MARKETS[inv.country].timezone
       return {
         id: inv.id,
         number: inv.number,
-        period: periodLabel(inv.period, timezone),
+        country: inv.country,
+        period: periodLabel(inv.period, issuedIn),
         status,
-        due: status === 'paid' ? D.notDue : fd(inv.dueAt, timezone),
+        due: status === 'paid' ? D.notDue : fd(inv.dueAt, issuedIn),
         amountCents: inv.amountCents,
-        local: loc(inv.amountCents, ws.country, Number(inv.fxPerUsd)),
+        local: loc(inv.amountCents, inv.country, Number(inv.fxPerUsd)),
         payable: status === 'due' || status === 'overdue',
       }
     }),
@@ -195,7 +211,7 @@ export async function advertiserDetail(id: string, now: Date): Promise<Advertise
       at: fd(e.at, timezone),
       actor: e.actor?.name ?? D.system,
       action: AUDIT_ACTION[e.action] ?? e.action,
-      change: change(e, ws.country, numbers),
+      change: change(e, (e.targetType === 'Campaign' && campaignCountry.get(e.targetId)) || ws.country, numbers),
     })),
   }
 }

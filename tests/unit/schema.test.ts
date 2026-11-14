@@ -32,7 +32,7 @@ describe('slice-2 schema', () => {
       data: { code: 'abc', campaignId: campaign.id, channelId: channel.id, depth: 0, sharerType: 'Root', via: 'facebook' },
     })
     const invoice = await db.invoice.create({
-      data: { workspaceId: ws.id, number: 'INV-1', period: day, amountCents: 100, fxPerUsd: '1500', status: 'open', issuedAt: day, dueAt: day },
+      data: { workspaceId: ws.id, number: 'INV-1', period: day, amountCents: 100, fxPerUsd: '1500', country: 'NG', status: 'open', issuedAt: day, dueAt: day },
     })
 
     await db.invitation.create({ data: { workspaceId: ws.id, email: 'i@b.co', role: 'Viewer', token: 't', invitedById: user.id, expiresAt: day } })

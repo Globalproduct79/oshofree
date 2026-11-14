@@ -124,7 +124,7 @@ describe('workspace layout', () => {
     await mkCampaign(ws.id, 'review')
     await mkCampaign(ws.id, 'ended')
     await mkCampaign(ws.id, 'draft')
-    const inv = { workspaceId: ws.id, period: new Date(), amountCents: 100, fxPerUsd: 1550, issuedAt: new Date() }
+    const inv = { workspaceId: ws.id, period: new Date(), amountCents: 100, fxPerUsd: 1550, country: 'NG' as const, issuedAt: new Date() }
     await db.invoice.create({ data: { ...inv, number: 'INV-1', status: 'due', dueAt: new Date(Date.now() - 86_400_000) } })
     await db.invoice.create({ data: { ...inv, number: 'INV-2', status: 'paid', dueAt: new Date() } })
     await db.notification.createMany({

@@ -18,7 +18,8 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
   const { workspace: ws } = await requireMember('billing')
   const inv = await db.invoice.findUnique({ where: { id } })
   if (!inv || inv.workspaceId !== ws.id) notFound()
-  const m = MARKETS[ws.country]
+  // In the country it was issued under, whatever the workspace's billing country is now.
+  const m = MARKETS[inv.country]
   const fx = Number(inv.fxPerUsd)
   const lines = await db.ledgerEntry.findMany({
     where: { invoiceId: inv.id, kind: { not: 'payment' } },
@@ -30,7 +31,7 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
     fd(l.at, m.timezone),
     l.description,
     <b key="u">{usd(owed(l.amountCents))}</b>,
-    <span key="l" style={{ color: tokens.ink3 }}>{loc(owed(l.amountCents), ws.country, fx)}</span>,
+    <span key="l" style={{ color: tokens.ink3 }}>{loc(owed(l.amountCents), inv.country, fx)}</span>,
   ])
   const total = lines.reduce((s, l) => s + owed(l.amountCents), 0) || inv.amountCents
 
@@ -46,7 +47,7 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
         <p>{P.issued(fd(inv.issuedAt, m.timezone))} · {inv.status === 'paid' && inv.paidAt ? P.paid(fd(inv.paidAt, m.timezone)) : P.due(fd(inv.dueAt, m.timezone))}</p>
         <DataTable head={P.head(m.currency)} rows={rows} emptyText={P.noLines} align={[undefined, undefined, 'right', 'right']} />
         <p>
-          <b>{P.total}</b> <b>{usd(total)}</b> <span style={{ color: tokens.ink3 }}>{loc(total, ws.country, fx)}</span>
+          <b>{P.total}</b> <b>{usd(total)}</b> <span style={{ color: tokens.ink3 }}>{loc(total, inv.country, fx)}</span>
         </p>
         <p style={{ color: tokens.ink3 }}>{P.rate(m.symbol, fxNumber.format(fx))}</p>
         <p>{P.pay(inv.number)}</p>

@@ -32,7 +32,7 @@ async function seed() {
   await db.campaign.create({ data: { ...base, workspaceId: ws.id, name: 'Third', brand: 'harvest brand', headline: 'h', status: 'paused' } })
   await db.campaign.create({ data: { ...base, workspaceId: other.id, name: 'Harvest Elsewhere', brand: 'Q', headline: 'h', status: 'live' } })
   await db.invoice.create({
-    data: { workspaceId: ws.id, number: 'INV-2026-0042', period: new Date('2026-10-01'), amountCents: 100, fxPerUsd: 1500, issuedAt: new Date(), dueAt: new Date() },
+    data: { workspaceId: ws.id, number: 'INV-2026-0042', period: new Date('2026-10-01'), amountCents: 100, fxPerUsd: 1500, country: 'NG', issuedAt: new Date(), dueAt: new Date() },
   })
   return { ws, other, user }
 }

@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { creditLimitInput } from '@/lib/advertisers'
 import { audit } from '@/lib/audit'
 import { ADVERTISERS as A } from '@/lib/copy-advertisers'
 import { db } from '@/lib/db'
@@ -11,16 +12,16 @@ import { requireAdmin } from '@/lib/session'
 // nothing was (a refusal is a toast, not an error page).
 export type AdvertiserResult = { toast: string } | { error: string }
 
-const isDollars = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0
-
-// The credit-limit field (here and on the workspace page): whole dollars ≥ 0, unlike the prototype (D9). The
-// owner is told and the change audited by setCreditLimit; both pages redraw with the new limit (D10).
+// The credit-limit field (here and on the workspace page): whole dollars from 0 up to what the column holds,
+// unlike the prototype (D9). The owner is told and the change audited by setCreditLimit; both pages redraw with
+// the new limit (D10).
 export async function setCreditLimitAction(id: unknown, dollars: unknown): Promise<AdvertiserResult> {
   const admin = await requireAdmin()
-  if (!isDollars(dollars)) return { error: A.errors.limit }
+  const limit = creditLimitInput(dollars)
+  if ('error' in limit) return limit
   const ws = typeof id === 'string' ? await db.workspace.findUnique({ where: { id }, select: { id: true } }) : null
   if (!ws) return { error: A.errors.noWorkspace }
-  await setCreditLimit(ws.id, dollars * 100, admin.id)
+  await setCreditLimit(ws.id, limit.cents, admin.id)
   revalidatePath('/admin/advertisers', 'layout')
   return { toast: A.creditToast }
 }

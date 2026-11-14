@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import type { AdvertiserResult } from '@/app/admin/advertisers/actions'
+import { creditLimitInput } from '@/lib/advertisers'
 import { audit } from '@/lib/audit'
 import { ADVERTISERS } from '@/lib/copy-advertisers'
 import { db } from '@/lib/db'
@@ -99,8 +100,6 @@ export async function markInvoicePaidAction(id: unknown): Promise<AdvertiserResu
   return { toast: D.paid(paid.number) }
 }
 
-const isDollars = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0
-
 // A "Request a higher limit": Approve sets the limit typed beside it (and tells the owner); Dismiss leaves it.
 export async function decideCreditAction(id: unknown, decision: unknown, dollars?: unknown): Promise<AdvertiserResult> {
   const admin = await requireAdmin()
@@ -108,8 +107,9 @@ export async function decideCreditAction(id: unknown, decision: unknown, dollars
   if (!request || request.status !== 'open' || (decision !== 'approved' && decision !== 'dismissed')) {
     return { error: E.alreadyDecided }
   }
-  if (decision === 'approved' && !isDollars(dollars)) return { error: E.limit }
-  const decided = await decideCredit(request.id, admin.id, decision, decision === 'approved' ? (dollars as number) * 100 : undefined)
+  const limit = decision === 'approved' ? creditLimitInput(dollars) : null
+  if (limit && 'error' in limit) return limit
+  const decided = await decideCredit(request.id, admin.id, decision, limit?.cents)
   if (decided.decidedById !== admin.id || decided.status !== decision) return { error: E.alreadyDecided }
   revalidatePath('/admin/advertisers', 'layout')
   return { toast: decision === 'approved' ? A.creditToast : D.dismissed }

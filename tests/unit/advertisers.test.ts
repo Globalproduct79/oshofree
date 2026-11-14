@@ -53,7 +53,7 @@ const makeCampaign = (workspaceId: string, headline: string, status: CampaignSta
 const makeInvoice = (workspaceId: string, number: string, amountCents: number, status: InvoiceStatus, dueAt: string) =>
   db.invoice.create({
     data: {
-      workspaceId, number, period: at('2026-09-30T23:00:00Z'), amountCents, status, fxPerUsd: 1550,
+      workspaceId, number, period: at('2026-09-30T23:00:00Z'), amountCents, status, fxPerUsd: 1550, country: 'NG',
       issuedAt: at('2026-11-01T06:00:00Z'), dueAt: at(dueAt), paidAt: status === 'paid' ? at('2026-11-05T00:00:00Z') : null,
     },
   })
@@ -163,6 +163,10 @@ describe('Platform › Advertisers', () => {
     expect(revalidatePath).toHaveBeenCalledWith('/admin/advertisers', 'layout')
     expect(await renderList()).toContain('value="1000"')
 
+    // Past what the column holds (2,147,483,647 cents) is refused as a toast, not a crash.
+    expect(await setCreditLimitAction(ws.id, 99_999_999)).toEqual({ error: 'That limit is too large.' })
+    expect((await db.workspace.findUniqueOrThrow({ where: { id: ws.id } })).creditLimitCents).toBe(100_000)
+
     // Zero is a limit; an unknown workspace is not.
     expect(await setCreditLimitAction(ws.id, 0)).toEqual({ toast: 'Credit limit updated — owner emailed' })
     expect(await setCreditLimitAction('nope', 100)).toEqual({ error: 'That workspace no longer exists.' })
@@ -237,6 +241,19 @@ describe('Platform › Advertisers › workspace', () => {
     expect(await markInvoicePaidAction('nope')).toEqual({ error: 'That invoice no longer exists.' })
   })
 
+  it('an invoice issued under Nigeria keeps its naira after Global moves the workspace to Kenya', async () => {
+    await global()
+    const { ws } = await kola()
+    expect(await updateFactAction(ws.id, 'country', 'KE')).toHaveProperty('toast')
+    const d = await advertiserDetail(ws.id, NOW)
+    expect(d!.invoices.map((i) => [i.number, i.country, i.local])).toEqual([
+      ['INV-0052', 'NG', '₦310,000'], ['INV-0046', 'NG', '₦15,500'], ['INV-0041', 'NG', '₦155,000'],
+    ])
+    const t = text(await renderDetail(ws.id))
+    expect(t).toContain('INV-0052 Oct 2026 Due 15 Nov $200 ₦310,000 Mark paid')
+    expect(t).not.toContain('KSh310,000')
+  })
+
   it('an empty invoice list says "Nothing outstanding."', async () => {
     await global()
     const { ws } = await makeWorkspace('Pesa Link', 'KE', 'approved', 'Wanjiru Kamau')
@@ -253,6 +270,7 @@ describe('Platform › Advertisers › workspace', () => {
     expect(t).toContain('Approve Dismiss')
 
     expect(await decideCreditAction(first.id, 'approved', -5)).toEqual({ error: 'Enter a whole number of dollars, 0 or more.' })
+    expect(await decideCreditAction(first.id, 'approved', 99_999_999)).toEqual({ error: 'That limit is too large.' })
     expect(await decideCreditAction(first.id, 'maybe', 2000)).toEqual({ error: 'Someone already decided this. Reload to see where it stands.' })
     expect((await db.creditRequest.findUniqueOrThrow({ where: { id: first.id } })).status).toBe('open')
 
@@ -331,7 +349,7 @@ describe('Platform › Advertisers › workspace', () => {
 
   it('the history is the workspace\'s audit trail, newest first, 50 rows, with the actor or "System"', async () => {
     const g = await global()
-    const { ws, due } = await kola()
+    const { ws, due, live } = await kola()
     const other = await makeWorkspace('Pesa Link', 'KE', 'approved', null)
     const row = (action: string, iso: string, extra: object = {}) => ({
       action, targetType: 'Workspace', targetId: ws.id, workspaceId: ws.id, at: at(iso), actorId: g.id, ...extra,
@@ -345,7 +363,17 @@ describe('Platform › Advertisers › workspace', () => {
         { ...row('workspace.enter', '2026-11-13T10:00:00Z'), targetId: other.ws.id, workspaceId: other.ws.id },
       ],
     })
+    // A Kenyan campaign of this Nigerian workspace: its reward reads in shillings, a Nigerian one's in naira.
+    const ke = await db.campaign.update({ where: { id: (await makeCampaign(ws.id, 'Nairobi offer', 'live', 100)).id }, data: { country: 'KE' } })
+    await db.auditEvent.createMany({
+      data: [
+        { ...row('rewards.reward', '2026-11-09T10:00:00Z', { before: { rewardLocal: 10 }, after: { rewardLocal: 20 } }), targetType: 'Campaign', targetId: ke.id },
+        { ...row('rewards.reward', '2026-11-08T10:00:00Z', { before: { rewardLocal: 50 }, after: { rewardLocal: 80 } }), targetType: 'Campaign', targetId: live.id },
+      ],
+    })
     const t = text(await renderDetail(ws.id))
+    expect(t).toContain('9 Nov Global Admin Share reward changed KSh10 → KSh20')
+    expect(t).toContain('8 Nov Global Admin Share reward changed ₦50 → ₦80')
     expect(t).toContain('Date By Action Change')
     const lines = [
       '12 Nov System Invoice marked paid INV-0052 · Due → Paid',

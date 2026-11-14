@@ -16,7 +16,7 @@ const has = (q: string) => ({ contains: q, mode: 'insensitive' as const })
 export async function searchWorkspace(workspaceId: string, raw: string): Promise<WorkspaceSearch> {
   const q = raw.trim()
   if (q.length < MIN) return { campaigns: [], invoices: [], people: [] }
-  const [campaigns, invoices, members, ws] = await Promise.all([
+  const [campaigns, invoices, members] = await Promise.all([
     db.campaign.findMany({
       where: { workspaceId, OR: [{ name: has(q) }, { headline: has(q) }, { brand: has(q) }] },
       orderBy: { createdAt: 'desc' },
@@ -29,9 +29,7 @@ export async function searchWorkspace(workspaceId: string, raw: string): Promise
       orderBy: { user: { name: 'asc' } },
       take: LIMIT,
     }),
-    db.workspace.findUnique({ where: { id: workspaceId }, select: { country: true } }),
   ])
-  const tz = MARKETS[ws?.country ?? 'NG'].timezone
   return {
     campaigns: campaigns.map((c) => ({
       id: c.id,
@@ -39,7 +37,8 @@ export async function searchWorkspace(workspaceId: string, raw: string): Promise
       sub: `${c.headline} · ${STATUS_LABEL[c.status]}`,
       href: `/app/campaigns/${c.id}`,
     })),
-    invoices: invoices.map((i) => ({ id: i.id, label: i.number, sub: periodLabel(i.period, tz), href: '/app/invoices' })),
+    // An invoice's month in the country it was issued under.
+    invoices: invoices.map((i) => ({ id: i.id, label: i.number, sub: periodLabel(i.period, MARKETS[i.country].timezone), href: '/app/invoices' })),
     people: members.map((m) => ({ id: m.userId, label: m.user.name, sub: m.user.email, href: '/app/people' })),
   }
 }

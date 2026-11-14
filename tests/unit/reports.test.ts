@@ -70,10 +70,11 @@ const payouts = (
 const ledger = (c: CampaignRef, kind: LedgerKind, amountCents: number, iso: string, invoiceId?: string) =>
   db.ledgerEntry.create({ data: { workspaceId: c.workspaceId, campaignId: c.id, kind, amountCents, at: at(iso), description: 'x', invoiceId } })
 
-const invoice = (workspaceId: string, status: 'paid' | 'due') =>
+const invoice = async (workspaceId: string, status: 'paid' | 'due') =>
   db.invoice.create({
     data: {
       workspaceId, number: `INV-${next()}`, period: at('2026-10-01T00:00:00Z'), amountCents: 0, fxPerUsd: 1550, status,
+      country: (await db.workspace.findUniqueOrThrow({ where: { id: workspaceId } })).country,
       issuedAt: at('2026-11-01T00:00:00Z'), dueAt: at('2026-11-15T00:00:00Z'),
     },
   })

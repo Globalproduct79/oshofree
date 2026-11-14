@@ -469,6 +469,7 @@ model Invoice {
   period      DateTime
   amountCents Int
   fxPerUsd    Decimal
+  country     Country // the billing country at issue: the invoice's currency and month, whatever the workspace's now
   status      InvoiceStatus @default(open)
   issuedAt    DateTime
   dueAt       DateTime

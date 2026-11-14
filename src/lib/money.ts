@@ -279,6 +279,7 @@ export async function closeMonth(
           period: start,
           amountCents: charged(rows.reduce((s, r) => s + r.amountCents, 0)),
           fxPerUsd: fx.get(ws.country)!,
+          country: ws.country,
           status: 'due',
           issuedAt: now,
           dueAt: new Date(now.getTime() + ws.termsDays * DAY_MS),
@@ -352,7 +353,18 @@ export async function markInvoicePaid(id: string, byUserId: string, now = new Da
 
 // ---- Credit limit and requests ----
 
-const isLimit = (cents: unknown): cents is number => Number.isInteger(cents) && (cents as number) >= 0
+// Workspace.creditLimitCents is a 32-bit integer: a larger limit is refused, never overflowed into an error.
+export const MAX_LIMIT_CENTS = 2_147_483_647
+
+const isLimit = (cents: unknown): cents is number =>
+  Number.isInteger(cents) && (cents as number) >= 0 && (cents as number) <= MAX_LIMIT_CENTS
+
+// A limit typed in whole dollars (the Advertisers fields), as cents, or why it cannot be one.
+export function limitFromDollars(dollars: unknown): { cents: number } | { error: 'INVALID' | 'TOO_LARGE' } {
+  if (typeof dollars !== 'number' || !Number.isInteger(dollars) || dollars < 0) return { error: 'INVALID' }
+  const cents = dollars * 100
+  return cents <= MAX_LIMIT_CENTS ? { cents } : { error: 'TOO_LARGE' }
+}
 
 async function writeLimit(tx: Tx, workspaceId: string, limitCents: number): Promise<number> {
   const { creditLimitCents: before } = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { creditLimitCents: true } })

@@ -12,7 +12,9 @@ import {
   creditSummary,
   decideCredit,
   invoiceStatus,
+  limitFromDollars,
   markInvoicePaid,
+  MAX_LIMIT_CENTS,
   monthBounds,
   nextInvoiceNumber,
   outstandingCents,
@@ -55,13 +57,14 @@ const line = (
   extra: { kind?: LedgerKind; campaignId?: string; invoiceId?: string } = {},
 ) => db.ledgerEntry.create({ data: { workspaceId, at: at(iso), amountCents, description, kind: extra.kind ?? 'delivery', ...extra } })
 
-const makeInvoice = (
+const makeInvoice = async (
   workspaceId: string, number: string, period: Date, amountCents: number, status: InvoiceStatus,
   dates: { issuedAt: string; dueAt: string; paidAt?: string },
 ) =>
   db.invoice.create({
     data: {
       workspaceId, number, period, amountCents, status, fxPerUsd: 129,
+      country: (await db.workspace.findUniqueOrThrow({ where: { id: workspaceId } })).country,
       issuedAt: at(dates.issuedAt), dueAt: at(dates.dueAt), paidAt: dates.paidAt ? at(dates.paidAt) : null,
     },
   })
@@ -269,12 +272,12 @@ describe('closeMonth', () => {
     const kolaInv = invoices.find((i) => i.workspaceId === kola.id)!
     const pesaInv = invoices.find((i) => i.workspaceId === pesa.id)!
     expect(kolaInv).toMatchObject({
-      number: 'INV-0052', period: NG_OCT, amountCents: 14500, status: 'due',
+      number: 'INV-0052', period: NG_OCT, amountCents: 14500, status: 'due', country: 'NG',
       issuedAt: CLOSED_AT, dueAt: new Date(CLOSED_AT.getTime() + 14 * DAY),
     })
     expect(Number(kolaInv.fxPerUsd)).toBe(1550)
     expect(pesaInv).toMatchObject({
-      number: 'INV-0053', period: KE_OCT, amountCents: 9300, status: 'due',
+      number: 'INV-0053', period: KE_OCT, amountCents: 9300, status: 'due', country: 'KE',
       dueAt: new Date(CLOSED_AT.getTime() + 7 * DAY),
     })
     expect(Number(pesaInv.fxPerUsd)).toBe(129)
@@ -351,6 +354,20 @@ describe('closeMonth', () => {
     expect(nov.invoices[0]).toMatchObject({ workspaceId: kola.id, period: NG_NOV })
     expect((await db.ledgerEntry.findUniqueOrThrow({ where: { id: late.id } })).invoiceId).toBe(nov.invoices[0].id)
     expect(await unbilledCents(kola.id)).toBe(0)
+  })
+
+  it('an invoice keeps the country it was issued under; a country change applies from the next invoice', async () => {
+    const { user, kola } = await closeFixture()
+    await db.marketFx.create({ data: { country: 'GH', fxPerUsd: 15.5, effectiveFrom: at('2026-09-01T00:00:00Z') } })
+    const [oct] = (await closeMonth(at('2026-10-01T00:00:00Z'), user.id, CLOSED_AT)).invoices.filter((i) => i.workspaceId === kola.id)
+    expect(oct).toMatchObject({ country: 'NG' })
+
+    await db.workspace.update({ where: { id: kola.id }, data: { country: 'KE' } })
+    const [nov] = (await closeMonth(at('2026-11-01T00:00:00Z'), user.id, at('2026-12-01T06:00:00Z'))).invoices.filter((i) => i.workspaceId === kola.id)
+    expect(nov).toMatchObject({ country: 'KE', period: KE_NOV })
+    expect(Number(nov.fxPerUsd)).toBe(129)
+    expect(await db.invoice.findUniqueOrThrow({ where: { id: oct.id } })).toMatchObject({ country: 'NG', period: NG_OCT })
+    expect(Number((await db.invoice.findUniqueOrThrow({ where: { id: oct.id } })).fxPerUsd)).toBe(1550)
   })
 
   it("Phoenix settles the October straggler on November's statement, not October's", async () => {
@@ -512,6 +529,23 @@ describe('credit requests', () => {
       before: { creditLimitCents: 50000 }, after: { creditLimitCents: 30000 },
     })
     expect(await db.notification.count({ where: { workspaceId: ws.id, title: 'Your credit limit is now $300' } })).toBe(1)
+  })
+
+  it('a limit past what the column holds is refused, in cents and in typed dollars', async () => {
+    const global = await makeUser(true)
+    const owner = await makeUser()
+    const ws = await makeWorkspace('Pesa Link', 'KE')
+    await expect(setCreditLimit(ws.id, MAX_LIMIT_CENTS + 1, global.id)).rejects.toBe('INVALID')
+    const req = await requestCredit(ws.id, owner.id)
+    await expect(decideCredit(req.id, global.id, 'approved', MAX_LIMIT_CENTS + 1)).rejects.toBe('INVALID')
+    expect((await db.workspace.findUniqueOrThrow({ where: { id: ws.id } })).creditLimitCents).toBe(50000)
+    await setCreditLimit(ws.id, MAX_LIMIT_CENTS, global.id)
+    expect((await db.workspace.findUniqueOrThrow({ where: { id: ws.id } })).creditLimitCents).toBe(MAX_LIMIT_CENTS)
+
+    expect(limitFromDollars(99_999_999)).toEqual({ error: 'TOO_LARGE' })
+    expect(limitFromDollars(21_474_836)).toEqual({ cents: 2_147_483_600 })
+    expect(limitFromDollars(0)).toEqual({ cents: 0 })
+    for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '100']) expect(limitFromDollars(bad)).toEqual({ error: 'INVALID' })
   })
 
   it('approving needs a whole number of cents at or above 0', async () => {

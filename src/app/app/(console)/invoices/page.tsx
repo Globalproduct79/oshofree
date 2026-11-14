@@ -25,15 +25,18 @@ export default async function InvoicesPage() {
     currentFx(ws.country, now).catch(() => null),
   ])
 
+  // An issued invoice keeps the country it was issued under (its currency and month); the running month is the
+  // workspace's current one.
   const rows: React.ReactNode[][] = invoices.map((inv) => {
     const status = invoiceStatus(inv, now)
+    const issuedIn = MARKETS[inv.country].timezone
     return [
       <b key="n">{inv.number}</b>,
-      periodLabel(inv.period, m.timezone),
+      periodLabel(inv.period, issuedIn),
       <StatusBadge key="s" status={STATUS[status]} />,
-      status === 'paid' ? '—' : fd(inv.dueAt, m.timezone),
+      status === 'paid' ? '—' : fd(inv.dueAt, issuedIn),
       <b key="u">{usd(inv.amountCents)}</b>,
-      <span key="l" style={{ color: tokens.ink3 }}>{loc(inv.amountCents, ws.country, Number(inv.fxPerUsd))}</span>,
+      <span key="l" style={{ color: tokens.ink3 }}>{loc(inv.amountCents, inv.country, Number(inv.fxPerUsd))}</span>,
       <LinkButton key="p" variant="ghost" size="s" href={`/app/invoices/${inv.id}/print`} target="_blank">{I.pdf}</LinkButton>,
     ]
   })

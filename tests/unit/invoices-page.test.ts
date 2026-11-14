@@ -35,9 +35,13 @@ const login = (ws: { id: string }, user: { id: string }) => {
   vi.mocked(auth).mockResolvedValue({ user: { id: user.id, isGlobalAdmin: false }, expires: '' } as never)
   jar.get.mockImplementation((k: string) => (k === 'of_ws' ? { value: ws.id } : undefined))
 }
-const invoice = (workspaceId: string, number: string, period: string, amountCents: number, status: 'due' | 'paid' | 'open', dueAt: string) =>
+// Issued in Kenya at 130 unless the invoice says otherwise (the workspace's country can change after issue).
+const invoice = (
+  workspaceId: string, number: string, period: string, amountCents: number, status: 'due' | 'paid' | 'open', dueAt: string,
+  issued: { country: 'KE' | 'NG'; fx: number } = { country: 'KE', fx: 130 },
+) =>
   db.invoice.create({
-    data: { workspaceId, number, period: at(period), amountCents, status, fxPerUsd: 130, issuedAt: at('2026-10-01T00:00:00Z'), dueAt: at(dueAt), paidAt: status === 'paid' ? at('2026-10-10T00:00:00Z') : null },
+    data: { workspaceId, number, period: at(period), amountCents, status, fxPerUsd: issued.fx, country: issued.country, issuedAt: at('2026-10-01T00:00:00Z'), dueAt: at(dueAt), paidAt: status === 'paid' ? at('2026-10-10T00:00:00Z') : null },
   })
 const render = async () => text(renderToStaticMarkup(await InvoicesPage()))
 
@@ -72,6 +76,16 @@ describe('Invoices page', () => {
     expect(t).not.toContain('Mark paid')
   })
 
+  it('an invoice issued in Nigeria keeps its naira after the workspace moves to Kenya; the running month is in shillings', async () => {
+    const { ws, user } = await setup()
+    login(ws, user)
+    await invoice(ws.id, 'INV-0050', '2026-09-30T23:00:00Z', 20000, 'due', '2026-11-18T00:00:00Z', { country: 'NG', fx: 1550 })
+    await db.ledgerEntry.create({ data: { workspaceId: ws.id, at: at('2026-11-03T09:00:00Z'), amountCents: -13500, description: 'x — delivery', kind: 'delivery' } })
+    const t = await render()
+    expect(t).toContain('INV-0050 Oct 2026 Due 18 Nov $200 ₦310,000 PDF')
+    expect(t).toContain(`Nov 2026 (to date) Open 15 Dec ${usd(13500)} KSh17,415`)
+  })
+
   it('says "No invoices yet." with nothing invoiced or unbilled', async () => {
     const { ws, user } = await setup()
     login(ws, user)
@@ -97,6 +111,20 @@ describe('Invoice print page', () => {
     expect(t).toContain('Total $150 KSh19,500')
     expect(t).toContain('1 USD = KSh130')
     expect(t).toContain('Pay by bank transfer, quoting INV-0044.')
+  })
+
+  it('prints an invoice in the country it was issued under, not the workspace\'s current one', async () => {
+    const { ws, user } = await setup()
+    login(ws, user)
+    const inv = await invoice(ws.id, 'INV-0050', '2026-09-30T23:00:00Z', 20000, 'due', '2026-11-18T00:00:00Z', { country: 'NG', fx: 1550 })
+    await db.ledgerEntry.create({ data: { workspaceId: ws.id, invoiceId: inv.id, at: at('2026-10-05T09:00:00Z'), amountCents: -20000, description: 'Buy 2 get 1 — delivery', kind: 'delivery' } })
+    const t = text(renderToStaticMarkup(await InvoicePrintPage({ params: Promise.resolve({ id: inv.id }) })))
+    expect(t).toContain('Period Oct 2026')
+    expect(t).toContain('Date Description USD NGN')
+    expect(t).toContain('5 Oct Buy 2 get 1 — delivery $200 ₦310,000')
+    expect(t).toContain('Total $200 ₦310,000')
+    expect(t).toContain('1 USD = ₦1,550')
+    expect(t).not.toContain('KSh')
   })
 
   it("is not found for another workspace's invoice", async () => {

@@ -23,6 +23,7 @@ export const ADVERTISERS = {
 
   errors: {
     limit: 'Enter a whole number of dollars, 0 or more.',
+    tooLarge: 'That limit is too large.',
     noWorkspace: 'That workspace no longer exists.',
     noInvoice: 'That invoice no longer exists.',
     alreadyDecided: 'Someone already decided this. Reload to see where it stands.',

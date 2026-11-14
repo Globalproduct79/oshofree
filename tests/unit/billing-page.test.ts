@@ -51,7 +51,7 @@ async function fixture(o: Parameters<typeof setup>[0] = {}) {
   const s = await setup(o)
   await campaign(s.ws.id, 'Send money free', 'live', 300)
   await db.invoice.create({
-    data: { workspaceId: s.ws.id, number: 'INV-0041', period: at('2026-09-30T21:00:00Z'), amountCents: 21000, status: 'due', fxPerUsd: 129, issuedAt: at('2026-10-01T00:00:00Z'), dueAt: at('2026-10-15T00:00:00Z') },
+    data: { workspaceId: s.ws.id, number: 'INV-0041', period: at('2026-09-30T21:00:00Z'), amountCents: 21000, status: 'due', fxPerUsd: 129, country: s.ws.country, issuedAt: at('2026-10-01T00:00:00Z'), dueAt: at('2026-10-15T00:00:00Z') },
   })
   await ledger(s.ws.id, '2026-11-03T09:00:00Z', -11800, 'Send money free — delivery')
   await ledger(s.ws.id, '2026-11-03T09:00:00Z', -1700, 'Send money free — share rewards', 'reward')
