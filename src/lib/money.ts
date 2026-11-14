@@ -415,3 +415,22 @@ export async function decideCredit(
   }
   return db.creditRequest.findUniqueOrThrow({ where: { id } })
 }
+
+// ---- Phoenix settlement statements ----
+
+// Global records that Phoenix was paid: open -> paid. Paying a paid statement again changes nothing.
+export async function markStatementPaid(id: string, byUserId: string, now = new Date()) {
+  const statement = await db.settlementStatement.findUnique({ where: { id } })
+  if (!statement) throw 'NOT_FOUND'
+  if (statement.status === 'paid') return statement
+  const { count } = await db.settlementStatement.updateMany({ where: { id, status: 'open' }, data: { status: 'paid', paidAt: now } })
+  if (count) {
+    await audit(byUserId, 'statement.paid', { type: 'SettlementStatement', id }, { status: 'open' }, { status: 'paid', paidAt: now.toISOString() })
+  }
+  return db.settlementStatement.findUniqueOrThrow({ where: { id } })
+}
+
+// The channel's closed months, newest first.
+export function pastStatements(channelId: string) {
+  return db.settlementStatement.findMany({ where: { channelId }, orderBy: { period: 'desc' } })
+}

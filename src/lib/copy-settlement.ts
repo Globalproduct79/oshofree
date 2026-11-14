@@ -1,0 +1,30 @@
+// Phoenix settlement strings (GLB §2.4), verbatim; the controller's lines are marked.
+export const SETTLEMENT = {
+  crumb: 'Phoenix settlement',
+  title: 'Phoenix settlement',
+  lead: 'What the channel is owed from delivered impressions, settled monthly.',
+  kpi: {
+    chargedTitle: 'Delivery charged',
+    chargedSub: 'this month, all advertisers',
+    shareTitle: 'Phoenix share',
+    shareValue: (n: number) => `${n}%`,
+    shareSub: 'of delivery, not of rewards',
+    owedTitle: 'Owed this month',
+    owedSub: 'statement on the 1st',
+    keptTitle: 'Global keeps',
+    keptSub: 'before aggregator and payment costs',
+  },
+  marketTitle: 'Statement by market',
+  marketHead: ['Country', 'Impressions', 'Delivery charged', 'Phoenix share'],
+  shareTitle: 'Share',
+  shareLabel: 'Phoenix share of delivery charges',
+  shareSub: 'Share rewards are paid to consumers and are excluded. Applies from the next statement.',
+  pastTitle: 'Past statements',
+  // Controller's copy.
+  empty: 'No statements yet.',
+  markPaid: 'Mark paid',
+  paidToast: 'Statement marked paid',
+  shareToast: 'Share updated',
+  invalidShare: 'Enter a share between 0 and 1.',
+  monthNav: 'Statement month',
+} as const
