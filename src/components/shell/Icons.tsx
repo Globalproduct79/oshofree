@@ -71,6 +71,12 @@ const shapes: Record<Name, React.ReactNode> = {
     </>
   ),
   ledger: <path d="M4 4h16v16H4zM4 9h16M9 9v11" />,
+  building: (
+    <>
+      <rect x="4" y="2" width="16" height="20" rx="1" />
+      <path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01" />
+    </>
+  ),
   code: <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" />,
 }
 

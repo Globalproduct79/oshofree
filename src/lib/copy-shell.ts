@@ -17,6 +17,7 @@ export const SHELL = {
     rewards: 'Rewards',
     billing: 'Billing & credit',
     invoices: 'Invoices',
+    overview: 'Overview',
     people: 'People',
     workspace: 'Workspace',
     notifications: 'Notifications',

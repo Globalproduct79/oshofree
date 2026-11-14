@@ -4,7 +4,7 @@ import { SHELL } from '@/lib/copy-shell'
 
 export type NavIcon =
   | 'home' | 'plus' | 'share' | 'gift' | 'card' | 'doc' | 'people' | 'cog' | 'bell'
-  | 'check' | 'grid' | 'tag' | 'globe' | 'ledger' | 'code'
+  | 'check' | 'grid' | 'tag' | 'globe' | 'ledger' | 'code' | 'building'
 export type NavItem = { label: string; href: string; icon: NavIcon; count?: number }
 export type NavGroup = { label: string; items: NavItem[] }
 export type NavCounts = { campaigns: number; invoices: number; review: number }
@@ -29,6 +29,7 @@ export function navFor(ctx: { role: MemberRole; inWorkspace: boolean; counts: Na
         item(nav.invoices, '/app/invoices', 'doc', counts.invoices),
       ] },
       { label: groups.organisation, items: [
+        item(nav.overview, '/app/organisation', 'building'),
         item(nav.people, '/app/people', 'people'),
         item(nav.workspace, '/app/workspace', 'cog'),
         item(nav.notifications, '/app/notifications', 'bell'),
