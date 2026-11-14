@@ -116,11 +116,11 @@ export function loadDraft(workspaceId: string, defaults: FormValues): FormValues
   }
 }
 
-// This workspace's draft, read without touching any other: Campaigns home shows it as a card, and only opening the
-// form clears another workspace's draft.
-export function peekDraft(workspaceId: string, defaults: FormValues): FormValues | null {
+// This workspace's stored draft as it is kept (parseDraft reads it), touching no other: Campaigns home shows it as a
+// card, and only opening the form clears another workspace's draft. A string, so it can be an external store's snapshot.
+export function storedDraft(workspaceId: string): string | null {
   try {
-    return parseDraft(storage()?.getItem(draftKey(workspaceId)) ?? null, workspaceId, defaults)
+    return storage()?.getItem(draftKey(workspaceId)) ?? null
   } catch {
     return null
   }

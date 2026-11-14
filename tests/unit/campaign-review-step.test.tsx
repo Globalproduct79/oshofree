@@ -4,7 +4,7 @@ import { draftCard } from '@/components/campaign/form/draft-card'
 import { formProblem } from '@/components/campaign/form/problem'
 import { ReviewStep } from '@/components/campaign/form/ReviewStep'
 import { newCampaignDefaults, type FormValues } from '@/components/campaign/form/values'
-import { peekDraft, saveDraft } from '@/lib/draft-store'
+import { parseDraft, saveDraft, storedDraft } from '@/lib/draft-store'
 import type { PreviewOffer } from '@/lib/preview-merge'
 import { tokens } from '@/lib/tokens'
 
@@ -198,8 +198,8 @@ describe('the draft on Campaigns home', () => {
       const defaults = newCampaignDefaults(kola, NOW)
       saveDraft('ws1', filled())
       saveDraft('ws2', { ...defaults, name: 'Other' })
-      expect(peekDraft('ws1', defaults)?.headline).toBe('Harmattan sale: 20% off 1L bottles')
-      expect(peekDraft('ws3', defaults)).toBeNull()
+      expect(parseDraft(storedDraft('ws1'), 'ws1', defaults)?.headline).toBe('Harmattan sale: 20% off 1L bottles')
+      expect(storedDraft('ws3')).toBeNull()
       expect(m.has('of-draft:ws2')).toBe(true)
     } finally {
       vi.unstubAllGlobals()

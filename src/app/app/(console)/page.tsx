@@ -1,4 +1,4 @@
-import { DraftCard } from '@/components/campaign/DraftCard'
+import { DraftCard, EmptyUnlessDraft } from '@/components/campaign/DraftCard'
 import { newCampaignDefaults } from '@/components/campaign/form/values'
 import { HomeFilterPills } from '@/components/campaign/HomeFilterPills'
 import { PauseResume } from '@/components/campaign/PauseResume'
@@ -42,6 +42,13 @@ export default async function CampaignsHome({ searchParams }: { searchParams: Pr
   const canAct = can(role, 'campaigns')
   const demo = demoControlsOn(user.isGlobalAdmin)
   const greeting = HOME.greeting(hourIn(now, MARKETS[ws.country].timezone))
+  // The New form's draft, kept in this browser: a card in the grid, and the empty state gives way to it.
+  const draft = canAct && { workspaceId: ws.id, defaults: newCampaignDefaults(ws, now) }
+  const empty = (
+    <EmptyState box title={HOME.empty.title}>
+      {HOME.empty.line}
+    </EmptyState>
+  )
 
   return (
     <>
@@ -84,15 +91,11 @@ export default async function CampaignsHome({ searchParams }: { searchParams: Pr
         {home.cards.map((c) => (
           <CampaignCard key={c.id} campaign={c} href={campaignHref(c.id)} />
         ))}
-        {/* The New form's draft waits here, in this browser, before the tile that starts another. */}
-        {filter === 'all' && canAct && <DraftCard workspaceId={ws.id} defaults={newCampaignDefaults(ws, now)} />}
+        {/* The draft waits here, before the tile that starts another. */}
+        {filter === 'all' && draft && <DraftCard {...draft} />}
         {filter === 'all' && canAct && <NewCampaignTile href={NEW} />}
       </div>
-      {home.counts.all === 0 && (
-        <EmptyState box title={HOME.empty.title}>
-          {HOME.empty.line}
-        </EmptyState>
-      )}
+      {home.counts.all === 0 && (draft ? <EmptyUnlessDraft {...draft}>{empty}</EmptyUnlessDraft> : empty)}
     </>
   )
 }
