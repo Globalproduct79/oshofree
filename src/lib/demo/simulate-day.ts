@@ -45,8 +45,8 @@ export type SimulateSummary = {
   job: DailyResult
 }
 
-type Counts = Omit<SimulateSummary, 'runId' | 'campaigns' | 'job'>
-const ZERO: Counts = { impressions: 0, opens: 0, claims: 0, shares: 0, friendOpens: 0, friendClaims: 0, payouts: 0 }
+export type DayCounts = Omit<SimulateSummary, 'runId' | 'campaigns' | 'job'>
+const ZERO: DayCounts = { impressions: 0, opens: 0, claims: 0, shares: 0, friendOpens: 0, friendClaims: 0, payouts: 0 }
 
 const utcDate = (at: Date) => new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()))
 
@@ -76,7 +76,7 @@ export async function simulateDay(now: Date, rng: Rng): Promise<SimulateSummary>
       const counts = await simulateCampaign(c, phoenix.id, day, now, rng)
       if (!counts) continue
       simulated++
-      for (const k of Object.keys(totals) as (keyof Counts)[]) totals[k] += counts[k]
+      for (const k of Object.keys(totals) as (keyof DayCounts)[]) totals[k] += counts[k]
     }
     // A replay past the once-a-day guard: a "Run daily job" click may have taken the day already. Every duty
     // is idempotent and the delivery line dedupes per campaign and day, so nothing is charged twice.
@@ -91,7 +91,7 @@ export async function simulateDay(now: Date, rng: Rng): Promise<SimulateSummary>
 }
 
 // What the campaign delivered in its market's simulated day, from its start (it was not on Phoenix before).
-async function simulateCampaign(c: Campaign, channelId: string, day: Date, now: Date, rng: Rng): Promise<Counts | null> {
+async function simulateCampaign(c: Campaign, channelId: string, day: Date, now: Date, rng: Rng): Promise<DayCounts | null> {
   const { start, end } = dayBounds(c.country, day)
   const from = Math.max(start.getTime(), c.startsAt.getTime())
   const to = Math.min(end.getTime(), c.endsAt.getTime(), now.getTime())
@@ -102,10 +102,14 @@ async function simulateCampaign(c: Campaign, channelId: string, day: Date, now: 
   return new CampaignDay(c, channelId, ymd(day, c.country), { from, to }, plan, rng).run()
 }
 
-type Window = { from: number; to: number }
+// The part of the market day the campaign was on Phoenix, as epoch milliseconds.
+export type Window = { from: number; to: number }
 type Shared = { linkId: string; at: number }
 
-class CampaignDay {
+// One campaign's market day posted through the pipeline. The seed replays history through it too, under its own
+// key prefix: batches `<prefix>:<campaign>:<date>:<n>`, sessions `<prefix>-<campaign>-<i>`, friends
+// `<prefix>v-<campaign>-<date>-<j>`.
+export class CampaignDay {
   private batch = 0
   private readonly phones = new Set<string>()
 
@@ -116,9 +120,10 @@ class CampaignDay {
     private readonly window: Window,
     private readonly plan: DayPlan,
     private readonly rng: Rng,
+    private readonly prefix: string = SIM_JOB,
   ) {}
 
-  async run(): Promise<Counts> {
+  async run(): Promise<DayCounts> {
     const { plan, window } = this
     // Phoenix sessions: impressions spread over the day, opens a subset of them, claims and shares subsets of
     // the opens, each a little after the one before.
@@ -166,7 +171,7 @@ class CampaignDay {
     if (!links.length) return { friendOpens, friendClaims }
     for (let j = 0; j < this.plan.friendOpens; j++) {
       const link = links[Math.floor(this.rng() * links.length)]
-      const visitor = { id: `simv-${this.c.id}-${this.date}-${j}`, ipHash: SIM_CLIENT, userAgent: SIM_CLIENT }
+      const visitor = { id: `${this.prefix}v-${this.c.id}-${this.date}-${j}`, ipHash: SIM_CLIENT, userAgent: SIM_CLIENT }
       const openedAt = this.after(link.at, MINUTE, 4 * 60 * MINUTE)
       const { deduped } = await recordOpen(link.linkId, visitor.id, visitor.ipHash, visitor.userAgent, new Date(openedAt))
       if (!deduped) friendOpens++
@@ -186,14 +191,14 @@ class CampaignDay {
   private async post(events: EventInput[]): Promise<number> {
     let accepted = 0
     for (let i = 0; i < events.length; i += MAX_EVENTS) {
-      const key = `sim:${this.c.id}:${this.date}:${this.batch++}`
+      const key = `${this.prefix}:${this.c.id}:${this.date}:${this.batch++}`
       accepted += (await ingestEvents(this.channelId, key, events.slice(i, i + MAX_EVENTS))).accepted
     }
     return accepted
   }
 
   private session(i: number): string {
-    return `sim-${this.c.id}-${i}`
+    return `${this.prefix}-${this.c.id}-${i}`
   }
 
   private event(type: 'impression' | 'open' | 'claim' | 'share', i: number, at: number): EventInput {

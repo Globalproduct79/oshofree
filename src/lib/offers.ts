@@ -7,7 +7,7 @@ import { isoInZone } from '@/lib/format'
 import { linkUrl, mintChannelLink, mintRootLink } from '@/lib/links'
 import { MARKETS } from '@/lib/markets'
 import type { PreviewOffer } from '@/lib/preview-merge'
-import { imageUrl } from '@/lib/storage'
+import { imageUrl } from '@/lib/image-rules'
 
 // The prototype's offer on the wire (GLB §2.6 box 1).
 export type OfferDto = {

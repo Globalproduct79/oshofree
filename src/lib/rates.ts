@@ -21,11 +21,14 @@ export async function currentCpmCents(channelId: string, country: Country, place
   return row.cpmCents
 }
 
-export async function setRate(channelId: string, country: Country, placement: Placement, cpmCents: number, byUserId: string) {
+// Each setter takes effect at `effectiveFrom` (now, from the Rates page; the seed back-dates its rate card).
+export async function setRate(
+  channelId: string, country: Country, placement: Placement, cpmCents: number, byUserId: string, effectiveFrom = new Date(),
+) {
   const before = await db.rateCard
-    .findFirst({ where: { channelId, country, placement, effectiveFrom: { lte: new Date() } }, orderBy: { effectiveFrom: 'desc' } })
+    .findFirst({ where: { channelId, country, placement, effectiveFrom: { lte: effectiveFrom } }, orderBy: { effectiveFrom: 'desc' } })
     .then((r) => r?.cpmCents ?? null)
-  const row = await db.rateCard.create({ data: { channelId, country, placement, cpmCents, effectiveFrom: new Date() } })
+  const row = await db.rateCard.create({ data: { channelId, country, placement, cpmCents, effectiveFrom } })
   await audit(byUserId, 'rate.set', { type: 'RateCard', id: row.id }, { country, placement, cpmCents: before }, { country, placement, cpmCents })
   return row
 }
@@ -51,9 +54,9 @@ export async function currentFx(country: Country, at = new Date()): Promise<numb
   return Number(row.fxPerUsd)
 }
 
-export async function setFx(country: Country, fxPerUsd: number, byUserId: string) {
-  const before = await currentFx(country).catch(() => null)
-  const row = await db.marketFx.create({ data: { country, fxPerUsd, effectiveFrom: new Date() } })
+export async function setFx(country: Country, fxPerUsd: number, byUserId: string, effectiveFrom = new Date()) {
+  const before = await currentFx(country, effectiveFrom).catch(() => null)
+  const row = await db.marketFx.create({ data: { country, fxPerUsd, effectiveFrom } })
   await audit(byUserId, 'fx.set', { type: 'MarketFx', id: row.id }, { country, fxPerUsd: before }, { country, fxPerUsd })
   return row
 }
@@ -63,10 +66,10 @@ export async function currentShare(channelId: string, at = new Date()): Promise<
   return row ? Number(row.share) : DEFAULT_SHARE
 }
 
-export async function setShare(channelId: string, share: number, byUserId: string) {
+export async function setShare(channelId: string, share: number, byUserId: string, effectiveFrom = new Date()) {
   if (!Number.isFinite(share) || share < 0 || share > 1) throw 'INVALID'
-  const before = await currentShare(channelId)
-  const row = await db.channelShare.create({ data: { channelId, share, effectiveFrom: new Date() } })
+  const before = await currentShare(channelId, effectiveFrom)
+  const row = await db.channelShare.create({ data: { channelId, share, effectiveFrom } })
   await audit(byUserId, 'share.set', { type: 'ChannelShare', id: row.id }, { share: before }, { share })
   return row
 }

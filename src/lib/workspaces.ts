@@ -1,11 +1,12 @@
-import 'server-only'
 import type { Workspace, WorkspaceStatus, WorkspaceType } from '@prisma/client'
 import { audit } from '@/lib/audit'
 import { NOTIFY } from '@/lib/copy-notifications'
 import { db, type Tx } from '@/lib/db'
 import type { Country } from '@/lib/markets'
 import { notifyWorkspace } from '@/lib/notifications'
-import { requireMember } from '@/lib/permissions'
+
+// No server-only import and no session: the seed (under tsx) creates and approves workspaces through these.
+// The signed-in member's workspace is permissions.ts's requireWorkspace.
 
 export type WorkspaceInput = { name: string; type: WorkspaceType; country: Country }
 
@@ -28,21 +29,10 @@ export async function workspaceForUser(userId: string): Promise<Workspace | null
   return m?.workspace ?? null
 }
 
-// The active workspace for any signed-in member (see requireMember).
-export async function requireWorkspace(): Promise<Workspace> {
-  return (await requireMember('view')).workspace
-}
-
 export type WorkspaceUpdate = Partial<WorkspaceInput> & { registrationNumber?: string | null; accountManager?: string }
 
 export async function updateWorkspace(id: string, input: WorkspaceUpdate): Promise<Workspace> {
   return db.workspace.update({ where: { id }, data: input })
-}
-
-// True when the user is looking at a workspace as Global rather than as a member.
-export async function isImpersonating(userId: string, workspaceId: string): Promise<boolean> {
-  const m = await requireMember('view')
-  return m.user.id === userId && m.workspace.id === workspaceId && m.role === 'Global'
 }
 
 type Decision = { status: 'approved'; approvedAt: Date; declineReason: null } | { status: 'declined'; declineReason: string }

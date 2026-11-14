@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { isAdminInDb, requireUser } from '@/lib/session'
-import {
-  createWorkspace, requireWorkspace, updateWorkspace, workspaceForUser,
-} from '@/lib/workspaces'
+import { requireWorkspace } from '@/lib/permissions'
+import { createWorkspace, updateWorkspace, workspaceForUser } from '@/lib/workspaces'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireUser: vi.fn(), isAdminInDb: vi.fn() }))

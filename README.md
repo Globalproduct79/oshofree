@@ -30,16 +30,36 @@ npm run dev   # http://localhost:3100
 
 ## Demo data
 
+The seed builds the prototype's world: four workspaces and their people, Phoenix's rate card (five
+markets, FX, the 55 % share), the nine campaigns and their history, invoices and the bell. Every date is
+relative to the day you seed, so the demo always looks current. Every number comes from the real pipeline:
+the seed replays each campaign's past days through event ingestion, `POST /share`, the landing page's
+opens and claims (which make the payouts, through the fraud checks) and the daily job (which charges
+delivery, starts and ends flights, closes last month and warns on pace). The only invoices it writes
+itself are two older than any seeded campaign (MediaSpec's paid INV-0037 and Pesa Link's overdue
+INV-0046). It is a pure function of the run time: one seeded random generator drives every choice.
+
 Every seeded login uses the password `password`.
 
-| Login | What it shows |
-| --- | --- |
-| `admin@oshofree.demo` | Global: Review, Advertisers, Phoenix API |
-| `tunde@kolabright.demo` | Kola Bright, an approved brand with live campaigns and a share chain |
-| `ada@zurifoods.demo` | Zuri Foods, a brand still waiting for approval |
+| Login | Who | What it shows |
+| --- | --- | --- |
+| `admin@oshofree.demo` | Global | Review (two campaigns and SunFresh waiting), Advertisers, Rates, settlement, the rewards ledger with held payouts, Phoenix API |
+| `tunde@kolabright.demo` | Owner, Kola Bright | A brand in Nigeria: Buy 2 get 1 live, August multipack ended, December draw teaser in review; last month's invoice paid |
+| `ada@kolabright.demo` | Manager, Kola Bright | The same workspace as a Manager |
+| `dolapo@mediaspec.demo` | Owner, MediaSpec (agency) | An agency with five client brands in Kenya, Senegal, Tanzania and Nigeria (two live, one in review, one paused, one ended); last month's invoice due |
+| `chidi@mediaspec.demo` | Manager, MediaSpec (agency) | The agency as a Manager |
+| `kemi@mediaspec.demo` | Viewer, MediaSpec (agency) | The agency read-only |
+| `wanjiru@pesalink.demo` | Owner, Pesa Link | A brand in Kenya with one live campaign and an overdue invoice, close to its $500 limit |
+| `kofi@sunfresh.demo` | Owner, SunFresh Juices | A brand in Ghana still awaiting Global's approval |
+
+`SEED_SCALE` (default `0.2`) sets the share of the prototype's volumes the seed generates: impressions,
+and with them opens, shares, friends' claims, rewards and spend. At `0.2` the seed takes under a minute,
+and campaigns show a fifth of the prototype's delivery (so the daily job reports them as slower than
+planned). `SEED_SCALE=1 npm run db:seed` reproduces the prototype's delivery and reward figures and
+takes about two minutes.
 
 The Phoenix channel's development key is `phx_dev_oshofree` (`DEMO_CHANNEL_KEY`). The seed stores its
-hash on the Phoenix channel, and `/admin/api` shows the key outside production.
+hash on the Phoenix channel, prints it with the logins, and `/admin/api` shows the key outside production.
 
 ## Tests
 

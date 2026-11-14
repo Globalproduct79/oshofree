@@ -15,6 +15,17 @@ export const NOTIFY = {
   revisionRejected: (name: string, reason: string): Item => ({ title: `${name}'s revised offer was not approved`, detail: reason }),
   workspaceApproved: (): Item => ({ title: 'Your workspace is approved', detail: 'Submit campaigns any time' }),
   workspaceDeclined: (reason: string): Item => ({ title: 'Your workspace was declined', detail: reason }),
+  // A new advertiser's first word from OshoFree (ADV §12, SunFresh).
+  awaitingApproval: (): Item => ({ title: 'Your workspace is awaiting approval', detail: 'Global checks new advertisers within one working day' }),
+  // An issued invoice, before and after its due date (ADV §12). The due date is the invoice's market day.
+  invoiceDue: (number: string, days: number, cents: number): Item => ({
+    title: `${number} is due in ${dayCount(days)}`,
+    detail: `${usd(cents)} · pay by bank transfer`,
+  }),
+  invoiceOverdue: (number: string, cents: number, dueAt: Date, timeZone = 'UTC'): Item => ({
+    title: `${number} is overdue`,
+    detail: `${usd(cents)} · was due ${fd(dueAt, timeZone)}`,
+  }),
   creditLimit: (cents: number): Item => ({ title: `Your credit limit is now ${usd(cents)}` }),
   ended: (name: string, impressions: number, openRate: string, outOfBudget = false): Item => ({
     title: `${name} ended`,

@@ -14,3 +14,9 @@ export const MAX_UPLOAD_BODY_BYTES = MAX_IMAGE_BYTES + 65_536
 export function acceptableImage(file: { type: string; size: number }): boolean {
   return (IMAGE_TYPES as readonly string[]).includes(file.type) && file.size > 0 && file.size <= MAX_IMAGE_BYTES
 }
+
+// Where /uploads serves a stored creative. No file system here: the offers feed builds these under tsx too.
+export function creativeUrl(key: string): string {
+  return `/uploads/${key}`
+}
+export const imageUrl = creativeUrl

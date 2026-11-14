@@ -58,3 +58,14 @@ export async function requireMember(cap: Capability): Promise<Member> {
   if (!can(found.role, cap)) throw 'FORBIDDEN'
   return { user: { ...user, isGlobalAdmin: admin }, workspace: found.workspace, role: found.role }
 }
+
+// The active workspace for any signed-in member (see requireMember).
+export async function requireWorkspace(): Promise<Workspace> {
+  return (await requireMember('view')).workspace
+}
+
+// True when the user is looking at a workspace as Global rather than as a member.
+export async function isImpersonating(userId: string, workspaceId: string): Promise<boolean> {
+  const m = await requireMember('view')
+  return m.user.id === userId && m.workspace.id === workspaceId && m.role === 'Global'
+}

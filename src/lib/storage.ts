@@ -53,10 +53,8 @@ export async function putImage(file: File): Promise<string> {
   }
 }
 
-export function creativeUrl(key: string): string {
-  return `/uploads/${key}`
-}
-export const imageUrl = creativeUrl
+// The URL helpers are pure (image-rules.ts), so modules the seed loads under tsx can build URLs too.
+export { creativeUrl, imageUrl } from '@/lib/image-rules'
 
 // Null for a key that is not ours to serve (bad shape, path tricks) or a missing file.
 export async function openImage(key: string, range?: { start: number; end: number }) {

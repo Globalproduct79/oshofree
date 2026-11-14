@@ -1,20 +1,27 @@
+import type { User } from '@prisma/client'
 import { db } from '@/lib/db'
 import { createUser } from '@/lib/users'
 
-const PASSWORD = 'password'
+export const PASSWORD = 'password'
 
-export async function seedUsers() {
-  const admin = await createUser({ email: 'admin@oshofree.demo', password: PASSWORD, name: 'Global Admin' })
-  await db.user.update({ where: { id: admin.id }, data: { isGlobalAdmin: true } })
-  const tunde = await createUser({ email: 'tunde@kolabright.demo', password: PASSWORD, name: 'Tunde Okafor' })
-  const ada = await createUser({ email: 'ada@zurifoods.demo', password: PASSWORD, name: 'Ada Eze' })
-  const kola = await db.workspace.create({
-    data: { name: 'Kola Bright', type: 'Brand', country: 'NG', status: 'approved',
-      members: { create: { userId: tunde.id, role: 'Owner' } } },
-  })
-  await db.workspace.create({
-    data: { name: 'Zuri Foods', type: 'Brand', country: 'NG', status: 'pending',
-      members: { create: { userId: ada.id, role: 'Owner' } } },
-  })
-  return { admin, tunde, ada, kola }
+// The prototype's people (spec §6.13, ADV §9 and §14), plus Global. The seed prints this list.
+export const LOGINS = [
+  { key: 'admin', email: 'admin@oshofree.demo', name: 'Global Admin', shows: 'Global' },
+  { key: 'tunde', email: 'tunde@kolabright.demo', name: 'Tunde Okafor', shows: 'Owner, Kola Bright' },
+  { key: 'ada', email: 'ada@kolabright.demo', name: 'Ada Eze', shows: 'Manager, Kola Bright' },
+  { key: 'dolapo', email: 'dolapo@mediaspec.demo', name: 'Dolapo Adeyemi', shows: 'Owner, MediaSpec (agency)' },
+  { key: 'chidi', email: 'chidi@mediaspec.demo', name: 'Chidi Nwosu', shows: 'Manager, MediaSpec (agency)' },
+  { key: 'kemi', email: 'kemi@mediaspec.demo', name: 'Kemi Balogun', shows: 'Viewer, MediaSpec (agency)' },
+  { key: 'wanjiru', email: 'wanjiru@pesalink.demo', name: 'Wanjiru Kamau', shows: 'Owner, Pesa Link' },
+  { key: 'kofi', email: 'kofi@sunfresh.demo', name: 'Kofi Mensah', shows: 'Owner, SunFresh Juices (awaiting approval)' },
+] as const
+
+export type PersonKey = (typeof LOGINS)[number]['key']
+export type People = Record<PersonKey, User>
+
+export async function seedUsers(): Promise<People> {
+  const people = {} as People
+  for (const { key, email, name } of LOGINS) people[key] = await createUser({ email, password: PASSWORD, name })
+  people.admin = await db.user.update({ where: { id: people.admin.id }, data: { isGlobalAdmin: true } })
+  return people
 }

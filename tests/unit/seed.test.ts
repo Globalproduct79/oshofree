@@ -1,29 +1,233 @@
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
+import { MARKETS } from '@/lib/markets'
+import { localMidnight, wallClock } from '@/lib/market-clock'
+import { campaignSpendCents, creditSummary, invoiceStatus, nextInvoiceNumber } from '@/lib/money'
+import { resetDb } from '../../scripts/db-truncate'
 import { seed } from '../../prisma/seed'
-import { effectiveStatus } from '@/lib/campaign-status'
-import { homeNumbers } from '@/lib/reports'
+
+// The prototype's own day: every relative date in the inventory lands where it shows (ADV "Seed campaigns").
+const NOW = new Date('2026-11-13T10:00:00Z')
+const DAY = 86_400_000
+const SLOW = 300_000
+
+const STATUSES = {
+  'Buy 2 get 1 — November': 'live',
+  'August multipack 15% off': 'ended',
+  'December draw teaser': 'review',
+  'Supa10 Jackpot — Kenya': 'live',
+  'Foot Gabal-Lena — Senegal': 'live',
+  'Weekend cashback — Tanzania': 'review',
+  'Kwik ₦1m draw': 'paused',
+  'Jackpot 10 — Guinea-Bissau': 'ended',
+  'KSh 50 cashback on first top-up': 'live',
+}
+
+const workspace = (name: string) => db.workspace.findFirstOrThrow({ where: { name } })
+
+async function impressionsByCampaign(): Promise<Record<string, number>> {
+  const campaigns = await db.campaign.findMany({ select: { id: true, name: true } })
+  const rows = await db.channelEvent.groupBy({ by: ['campaignId'], where: { type: 'Impression' }, _count: { _all: true } })
+  const n = new Map(rows.map((r) => [r.campaignId, r._count._all]))
+  return Object.fromEntries(campaigns.map((c) => [c.name, n.get(c.id) ?? 0]))
+}
+
+const isLocalMidnight = (at: Date, tz: string) => {
+  const w = wallClock(tz, at)
+  return w.hour === 0 && w.minute === 0 && w.second === 0 && at.getUTCMilliseconds() === 0
+}
 
 describe('seed', () => {
-  it('builds a living demo and refuses a database that has users', async () => {
-    const now = new Date()
-    const counts = await seed(now)
-    expect(counts).toMatchObject({ users: 3, workspaces: 2, channels: 2, campaigns: 4 })
-    expect(await db.user.count()).toBe(3)
-    expect(await db.workspace.count()).toBe(2)
+  let first: Record<string, number> = {}
+
+  it("builds the prototype's four workspaces, nine campaigns and their history through the real pipeline", async () => {
+    const summary = await seed(NOW)
+
+    expect(await db.workspace.count()).toBe(4)
+    expect(await db.user.count()).toBe(8)
     expect(await db.channel.count()).toBe(2)
-    const campaigns = await db.campaign.findMany()
-    const status = Object.fromEntries(campaigns.map((c) => [c.name, effectiveStatus(c, now)]))
-    expect(status).toEqual({
-      'Buy 2 get 1': 'live', 'Weekend cashback': 'review', 'December draw teaser': 'scheduled', 'August multipack': 'ended',
-    })
-    expect((await db.shareLink.aggregate({ _max: { depth: true } }))._max.depth).toBe(3)
-    const days = await db.$queryRaw<{ n: number }[]>`SELECT count(DISTINCT date_trunc('day', "at"))::int AS n FROM "ChannelEvent"`
-    expect(days[0].n).toBe(14)
-    const buy2 = campaigns.find((c) => c.name === 'Buy 2 get 1')!
-    const home = await homeNumbers(buy2.id, now)
-    expect(home.claims).toBeGreaterThan(0)
-    expect(home.impressions).toBeGreaterThanOrEqual(14 * 80)
-    await expect(seed(now)).rejects.toThrow(/Refusing to seed/)
+    expect(await db.rateCard.count()).toBe(20)
+    expect(await db.marketFx.count()).toBe(5)
+    expect(await db.fraudRule.count()).toBe(3)
+    expect(summary).toMatchObject({ users: 8, workspaces: 4, campaigns: 9 })
+
+    const campaigns = await db.campaign.findMany({ include: { workspace: true } })
+    expect(Object.fromEntries(campaigns.map((c) => [c.name, c.status]))).toEqual(STATUSES)
+    for (const c of campaigns) {
+      // Every campaign went through submit, so it carries the CPM and FX it was submitted at.
+      expect(c.cpmCents, c.name).toBeGreaterThan(0)
+      expect(Number(c.fxPerUsd), c.name).toBeGreaterThan(0)
+      // Flights start and end at the market's midnight.
+      expect(isLocalMidnight(c.startsAt, MARKETS[c.country].timezone), c.name).toBe(true)
+      expect(isLocalMidnight(c.endsAt, MARKETS[c.country].timezone), c.name).toBe(true)
+      // No overspend: delivery and rewards together stay inside the budget.
+      expect(await campaignSpendCents(c.id), c.name).toBeLessThanOrEqual(c.budgetUsd * 100)
+    }
+    const jackpot = campaigns.find((c) => c.name === 'Jackpot 10 — Guinea-Bissau')!
+    expect(jackpot.country).toBe('SN')
+
+    // Events sit inside each flight and before now; ended campaigns have nothing today; review has nothing.
+    const today = (tz: string) => {
+      const w = wallClock(tz, NOW)
+      return localMidnight(tz, w.year, w.month, w.day)
+    }
+    for (const c of campaigns) {
+      const span = await db.channelEvent.aggregate({ where: { campaignId: c.id }, _min: { at: true }, _max: { at: true }, _count: { _all: true } })
+      if (c.status === 'review') {
+        expect(span._count._all, c.name).toBe(0)
+        continue
+      }
+      expect(span._count._all, c.name).toBeGreaterThan(0)
+      expect(span._min.at!.getTime(), c.name).toBeGreaterThanOrEqual(c.startsAt.getTime())
+      expect(span._max.at!.getTime(), c.name).toBeLessThan(Math.min(c.endsAt.getTime(), NOW.getTime()))
+      if (c.status === 'ended' || c.status === 'paused') {
+        expect(span._max.at!.getTime(), c.name).toBeLessThan(today(MARKETS[c.country].timezone).getTime())
+      }
+    }
+
+    // Every Phoenix sharer has a phone of the campaign's market.
+    const sharers = await db.shareLink.findMany({ where: { sharerType: 'Channel' }, include: { consumer: true, campaign: true } })
+    expect(sharers.length).toBeGreaterThan(0)
+    for (const s of sharers) expect(s.consumer?.phone.startsWith(`+${MARKETS[s.campaign.country].dial}`)).toBe(true)
+
+    // Money came through the ledger: a delivery line per campaign and charged day, reward lines from payouts.
+    expect(await db.ledgerEntry.count({ where: { kind: 'delivery', dedupeKey: { startsWith: 'delivery:' } } })).toBeGreaterThan(20)
+    expect(await db.ledgerEntry.count({ where: { kind: 'reward' } })).toBeGreaterThan(0)
+    // Held payouts for Global's queue, and a blocked one.
+    expect(await db.rewardPayout.count({ where: { status: 'held', reason: 'phone_reuse' } })).toBeGreaterThan(0)
+    expect(await db.rewardPayout.count({ where: { status: 'blocked', reason: 'same_device' } })).toBeGreaterThan(0)
+    expect(await db.rewardPayout.count({ where: { status: 'sent' } })).toBeGreaterThan(0)
+    expect(await db.aggregatorTopup.count({ where: { amountCents: 124000 } })).toBe(1)
+
+    // Invoices: the inventory's numbers and statuses, each in its workspace's country.
+    const kola = await workspace('Kola Bright')
+    const media = await workspace('MediaSpec (agency)')
+    const pesa = await workspace('Pesa Link')
+    const sun = await workspace('SunFresh Juices')
+    const invoices = await db.invoice.findMany({ include: { workspace: true }, orderBy: { number: 'asc' } })
+    expect(invoices.map((i) => [i.number, i.workspace.name, invoiceStatus(i, NOW)])).toEqual([
+      ['INV-0037', 'MediaSpec (agency)', 'paid'],
+      ['INV-0041', 'Kola Bright', 'paid'],
+      ['INV-0044', 'MediaSpec (agency)', 'due'],
+      ['INV-0046', 'Pesa Link', 'overdue'],
+    ])
+    for (const i of invoices) expect(i.country).toBe(i.workspace.country)
+    expect(await nextInvoiceNumber()).toBe('INV-0052')
+    // The October invoices are closeMonth's: their amounts are the October charges they carry.
+    for (const n of ['INV-0041', 'INV-0044']) {
+      const inv = invoices.find((i) => i.number === n)!
+      const { _sum } = await db.ledgerEntry.aggregate({ where: { invoiceId: inv.id, kind: { in: ['delivery', 'reward'] } }, _sum: { amountCents: true } })
+      expect(-(_sum.amountCents ?? 0), n).toBe(inv.amountCents)
+      expect(inv.amountCents, n).toBeGreaterThan(0)
+    }
+    expect(await db.ledgerEntry.count({ where: { kind: 'payment', description: 'INV-0041 paid' } })).toBe(1)
+
+    // Credit, roughly as ADV §14.
+    const kolaCredit = await creditSummary(kola.id)
+    expect(kolaCredit.inUseCents).toBeGreaterThanOrEqual(50000)
+    expect(kolaCredit.inUseCents).toBeLessThanOrEqual(90000)
+    expect(kolaCredit.limitCents).toBe(150000)
+    expect((await creditSummary(media.id)).outstandingCents).toBeGreaterThan(0)
+    expect((await creditSummary(media.id)).limitCents).toBe(800000)
+    const pesaCredit = await creditSummary(pesa.id)
+    expect(pesaCredit.outstandingCents).toBeGreaterThan(0)
+    expect(pesaCredit.overLimit).toBe(false)
+    expect(pesaCredit.inUseCents).toBeGreaterThan(pesaCredit.limitCents / 2)
+    // Each running month shows its "(to date)" row.
+    for (const ws of [kola, media, pesa]) expect((await creditSummary(ws.id)).unbilledCents, ws.name).toBeGreaterThan(0)
+
+    // SunFresh waits for Global and says so.
+    expect(sun.status).toBe('pending')
+    expect(await db.campaign.count({ where: { workspaceId: sun.id } })).toBe(0)
+    const kofi = await db.user.findUniqueOrThrow({ where: { email: 'kofi@sunfresh.demo' } })
+    expect(await db.notification.findFirst({ where: { userId: kofi.id, workspaceId: sun.id, title: 'Your workspace is awaiting approval' } })).not.toBeNull()
+
+    // People and roles.
+    const roles = await db.workspaceMember.findMany({ include: { user: true, workspace: true } })
+    expect(roles.map((m) => `${m.workspace.name}:${m.user.email}:${m.role}`).sort()).toEqual([
+      'Kola Bright:ada@kolabright.demo:Manager',
+      'Kola Bright:tunde@kolabright.demo:Owner',
+      'MediaSpec (agency):chidi@mediaspec.demo:Manager',
+      'MediaSpec (agency):dolapo@mediaspec.demo:Owner',
+      'MediaSpec (agency):kemi@mediaspec.demo:Viewer',
+      'Pesa Link:wanjiru@pesalink.demo:Owner',
+      'SunFresh Juices:kofi@sunfresh.demo:Owner',
+    ])
+    expect((await db.user.findUniqueOrThrow({ where: { email: 'admin@oshofree.demo' } })).isGlobalAdmin).toBe(true)
+
+    // The bell: what the real paths said, dated when they said it.
+    const tunde = await db.user.findUniqueOrThrow({ where: { email: 'tunde@kolabright.demo' } })
+    const inReview = await db.notification.findFirstOrThrow({ where: { userId: tunde.id, title: 'December draw teaser is in review' } })
+    expect(inReview.createdAt.getTime()).toBeLessThan(NOW.getTime())
+    expect(inReview.createdAt.getTime()).toBeGreaterThan(NOW.getTime() - 2 * DAY)
+    const dolapo = await db.user.findUniqueOrThrow({ where: { email: 'dolapo@mediaspec.demo' } })
+    expect(await db.notification.findFirst({ where: { userId: dolapo.id, title: { startsWith: 'INV-0044 is due in' } } })).not.toBeNull()
+    const wanjiru = await db.user.findUniqueOrThrow({ where: { email: 'wanjiru@pesalink.demo' } })
+    expect(await db.notification.findFirst({ where: { userId: wanjiru.id, title: 'INV-0046 is overdue' } })).not.toBeNull()
+    expect(await db.notification.count({ where: { createdAt: { gt: NOW } } })).toBe(0)
+
+    first = await impressionsByCampaign()
+    expect(first['Buy 2 get 1 — November']).toBeGreaterThan(0)
+    expect(first['December draw teaser']).toBe(0)
+
+    await expect(seed(NOW)).rejects.toThrow(/Refusing to seed/)
+  }, SLOW)
+
+  it('is a pure function of now: a second run on an empty database delivers the same impressions', async () => {
+    expect(Object.keys(first)).toHaveLength(9)
+    await resetDb()
+    await seed(NOW)
+    expect(await impressionsByCampaign()).toEqual(first)
+  }, SLOW)
+
+  it('holds on a late-month run day, where some October invoices have no history to close', async () => {
+    const late = new Date('2026-11-27T09:00:00Z')
+    await seed(late, { scale: 0.05 })
+    const invoices = await db.invoice.findMany({ include: { workspace: true }, orderBy: { number: 'asc' } })
+    expect(invoices.map((i) => [i.number, i.workspace.name, i.status])).toEqual([
+      ['INV-0037', 'MediaSpec (agency)', 'paid'],
+      ['INV-0041', 'Kola Bright', 'paid'],
+      ['INV-0044', 'MediaSpec (agency)', 'due'],
+      ['INV-0046', 'Pesa Link', 'due'],
+    ])
+    expect(invoiceStatus(invoices[3], late)).toBe('overdue')
+    expect(await nextInvoiceNumber()).toBe('INV-0052')
+    const kola = await creditSummary((await workspace('Kola Bright')).id)
+    expect(kola.inUseCents).toBeGreaterThanOrEqual(50000)
+    expect(kola.inUseCents).toBeLessThanOrEqual(90000)
+    const statuses = await db.campaign.findMany({ select: { name: true, status: true } })
+    expect(Object.fromEntries(statuses.map((c) => [c.name, c.status]))).toEqual(STATUSES)
+  }, SLOW)
+})
+
+// `npm run db:seed` and `npm run test:e2e` run the seed under tsx, where `server-only` does not resolve.
+describe('the seed under tsx', () => {
+  const root = path.resolve(import.meta.dirname, '../..')
+  const resolve = (spec: string, from: string): string | null => {
+    const base = spec.startsWith('@/') ? path.join(root, 'src', spec.slice(2)) : spec.startsWith('.') ? path.resolve(path.dirname(from), spec) : null
+    if (!base) return null
+    return [base, `${base}.ts`, `${base}.tsx`, path.join(base, 'index.ts')].find((f) => existsSync(f) && f.match(/\.tsx?$/)) ?? null
+  }
+
+  it('imports nothing that pulls server-only', () => {
+    const seen = new Set<string>()
+    const queue = [path.join(root, 'prisma/seed.ts')]
+    const offenders: string[] = []
+    while (queue.length) {
+      const file = queue.shift()!
+      const src = readFileSync(file, 'utf8')
+      if (/^import ['"]server-only['"]/m.test(src)) offenders.push(path.relative(root, file))
+      for (const [, spec] of src.matchAll(/(?:from|import)\s+['"]([^'"]+)['"]/g)) {
+        const next = resolve(spec, file)
+        if (next && !seen.has(next)) {
+          seen.add(next)
+          queue.push(next)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+    expect(seen.size).toBeGreaterThan(10)
   })
 })
