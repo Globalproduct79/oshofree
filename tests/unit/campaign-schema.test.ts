@@ -53,6 +53,21 @@ describe('validateCampaign', () => {
     expect(check({ placement: 'video', creativeImageKey: 'x' })).toBe('Video and splash need a creative attached.')
   })
 
+  it('refuses a creative that does not match the placement, after the dates and before credit', () => {
+    const mismatch = "The creative doesn't match the placement."
+    expect(check({ placement: 'card', creativeVideoKey: 'v.mp4' })).toBe(mismatch)
+    expect(check({ placement: 'featured', creativeVideoKey: 'v.mp4' })).toBe(mismatch)
+    // An image alone under Video already fails the earlier "needs a creative" rule.
+    expect(check({ placement: 'video', creativeImageKey: 'i.png' })).toBe('Video and splash need a creative attached.')
+    expect(check({ placement: 'video', creativeImageKey: 'i.png', creativeVideoKey: 'v.mp4' })).toBe(mismatch)
+    expect(check({ placement: 'splash', creativeImageKey: 'i.png', creativeVideoKey: 'v.mp4' })).toBe(mismatch)
+    expect(check({ placement: 'card', creativeImageKey: 'i.png', creativeVideoKey: 'v.mp4' })).toBe(mismatch)
+    expect(check({ placement: 'card', creativeImageKey: 'i.png' })).toBeNull()
+    expect(check({ placement: 'featured', creativeImageKey: 'i.png' })).toBeNull()
+    expect(check({ placement: 'card', creativeVideoKey: 'v.mp4', budgetUsd: 10 })).toBe('Minimum budget is $50.')
+    expect(check({ placement: 'card', creativeVideoKey: 'v.mp4' }, { creditLimitCents: 0 })).toBe(mismatch)
+  })
+
   it('reports the first failing rule when several fail', () => {
     const bad = { name: '', brand: '', headline: '', budgetUsd: 10, termsAccepted: false as unknown as true }
     expect(check(bad)).toBe('Give the campaign a name.')

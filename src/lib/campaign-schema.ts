@@ -65,6 +65,13 @@ export function ageGated(i: { category: string; headline: string }): boolean {
   return i.category === 'Betting' || /jackpot|bet/i.test(i.headline)
 }
 
+// What a placement can show: an image on a card or tile, an MP4 on video, one of either on splash.
+function creativeMismatch(i: CampaignInput) {
+  if (i.creativeImageKey && i.creativeVideoKey) return true
+  if (i.creativeVideoKey && (i.placement === 'card' || i.placement === 'featured')) return true
+  return Boolean(i.creativeImageKey) && i.placement === 'video'
+}
+
 function needsLicence(i: CampaignInput) {
   return (i.category === 'Betting' || DRAW.test(i.headline)) && !LICENCE.test(i.description)
 }
@@ -102,6 +109,8 @@ export function validateCampaign(i: CampaignInput, ctx: ValidationContext): stri
     const days = flightDays(i.startsAt, i.endsAt)
     if (!(days >= 1 && days <= 90)) return V.flight
   }
+  // The form never pairs these (it drops a creative the placement cannot take); a crafted request might.
+  if (creativeMismatch(i)) return V.creativeMismatch
   const addedUsd = ctx.isEdit ? Math.max(0, i.budgetUsd - (ctx.previousBudgetUsd ?? 0)) : i.budgetUsd
   const excess = ctx.creditInUseCents + addedUsd * 100 - ctx.creditLimitCents
   if (excess > 0) return V.credit(usd(ctx.creditLimitCents), usd(excess))

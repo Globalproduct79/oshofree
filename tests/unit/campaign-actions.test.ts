@@ -4,11 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { editOfferAction, pause, previewOffers, resume, submitAction } from '@/app/app/(console)/campaigns/actions'
 import EditOfferPage from '@/app/app/(console)/campaigns/[id]/edit/page'
 import NewCampaignPage from '@/app/app/(console)/campaigns/new/page'
-import { newCampaignDefaults, type FormValues } from '@/components/campaign/form/values'
+import { newCampaignDefaults, sameValues, type FormValues } from '@/components/campaign/form/values'
 import { auth } from '@/lib/auth'
 import type { CampaignInput } from '@/lib/campaigns'
 import { db } from '@/lib/db'
-import { clearDraft, draftKey, loadDraft, parseDraft, saveDraft, serialiseDraft } from '@/lib/draft-store'
+import { clearDraft, draftKey, loadDraft, parseDraft, saveDraft, serialiseDraft, startOver } from '@/lib/draft-store'
 import { tokens } from '@/lib/tokens'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
@@ -178,6 +178,18 @@ describe('submitAction', () => {
     expect(await db.campaign.count()).toBe(0)
   })
 
+  it('refuses a creative that does not match the placement, crafted past the form', async () => {
+    await setup('Owner')
+    const video = '0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.mp4'
+    expect(await submitAction({ ...input(), placement: 'card', creativeVideoKey: video })).toEqual({
+      error: "The creative doesn't match the placement.",
+    })
+    expect(await submitAction({ ...input(), placement: 'splash', creativeImageKey: IMAGE_KEY, creativeVideoKey: video })).toEqual({
+      error: "The creative doesn't match the placement.",
+    })
+    expect(await db.campaign.count()).toBe(0)
+  })
+
   it('keeps the brand a Brand workspace is named for', async () => {
     await setup('Owner')
     const res = (await submitAction({ ...input(), brand: 'Someone Else' })) as { id: string }
@@ -309,6 +321,8 @@ describe('the pages', () => {
     expect(html).toContain('— 0/48')
     expect(html).toContain('— NGN airtime per successful share')
     expect(html).not.toContain('Cancel')
+    // Nothing to start over from on a fresh form.
+    expect(html).not.toContain('Start over')
   })
 
   it('New campaign: ?brand= prefills an agency client', async () => {
@@ -316,6 +330,8 @@ describe('the pages', () => {
     const html = renderToStaticMarkup(await NewCampaignPage({ searchParams: Promise.resolve({ brand: '777Bet', focus: 'brand' }) }))
     expect(html).toContain('Brand <small>— client</small>')
     expect(html).toContain('value="777Bet"')
+    // The ?brand= prefill is the form's default, not a change.
+    expect(html).not.toContain('Start over')
   })
 
   it('Edit offer on a live campaign: the edit head, Cancel, and money and timing locked', async () => {
@@ -366,6 +382,18 @@ describe('draft store', () => {
     expect(parseDraft(JSON.stringify({ workspaceId: 'ws1', values: 7 }), 'ws1', defaults())).toBeNull()
   })
 
+  it('drops a stored creative the stored placement cannot take', () => {
+    const image = { key: IMAGE_KEY, kind: 'image', url: `/uploads/${IMAGE_KEY}` } as const
+    const raw = serialiseDraft('ws1', { ...values(), placement: 'video', creative: image })
+    expect(parseDraft(raw, 'ws1', defaults())).toMatchObject({ placement: 'video', creative: null })
+  })
+
+  it('compares form values field by field', () => {
+    expect(sameValues(defaults(), defaults())).toBe(true)
+    expect(sameValues({ ...defaults(), name: 'E' }, defaults())).toBe(false)
+    expect(sameValues({ ...defaults(), creative: values().creative }, defaults())).toBe(false)
+  })
+
   it('keeps the fields that still make sense and takes defaults for the rest', () => {
     const raw = JSON.stringify({
       workspaceId: 'ws1',
@@ -402,6 +430,20 @@ describe('draft store in the browser', () => {
       saveDraft('ws2', { ...defaults(), name: 'Pesa promo' })
       clearDraft('ws2')
       expect(loadDraft('ws2', defaults())).toBeNull()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('Start over clears the stored draft and hands back the defaults', () => {
+    const storage = memory()
+    vi.stubGlobal('window', { localStorage: storage })
+    try {
+      const d = { ...defaults(), brand: '777Bet' } // an agency's ?brand= prefill is part of the defaults
+      saveDraft('ws1', { ...d, name: 'Half done', placement: 'featured' })
+      expect(startOver('ws1', d)).toEqual(d)
+      expect(storage.getItem('of-draft:ws1')).toBeNull()
+      expect(loadDraft('ws1', d)).toBeNull()
     } finally {
       vi.unstubAllGlobals()
     }

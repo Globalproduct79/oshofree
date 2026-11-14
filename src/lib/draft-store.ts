@@ -1,5 +1,5 @@
 import type { FormValues } from '@/components/campaign/form/values'
-import { RUNS_FOR } from '@/components/campaign/form/values'
+import { fits, RUNS_FOR } from '@/components/campaign/form/values'
 import { campaignDraftInput } from '@/lib/campaign-schema'
 
 // The New campaign form's unsent draft (spec §6.3, open question 20): kept in this browser's
@@ -28,7 +28,7 @@ function isCreative(v: unknown): boolean {
 }
 
 // Each stored field is kept only if it still makes sense (an enum the schema knows, a key we issued);
-// anything else falls back to the form's default.
+// anything else falls back to the form's default, and a creative the placement cannot take is dropped.
 const KEEP: Record<keyof FormValues, (v: unknown) => boolean> = {
   name: isText,
   brand: isText,
@@ -66,7 +66,7 @@ export function parseDraft(raw: string | null, workspaceId: string, defaults: Fo
   for (const k of Object.keys(KEEP) as (keyof FormValues)[]) {
     if (Object.hasOwn(v, k) && KEEP[k](v[k])) (out as Record<string, unknown>)[k] = v[k]
   }
-  return out
+  return fits(out.placement, out.creative) ? out : { ...out, creative: null }
 }
 
 // ---- The browser side ----
@@ -93,6 +93,12 @@ export function clearDraft(workspaceId: string): void {
   } catch {
     // Nothing to clear.
   }
+}
+
+// "Start over": the draft goes and the form takes its defaults again (an agency's ?brand= included).
+export function startOver(workspaceId: string, defaults: FormValues): FormValues {
+  clearDraft(workspaceId)
+  return defaults
 }
 
 // This workspace's draft; any other workspace's draft is dropped on the way (a switch clears it).

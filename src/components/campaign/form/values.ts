@@ -102,6 +102,11 @@ export function campaignDefaults(c: Campaign, creativeUrl: (key: string) => stri
   }
 }
 
+// Field by field, so key order never matters (Start over shows while the form differs from its defaults).
+export function sameValues(a: FormValues, b: FormValues): boolean {
+  return (Object.keys(b) as (keyof FormValues)[]).every((k) => JSON.stringify(a[k]) === JSON.stringify(b[k]))
+}
+
 // The prototype's `+value || 0` for the cost box and preview; toInput keeps NaN for the rules to refuse.
 export const amount = (s: string) => Number(s) || 0
 const parsedNumber = (s: string) => (s.trim() === '' ? Number.NaN : Number(s))

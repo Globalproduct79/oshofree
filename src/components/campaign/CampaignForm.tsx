@@ -9,7 +9,7 @@ import { toast } from '@/components/shell/toast-store'
 import { checkCampaign, rewardLabel, ruleContext, todayIn, type CreditPosition, type FormEdit } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import type { PlacementKey } from '@/lib/copy-components'
-import { clearDraft, loadDraft, saveDraft } from '@/lib/draft-store'
+import { clearDraft, loadDraft, saveDraft, startOver } from '@/lib/draft-store'
 import { MARKETS } from '@/lib/markets'
 import type { MarketRates } from '@/lib/rates'
 import { CardPreview } from './form/CardPreview'
@@ -18,7 +18,7 @@ import { OfferFields } from './form/OfferFields'
 import { PlacementFields } from './form/PlacementFields'
 import { TermsFields } from './form/TermsFields'
 import { uploadCreative } from './form/upload'
-import { amount, fits, offerInput, previewEndsAt, revisionInput, toInput, type FormValues } from './form/values'
+import { amount, fits, offerInput, previewEndsAt, revisionInput, sameValues, toInput, type FormValues } from './form/values'
 
 export type FormMode =
   // ?brand= prefills an agency's client and focus=brand puts the cursor there (Workspace › Add client brand).
@@ -45,10 +45,17 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
   // An upload's or the server's refusal, shown until the next change.
   const [notice, setNotice] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  // Whether this browser holds a draft of the New form (Start over shows while it does).
+  const [hasDraft, setHasDraft] = useState(false)
   const [pending, startTransition] = useTransition()
   const brandRef = useRef<HTMLInputElement>(null)
   const restored = useRef(false)
   const sent = useRef(false)
+  // The values as they are now, for an upload that resolves after the placement has changed.
+  const latest = useRef(values)
+  useEffect(() => {
+    latest.current = values
+  }, [values])
 
   const isNew = mode.kind === 'new'
   const edit: FormEdit | undefined = mode.kind === 'edit' ? { running: mode.running, heldCents: mode.heldCents } : undefined
@@ -60,7 +67,10 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
     if (restored.current || mode.kind !== 'new') return
     restored.current = true
     const draft = loadDraft(workspace.id, defaults)
-    if (draft) setValues({ ...draft, brand: workspace.type === 'Brand' ? defaults.brand : (mode.prefillBrand ?? draft.brand) })
+    if (draft) {
+      setValues({ ...draft, brand: workspace.type === 'Brand' ? defaults.brand : (mode.prefillBrand ?? draft.brand) })
+      setHasDraft(true)
+    }
     if (mode.focusBrand) brandRef.current?.focus()
   }, [mode, workspace.id, workspace.type, defaults])
 
@@ -68,8 +78,10 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
     if (!isNew || !restored.current) return
     const t = setTimeout(() => {
       if (sent.current) return
-      if (JSON.stringify(values) === JSON.stringify(defaults)) clearDraft(workspace.id)
+      const pristine = sameValues(values, defaults)
+      if (pristine) clearDraft(workspace.id)
       else saveDraft(workspace.id, values)
+      setHasDraft(!pristine)
     }, AUTOSAVE_MS)
     return () => clearTimeout(t)
   }, [isNew, values, defaults, workspace.id])
@@ -83,13 +95,20 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
     setValues((v) => ({ ...v, placement, creative: fits(placement, v.creative) ? v.creative : null }))
     setNotice(null)
   }
+  // The placement may have changed while the file uploaded: a creative it cannot take is discarded.
   async function pick(file: File) {
     setNotice(null)
     setUploading(true)
     const res = await uploadCreative(file)
     setUploading(false)
-    if (res.ok) setValues((v) => ({ ...v, creative: res.creative }))
-    else setNotice(res.message)
+    if (!res.ok) return setNotice(res.message)
+    if (!fits(latest.current.placement, res.creative)) return setNotice(F.validation.creativeMismatch)
+    setValues((v) => (fits(v.placement, res.creative) ? { ...v, creative: res.creative } : v))
+  }
+  function onStartOver() {
+    setValues(startOver(workspace.id, defaults))
+    setHasDraft(false)
+    setNotice(null)
   }
 
   const cpmCents = rates.cpmCents[values.country]
@@ -184,6 +203,11 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
             >
               {hint}
             </span>
+            {isNew && (hasDraft || !sameValues(values, defaults)) && (
+              <Button type="button" variant="ghost" onClick={onStartOver}>
+                {F.buttons.startOver}
+              </Button>
+            )}
           </div>
         </div>
       </div>
