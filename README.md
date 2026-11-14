@@ -15,33 +15,20 @@ their own, and each open, claim and onward share of that link is counted in the 
 cp .env.example .env
 npm install
 npm run docker:up
-```
-
-Then create the schema and the demo data, one of:
-
-- `npm run db:reset` — wipes the development database, applies every migration and seeds it. Run it
-  yourself in a terminal; Prisma refuses a reset started by an AI agent.
-- `npx prisma migrate deploy && npm run db:seed` — for agents and CI, on an empty database. The seed
-  refuses to run if users already exist.
-
-```sh
+npx prisma migrate deploy
+npm run db:seed
 npm run dev   # http://localhost:3100
 ```
 
-## Demo data
+The seed needs an empty database. It refuses to run when users already exist; `SEED_FORCE=1` skips that
+check, so use it only on a database you have emptied yourself. To start again from nothing:
 
-The seed builds the prototype's world: four workspaces and their people, Phoenix's rate card (five
-markets, FX, the 55 % share), the nine campaigns and their history, invoices and the bell. Every date is
-relative to the day you seed, so the demo always looks current. Every number comes from the real pipeline:
-the seed replays each campaign's past days through event ingestion, `POST /share`, the landing page's
-opens and claims (which make the payouts, through the fraud checks) and the daily job (which charges
-delivery, starts and ends flights, closes last month, reminds about invoices, warns on pace and sends
-Monday's digest). Kola Bright's and MediaSpec's invoices for last month (INV-0041 and INV-0044) are that
-close's, at whatever their campaigns' charges came to. The only invoices the seed writes itself are two
-older than any seeded campaign: MediaSpec's paid INV-0037 and Pesa Link's overdue INV-0046, at the
-prototype's amounts. It is a pure function of the run time: one seeded random generator drives every choice.
+- `npm run db:reset` wipes the development database, applies every migration and seeds it. Run it yourself
+  in a terminal; Prisma refuses a reset started by an AI agent.
 
-Every seeded login uses the password `password`.
+## Logins
+
+Every seeded login uses the password `password`. The seed prints it with the logins when it finishes.
 
 | Login | Who | What it shows |
 | --- | --- | --- |
@@ -52,16 +39,117 @@ Every seeded login uses the password `password`.
 | `chidi@mediaspec.demo` | Manager, MediaSpec (agency) | The agency as a Manager |
 | `kemi@mediaspec.demo` | Viewer, MediaSpec (agency) | The agency read-only |
 | `wanjiru@pesalink.demo` | Owner, Pesa Link | A brand in Kenya with one live campaign and an overdue invoice, close to its $500 limit |
-| `kofi@sunfresh.demo` | Owner, SunFresh Juices | A brand in Ghana still awaiting Global's approval |
+| `kofi@sunfresh.demo` | Owner, SunFresh Juices | A brand in Ghana still waiting for Global's approval |
+
+## Demo data
+
+The seed builds the prototype's world: four workspaces and their people, Phoenix's rate card (five
+markets, FX, the 55 % share), the nine campaigns and their history, invoices and the bell. Every date is
+relative to the day you seed, so the demo always looks current. It is a pure function of the run time: one
+seeded random generator drives every choice.
+
+Every number comes from the real pipeline. The seed replays each campaign's past days through event
+ingestion, `POST /share`, the landing page's opens and claims (which make the payouts, through the fraud
+checks) and the daily job (which charges delivery, starts and ends flights, closes last month, reminds about
+invoices, warns on pace and sends Monday's digest). Nothing writes a report number directly.
 
 `SEED_SCALE` (default `1`) sets the share of the prototype's volumes the seed generates: impressions, and
 with them opens, shares, friends' claims, rewards and spend. At `1` the campaigns show the prototype's
 delivery and reward figures, and the seed takes about two minutes. The unit tests and `npm run test:e2e`
-seed with `0.2` to stay quick, so their campaigns deliver a fifth as much (and the daily job reports them
-as slower than planned).
+seed with `0.2` to stay quick, so their campaigns deliver a fifth as much (and the daily job reports them as
+slower than planned).
 
-The Phoenix channel's development key is `phx_dev_oshofree` (`DEMO_CHANNEL_KEY`). The seed stores its
-hash on the Phoenix channel, prints it with the logins, and `/admin/api` shows the key outside production.
+The seed leaves four invoices:
+
+| Invoice | Workspace | Status | Where it comes from |
+| --- | --- | --- | --- |
+| INV-0037 | MediaSpec | Paid | Two months back, older than any seeded campaign: the seed issues it at the prototype's amount |
+| INV-0041 | Kola Bright | Paid | Last month's close, at whatever Kola Bright's charges came to; Global marks it paid three days later |
+| INV-0044 | MediaSpec | Due | Last month's close, at whatever MediaSpec's charges came to |
+| INV-0046 | Pesa Link | Overdue | Older than any seeded campaign: the seed issues it at the prototype's amount |
+
+A row marked "(to date)" on an Invoices page is not an invoice. It is this month's charges so far, which the
+next month close turns into an invoice. It is never stored, so it never blocks that close.
+
+## Demo controls
+
+Set `DEMO_CONTROLS=1` in `.env` and Global gets two buttons. Nobody else sees them, and each action checks
+both the setting and the user again. Leave `DEMO_CONTROLS` unset in production.
+
+- **Simulate a day** (Review, and Campaigns home and Sharing while Global is inside a workspace). It plays
+  one market day of Phoenix traffic for every delivering campaign: impressions, opens, claims, shares, the
+  friends' opens and claims, and the payouts they earn, all through the same ingestion, `POST /share` and
+  landing-page code real traffic uses. Then it runs the daily job for that day. The day simulated is the
+  previous market day, so it is charged like any other: the campaign's delivery line for that day is raised
+  to the day's new total, never charged twice. It works once per UTC day ("Already simulated today.") and
+  needs Phoenix live. The calendar does not move.
+- **Run daily job** (Review). It runs the daily job now, as cron would, and says how many errors it hit. It
+  works once per UTC day ("The daily job already ran today."). Unlike the cron run, it charges today's
+  impressions so far, and it takes the slot of the next day's 02:00 UTC run. On a machine that also runs the
+  cron job, replay the day the next morning so the rest of it is charged: `npm run job:daily -- YYYY-MM-DD`.
+
+## The daily job
+
+```sh
+npm run job:daily                # charges yesterday, then does everything else as of now
+npm run job:daily -- 2026-11-10  # replays that day after a run that listed errors
+```
+
+Run it once a day at 02:00 UTC from the app's folder, with the app's environment:
+
+```cron
+0 2 * * * npm run job:daily
+```
+
+Cron reads the line in the server's time zone, so run the server in UTC, or put `CRON_TZ=UTC` above the
+line where your cron supports it.
+
+In order, it:
+
+1. Charges delivery: each campaign's impressions in yesterday's market day at its CPM, never past what is
+   left of its budget.
+2. Ends live and paused campaigns whose budget is spent or whose end date has come.
+3. Starts scheduled campaigns whose start has come.
+4. Pauses the live campaigns of workspaces over their credit limit.
+5. Sends queued reward payouts.
+6. Closes last month on the 1st and 2nd (UTC). The 2nd retries a 1st that failed.
+7. Reminds about unpaid invoices: once when due in five days or less, once when overdue.
+8. Warns about live campaigns off pace, once per market day.
+9. Sends Monday's weekly digest.
+
+One failing campaign or duty is listed in the output and the rest of the run goes on; the script exits 1
+when anything is listed. A second run the same day does nothing. Every duty is idempotent and charges dedupe
+per campaign and market day, so a replay is safe. A replayed day must be over in every market.
+
+**Closing a month.** The close issues each workspace an invoice for its charges up to the end of its own
+market's month, then Phoenix's settlement statement. Global can also close by hand from Platform ›
+Advertisers › "Close month". Closing a month already closed issues nothing. A close is refused while the
+month is still running in any market, or when a market has no FX rate for it.
+
+## Phoenix API
+
+Phoenix calls five endpoints, each with `Authorization: Bearer <channel key>`:
+
+- `GET /api/v1/offers?country=KE` — the approved, in-flight offers for a market
+- `POST /api/v1/events` — impressions, opens, claims and shares, in batches of up to 500
+- `POST /api/v1/share` — mints a sharer's link for an offer
+- `POST /api/v1/claims` — a claim code for a session
+- `GET /api/v1/links/<code>/stats` — what one share link has earned
+
+The full contract is in `src/lib/api-docs.ts`, which is what Platform › Phoenix API shows. Webhooks and rate
+limits are planned, not built.
+
+The development key is `phx_dev_oshofree` (`DEMO_CHANNEL_KEY`). The seed stores its hash on the Phoenix
+channel, prints it with the logins, and Platform › Phoenix API shows it outside production. "Rotate key" on
+that page issues a new key, shows it once, and keeps the old one working for 24 hours (a second rotation
+inside that window retires it at once). So after a rotation `DEMO_CHANNEL_KEY` stops working within a day,
+and the demo wall with it, until you put the new key in `DEMO_CHANNEL_KEY` or reseed.
+
+## Demo wall
+
+`/wall` stands in for the Phoenix Offers wall while `DEMO_WALL=1`. It needs no sign-in, and every tap
+goes through the same channel API Phoenix will call, with `DEMO_CHANNEL_KEY`. Add `?country=KE` (or
+GH, TZ, SN) to see another market; the default is NG.
 
 ## Tests
 
@@ -71,36 +159,53 @@ npm run lint
 npm test            # Vitest against oshofree_test; every table is emptied before each test
 ```
 
+`npm test` reads `.env.test`, so it never touches the development database; it applies migrations to
+`oshofree_test` first.
+
 End to end, once per machine run `npx playwright install chromium`, then:
 
 ```sh
 npm run test:e2e
 ```
 
-It migrates, empties and seeds `oshofree_test`, starts its own Next server on port 3101 (build output
-in `.next-e2e`), and walks the whole loop: sign up, approval, share from the wall, a friend's claim and
-the brand's report. It never touches the dev server on 3100 or the development database. The test
-scripts load `.env.test` with override, so an exported `DATABASE_URL` cannot point them elsewhere.
+It migrates, empties and seeds `oshofree_test` (at `SEED_SCALE=0.2`), starts its own Next server on port
+3101 (build output in `.next-e2e`), and runs 13 Playwright flows: sign-up, approval, sharing from the wall
+and a friend's claim, pause and end, credit limits, people, the command palette and Global's switcher. The
+flows change the data as they go, so always run the whole script: a bare `npx playwright test` without the
+reseed is not supported. It never touches the dev server on 3100 or the development database.
 
-## Demo wall
+## Production build
 
-`/wall` stands in for the Phoenix Offers wall while `DEMO_WALL=1`. It needs no sign-in, and every tap
-goes through the same channel API Phoenix will call, with `DEMO_CHANNEL_KEY`. Add `?country=KE` (or
-GH, TZ, SN) to see another market; the default is NG.
+```sh
+npm run build
+npm start   # port 3100
+```
+
+`next.config.ts` builds into `NEXT_DIST_DIR` when it is set (default `.next`). On a machine where
+`npm run dev` is running, build into another folder so the two never share output:
+
+```sh
+NEXT_DIST_DIR=.next-build npm run build
+```
 
 ## Deploy checklist
 
-- `DATABASE_URL`: the production Postgres. Run `npx prisma migrate deploy` on each release. Never run
-  the seed there.
+- `DATABASE_URL`: the production Postgres. Run `npx prisma migrate deploy` on each release. Slice 2 adds six
+  migrations: `20261113230000_slice2`, `20261114020000_revision_cpm`,
+  `20261114100000_claim_code_per_campaign`, `20261114120000_reward_lookups`,
+  `20261114140000_system_audit_actor` and `20261114160000_invoice_country`. Never run the seed there.
 - `APP_URL`: the public `https://` origin. Share links are built from it, and the visitor cookie is
   marked Secure only when it starts with `https://`.
 - `AUTH_SECRET`: a random string of 32 or more characters.
 - `AUTH_TRUST_HOST=true`.
 - `IP_HASH_SALT`: 16 or more random characters. Production refuses to hash a visitor's IP without it,
   so landing pages fail until it is set.
-- `DEMO_WALL`: unset. The wall and its server actions are off unless it is exactly `1`.
-- `DEMO_CHANNEL_KEY`: unset. Issue a real key per channel and store only its sha256 hex digest in that
-  Channel row's `apiKeyHash`, with `isLive` true:
+- `UPLOAD_DIR`: where uploads go (default `./uploads`). Object storage is not built yet, so give the app a
+  persistent volume and run a single instance.
+- `DEMO_CONTROLS`, `DEMO_WALL`, `DEMO_CHANNEL_KEY`, `SEED_SCALE`, `SEED_FORCE`: unset. The demo controls
+  and the wall are off unless their variable is exactly `1`.
+- The daily job: `0 2 * * * npm run job:daily`, at 02:00 UTC, from the app's folder with its environment.
+- Phoenix's key: there is no seed in production, so issue a key and store only its sha256 hex digest in the
+  Phoenix Channel row's `apiKeyHash`, with `isLive` true. After that, Global rotates it from Platform ›
+  Phoenix API.
   `node -e "console.log(require('crypto').createHash('sha256').update(process.argv[1]).digest('hex'))" <key>`
-- Uploads still go to local disk (`UPLOAD_DIR`, default `./uploads`). Object storage is not built yet,
-  so give the app a persistent volume and run a single instance.
