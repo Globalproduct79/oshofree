@@ -54,8 +54,9 @@ function mkCampaign(workspaceId: string, name: string, status: CampaignStatus, o
   })
 }
 
-function signIn(u: { id: string; isGlobalAdmin: boolean }, workspaceId: string) {
-  vi.mocked(auth).mockResolvedValue({ user: { id: u.id, isGlobalAdmin: u.isGlobalAdmin }, expires: '' } as never)
+// The session carries the user's name, as the sign-in puts it there.
+function signIn(u: { id: string; name: string; isGlobalAdmin: boolean }, workspaceId: string) {
+  vi.mocked(auth).mockResolvedValue({ user: { id: u.id, name: u.name, isGlobalAdmin: u.isGlobalAdmin }, expires: '' } as never)
   jar.get.mockImplementation((k: string) => (k === 'of_ws' ? { value: workspaceId } : undefined))
 }
 
@@ -142,17 +143,21 @@ describe('Campaigns home', () => {
     expect((await home()).markup).toContain('<h1>Good afternoon, Tunde</h1>')
   })
 
-  it('names the earliest Owner to anyone looking, Global included', async () => {
+  it('greets whoever is signed in by their own first name, not the workspace Owner', async () => {
     const { ws } = await workspace()
     const later = await mkUser('Ada Bello', { createdAt: at('2026-03-01T00:00:00Z') })
     await join(later.id, ws.id, 'Owner')
     const manager = await mkUser('Kemi Balogun')
     await join(manager.id, ws.id, 'Manager')
+    const viewer = await mkUser('Chidi Nwosu')
+    await join(viewer.id, ws.id, 'Viewer')
     const admin = await mkUser('Global Admin', { isGlobalAdmin: true })
     clock('2026-11-14T19:00:00Z')
-    for (const who of [later, manager, admin]) {
+    for (const [who, h1] of [[later, 'Ada'], [manager, 'Kemi'], [viewer, 'Chidi'], [admin, 'Global']] as const) {
       signIn(who, ws.id)
-      expect((await home()).markup).toContain('<h1>Good evening, Tunde</h1>')
+      const { markup } = await home()
+      expect(markup).toContain(`<h1>Good evening, ${h1}</h1>`)
+      expect(markup).not.toContain('Tunde')
     }
   })
 

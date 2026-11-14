@@ -11,19 +11,19 @@ import { firstName, heroModel } from '@/lib/home'
 import { MARKETS } from '@/lib/markets'
 import { can, requireMember } from '@/lib/permissions'
 import { homeCards } from '@/lib/reports'
-import { ownerName } from '@/lib/shell'
 import { simulateDayAction } from './campaigns/actions'
 
 const NEW = '/app/campaigns/new'
 const campaignHref = (id: string) => `/app/campaigns/${id}`
 
-// Campaigns home (ADV §1): the greeting, the pills, the campaign that matters most, then the grid.
+// Campaigns home (ADV §1): the greeting (to whoever is signed in), the pills, the campaign that matters most,
+// then the grid.
 // The filter is `?filter=`; one the workspace has no pill for reads as All.
 export default async function CampaignsHome({ searchParams }: { searchParams: Promise<{ filter?: string | string[] }> }) {
   const { user, workspace: ws, role } = await requireMember('view')
   const now = new Date()
   const asked = parseHomeFilter((await searchParams).filter)
-  const [first, owner] = await Promise.all([homeCards(ws.id, asked, now), ownerName(ws.id)])
+  const first = await homeCards(ws.id, asked, now)
   const filter = pillShown(asked, first.counts) ? asked : 'all'
   const home = filter === asked ? first : await homeCards(ws.id, filter, now)
   const hero = home.hero && { id: home.hero.id, status: home.hero.status, model: await heroModel(home.hero, now) }
@@ -36,7 +36,7 @@ export default async function CampaignsHome({ searchParams }: { searchParams: Pr
     <>
       <PageHead
         crumb={[{ label: ws.name }, { label: HOME.crumb }]}
-        title={HOME.title(greeting, firstName(owner ?? user.name))}
+        title={HOME.title(greeting, firstName(user.name))}
         lead={HOME.lead}
         actions={
           (demo || canAct) && (
