@@ -26,8 +26,10 @@ describe('/admin/api', () => {
     await signIn(true)
     await phoenix()
     const html = renderToStaticMarkup(await ApiDocsPage())
-    for (const title of ['1 · Offers out', '2 · Events in', '3 · Share token', 'Link stats', 'Auth and limits', 'Keys', 'Claim codes', 'Webhooks to Phoenix', 'Boomplay'])
+    for (const title of ['1 · Offers out', '2 · Events in', '3 · Share token', 'Link stats', 'Auth and limits', 'Keys', 'Claim codes', 'Webhooks to Phoenix (planned)', 'Boomplay'])
       expect(html).toContain(`<h3>${title}</h3>`)
+    // Not enforced or sent by the server yet, so the page says so.
+    expect(html).toContain('<td>Rate limit (planned)</td>')
     expect(html).toContain(`${process.env.APP_URL}/api/v1/offers?country=KE&amp;channel=phoenix`)
     expect(html).toContain('POST /api/v1/claims')
     expect(html).toContain(`${process.env.APP_URL}/api/v1/links/K4Q7ZX2A/stats`)

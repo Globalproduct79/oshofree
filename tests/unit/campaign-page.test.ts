@@ -582,7 +582,6 @@ describe('History', () => {
         '12 Nov · Revised offer not approved: Broken or unsafe link',
         '10 Nov · Revised offer approved',
         '6 Nov · Approved by Global',
-        '5 Nov · Submitted',
         '5 Nov · Rejected: Misleading or unclear terms: Say where the offer can be redeemed.',
       ].join(' '),
     )
@@ -594,5 +593,14 @@ describe('History', () => {
     const c = await mkCampaign(ws.id, 'draft', { submittedAt: null })
     const { text: t } = await page(c.id)
     expect(t).toContain('History No decisions yet.')
+  })
+
+  it('lists decisions only: a submission waiting for Global is not one', async () => {
+    const { ws } = await setup()
+    clock('2026-11-14T08:00:00Z')
+    const c = await mkCampaign(ws.id, 'review', { submittedAt: at('2026-11-13T08:00:00Z') })
+    const { markup } = await page(c.id)
+    const box = markup.match(/<h3>History<\/h3>(.*?)<\/div><\/div>/)?.[1] ?? ''
+    expect(text(box).trim()).toBe('No decisions yet.')
   })
 })

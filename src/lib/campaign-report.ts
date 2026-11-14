@@ -147,10 +147,9 @@ function sharing(c: Campaign, m: CampaignMetrics, pointsPerShare: number, fxPerU
   }
 }
 
-// One line per decision, newest first. A revised offer's decision writes both its revision row and a
-// ReviewAction at the same instant; the revision row says which it was, so that action is not counted
-// again as a decision on the campaign. The campaign's own submission is the latest one (it is
-// overwritten on each resubmission).
+// One line per decision of Global's, newest first; submissions are not decisions. A revised offer's decision
+// writes both its revision row and a ReviewAction at the same instant; the revision row says which it was, so
+// that action is not counted again as a decision on the campaign.
 function history(c: Campaign, actions: ReviewAction[], revisions: CampaignRevision[]): string[] {
   const H = C.history
   const decided = revisions.filter((r): r is CampaignRevision & { decidedAt: Date } => r.status !== 'review' && r.decidedAt !== null)
@@ -164,7 +163,6 @@ function history(c: Campaign, actions: ReviewAction[], revisions: CampaignRevisi
     ...actions
       .filter((a) => (a.action === 'Approve' || a.action === 'Reject') && !ofRevision(a))
       .map((a) => ({ at: a.at, what: a.action === 'Approve' ? H.approved : H.rejected(decisionReason(a.reason)) })),
-    ...(c.submittedAt ? [{ at: c.submittedAt, what: H.submitted }] : []),
   ]
   const tz = MARKETS[c.country].timezone
   return lines.sort((a, b) => b.at.getTime() - a.at.getTime()).map((l) => H.line(fd(l.at, tz), l.what))

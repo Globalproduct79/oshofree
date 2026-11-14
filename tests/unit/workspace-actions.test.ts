@@ -15,7 +15,7 @@ vi.mock('next/navigation', async (importOriginal) => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }))
 
-async function setup(role: 'Owner' | 'Manager' | 'Global', opts: { status?: 'pending' | 'approved'; type?: 'Brand' | 'Agency' } = {}) {
+async function setup(role: 'Owner' | 'Manager' | 'Viewer' | 'Global', opts: { status?: 'pending' | 'approved'; type?: 'Brand' | 'Agency' } = {}) {
   const owner = await db.user.create({ data: { email: 'o@x.test', name: 'Tunde', passwordHash: 'x' } })
   const ws = await db.workspace.create({
     data: { name: 'Kola Bright', type: opts.type ?? 'Brand', country: 'NG', status: opts.status ?? 'approved' },
@@ -25,7 +25,7 @@ async function setup(role: 'Owner' | 'Manager' | 'Global', opts: { status?: 'pen
   if (role !== 'Owner') {
     const isGlobalAdmin = role === 'Global'
     actor = await db.user.create({ data: { email: 'a@x.test', name: 'Ada', passwordHash: 'x', isGlobalAdmin } })
-    if (!isGlobalAdmin) await db.workspaceMember.create({ data: { userId: actor.id, workspaceId: ws.id, role: 'Manager' } })
+    if (role !== 'Global') await db.workspaceMember.create({ data: { userId: actor.id, workspaceId: ws.id, role } })
   }
   vi.mocked(auth).mockResolvedValue({ user: { id: actor.id, isGlobalAdmin: role === 'Global' }, expires: '' } as never)
   jar.get.mockImplementation((k: string) => (k === 'of_ws' ? { value: ws.id } : undefined))
@@ -82,6 +82,25 @@ describe('workspace settings', () => {
     const { ws } = await setup('Global')
     expect(await updateWorkspaceAction(null, form({ name: 'Kola Bright', type: 'Brand', country: 'GH' }))).toEqual({ saved: true })
     expect((await db.workspace.findUniqueOrThrow({ where: { id: ws.id } })).country).toBe('GH')
+  })
+
+  const SAVE = />Save<\/button>/
+  const nameInput = (html: string) => html.match(/<input[^>]*name="name"[^>]*>/)?.[0] ?? ''
+
+  it.each(['Owner', 'Global'] as const)('the page offers Save to %s', async (role) => {
+    await setup(role)
+    const html = renderToStaticMarkup(await WorkspacePage())
+    expect(html).toMatch(SAVE)
+    expect(nameInput(html)).not.toContain('readOnly')
+  })
+
+  it.each(['Manager', 'Viewer'] as const)('a %s sees the fields read-only, with no Save', async (role) => {
+    await setup(role)
+    const html = renderToStaticMarkup(await WorkspacePage())
+    expect(html).not.toMatch(SAVE)
+    expect(nameInput(html)).toContain('readOnly')
+    expect(html.match(/<input[^>]*name="registrationNumber"[^>]*>/)?.[0]).toContain('readOnly')
+    for (const name of ['type', 'country']) expect(html.match(new RegExp(`<select[^>]*name="${name}"[^>]*>`))?.[0]).toContain('disabled')
   })
 })
 

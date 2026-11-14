@@ -99,7 +99,6 @@ export const CAMPAIGN_COPY = {
     title: 'History',
     empty: 'No decisions yet.',
     line: (date: string, what: string) => `${date} · ${what}`,
-    submitted: 'Submitted',
     approved: 'Approved by Global',
     rejected: (reason: string) => (reason ? `Rejected: ${reason}` : 'Rejected'),
     revisionApproved: 'Revised offer approved',

@@ -2,7 +2,7 @@ import { Box, KVGrid, LinkButton, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { COPY } from '@/lib/copy'
 import { usd } from '@/lib/format'
-import { requireMember } from '@/lib/permissions'
+import { can, requireMember } from '@/lib/permissions'
 import { clientBrands, workspaceStatusBox } from '@/lib/workspaces'
 import { updateWorkspaceAction } from './actions'
 import { WorkspaceSettings } from './WorkspaceSettings'
@@ -23,6 +23,7 @@ export default async function WorkspacePage() {
         <Box>
           <WorkspaceSettings
             action={updateWorkspaceAction}
+            readOnly={!can(role, 'settings')}
             typeCountryLocked={locked}
             initial={{ name: ws.name, type: ws.type, country: ws.country, registrationNumber: ws.registrationNumber ?? '' }}
           />

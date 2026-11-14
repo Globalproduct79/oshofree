@@ -9,13 +9,16 @@ import type { FormState } from '../workspace-form'
 
 type Values = { name: string; type: 'Brand' | 'Agency'; country: Country; registrationNumber: string }
 
+// Owner and Global save; a Manager or Viewer sees the same fields read-only, with no Save.
 export function WorkspaceSettings({
   action,
   initial,
+  readOnly,
   typeCountryLocked,
 }: {
   action: (prev: FormState, formData: FormData) => Promise<FormState>
   initial: Values
+  readOnly: boolean
   typeCountryLocked: boolean
 }) {
   const [state, formAction, pending] = useActionState(action, null)
@@ -26,12 +29,12 @@ export function WorkspaceSettings({
     <form action={formAction}>
       <label className="f">
         {COPY.workspace.nameLabel}
-        <input name="name" defaultValue={initial.name} minLength={2} maxLength={80} required />
+        <input name="name" defaultValue={initial.name} minLength={2} maxLength={80} required readOnly={readOnly} />
       </label>
       <label className="f" style={{ marginTop: 12 }}>
         {COPY.workspace.typeLabel}
         {typeCountryLocked && <small> {COPY.workspace.locked}</small>}
-        <select name="type" defaultValue={initial.type} disabled={typeCountryLocked}>
+        <select name="type" defaultValue={initial.type} disabled={readOnly || typeCountryLocked}>
           <option value="Brand">{COPY.workspace.types.Brand}</option>
           <option value="Agency">{COPY.workspace.types.Agency}</option>
         </select>
@@ -39,7 +42,7 @@ export function WorkspaceSettings({
       <label className="f" style={{ marginTop: 12 }}>
         {COPY.workspace.countryLabel}
         {typeCountryLocked && <small> {COPY.workspace.locked}</small>}
-        <select name="country" defaultValue={initial.country} disabled={typeCountryLocked}>
+        <select name="country" defaultValue={initial.country} disabled={readOnly || typeCountryLocked}>
           {COUNTRIES.map((c) => (
             <option key={c} value={c}>{`${MARKETS[c].name} · ${MARKETS[c].currency}`}</option>
           ))}
@@ -52,15 +55,18 @@ export function WorkspaceSettings({
           defaultValue={initial.registrationNumber}
           placeholder={COPY.workspace.registrationPlaceholder}
           maxLength={40}
+          readOnly={readOnly}
         />
       </label>
       {state?.error && state.error !== 'LOCKED' && (
         <p role="alert" style={{ marginTop: 12 }}>{state.error}</p>
       )}
       {state?.error === 'LOCKED' && <p role="alert" style={{ marginTop: 12 }}>{COPY.workspace.locked}</p>}
-      <Button variant="primary" type="submit" disabled={pending} style={{ marginTop: 14 }}>
-        {COPY.workspace.save}
-      </Button>
+      {!readOnly && (
+        <Button variant="primary" type="submit" disabled={pending} style={{ marginTop: 14 }}>
+          {COPY.workspace.save}
+        </Button>
+      )}
     </form>
   )
 }

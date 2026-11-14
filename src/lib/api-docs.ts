@@ -91,7 +91,7 @@ export const AUTH_AND_LIMITS: DocBox = {
   title: 'Auth and limits',
   rows: [
     ['Auth', 'Bearer key per channel, rotated quarterly'],
-    ['Rate limit', '600 req/min on events, 60 req/min on offers'],
+    ['Rate limit (planned)', '600 req/min on events, 60 req/min on offers'],
     ['Payload', '≤ 500 events per POST, ≤ 1 MB'],
     ['Retry', 'Idempotency key; 5xx retry with backoff'],
     ['Latency SLO', 'p95 < 300 ms offers, < 500 ms events'],
@@ -106,7 +106,7 @@ export const REFERENCE_BOXES: DocBox[] = [
   },
   {
     id: 'webhooks',
-    title: 'Webhooks to Phoenix',
+    title: 'Webhooks to Phoenix (planned)',
     sub: '`offer.approved`, `offer.paused`, `offer.ended` so Phoenix can refresh before the next poll.',
   },
   {
