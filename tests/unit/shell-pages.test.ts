@@ -1,18 +1,24 @@
 import { createElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { signInAction } from '@/app/(auth)/sign-in/actions'
+import { signUpAction } from '@/app/(auth)/sign-up/actions'
 import AdminLayout from '@/app/admin/layout'
 import ConsoleLayout from '@/app/app/(console)/layout'
 import { markReadAction } from '@/app/app/(console)/notifications/actions'
-import { switchToPlatformAction, switchWorkspaceAction } from '@/app/app/(console)/switch/actions'
+import { signOutAction, switchToPlatformAction, switchWorkspaceAction } from '@/app/app/(console)/switch/actions'
 import { Modal } from '@/components/shell/Modal'
 import { PageHead } from '@/components/shell/PageHead'
 import { Switcher } from '@/components/shell/Switcher'
 import { Toaster } from '@/components/shell/Toast'
-import { auth } from '@/lib/auth'
+import { auth, signIn as authSignIn, signOut } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { requireMember } from '@/lib/permissions'
+import { hashPassword } from '@/lib/users'
 
-vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
+vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }))
+// next-auth itself can't load under vitest; the sign-in action only needs its AuthError class.
+vi.mock('next-auth', () => ({ AuthError: class AuthError extends Error {} }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 const jar = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn(), delete: vi.fn() }))
 vi.mock('next/headers', () => ({ cookies: async () => jar }))
@@ -223,6 +229,48 @@ describe('shell actions', () => {
     signIn(admin, 'w1')
     await expect(switchToPlatformAction()).rejects.toMatchObject({ digest: expect.stringContaining(';/admin/review;') })
     expect(jar.delete).toHaveBeenCalledWith('of_ws')
+  })
+
+  it('signs out of the workspace too, before the session ends', async () => {
+    const owner = await mkUser('tunde@x.test', 'Tunde Okafor')
+    signIn(owner, 'w1')
+    await signOutAction()
+    expect(jar.delete).toHaveBeenCalledWith('of_ws')
+    expect(signOut).toHaveBeenCalledWith({ redirectTo: '/sign-in' })
+    expect(jar.delete.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(signOut).mock.invocationCallOrder[0])
+  })
+
+  it("lands Global on Platform when it signs in where an advertiser's workspace was left open", async () => {
+    const owner = await mkUser('tunde@x.test', 'Tunde Okafor')
+    const admin = await db.user.create({
+      data: { email: 'admin@x.test', name: 'Ada Admin', passwordHash: await hashPassword('right-password'), isGlobalAdmin: true },
+    })
+    const ws = await mkWs('Kola Bright')
+    await join(owner.id, ws.id, 'Owner')
+    // The browser still carries Tunde's workspace when Global signs in on it.
+    let ofWs: string | undefined = ws.id
+    jar.get.mockImplementation((k: string) => (k === 'of_ws' && ofWs ? { value: ofWs } : undefined))
+    jar.delete.mockImplementation((k: string) => {
+      if (k === 'of_ws') ofWs = undefined
+    })
+    const form = new FormData()
+    form.set('email', 'admin@x.test')
+    form.set('password', 'right-password')
+    expect(await signInAction(null, form)).toBeNull()
+    expect(authSignIn).toHaveBeenCalledWith('credentials', expect.objectContaining({ email: 'admin@x.test', redirectTo: '/app' }))
+    expect(jar.delete.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(authSignIn).mock.invocationCallOrder[0])
+
+    vi.mocked(auth).mockResolvedValue({ user: { id: admin.id, isGlobalAdmin: true }, expires: '' } as never)
+    await expect(requireMember('view')).rejects.toMatchObject({ digest: expect.stringContaining(';/admin/review;') })
+  })
+
+  it('starts a new account outside whatever workspace the browser last had open', async () => {
+    signIn({ id: 'nobody', isGlobalAdmin: false }, 'w1')
+    const form = new FormData()
+    for (const [k, v] of Object.entries({ name: 'Nkem', email: 'nkem@x.test', password: 'password123' })) form.set(k, v)
+    expect(await signUpAction(null, form)).toBeNull()
+    expect(jar.delete).toHaveBeenCalledWith('of_ws')
+    expect(jar.delete.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(authSignIn).mock.invocationCallOrder[0])
   })
 
   it("marks only the caller's own notification read", async () => {

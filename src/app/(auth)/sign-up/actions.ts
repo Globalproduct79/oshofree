@@ -1,6 +1,7 @@
 'use server'
 
 import { z } from 'zod'
+import { clearActiveWorkspace } from '@/lib/active-workspace'
 import { signIn } from '@/lib/auth'
 import { COPY } from '@/lib/copy'
 import { joinFromInvite } from '@/lib/invite-join'
@@ -18,6 +19,8 @@ export async function signUpAction(_prev: string | null, formData: FormData): Pr
   const invite = String(formData.get('invite') ?? '')
   try {
     const user = await createUser(parsed.data)
+    // A new account starts outside whatever workspace this browser last had open (an invite then opens its own).
+    await clearActiveWorkspace()
     if (invite) await joinFromInvite(invite, user)
   } catch (e) {
     if (e === 'EMAIL_TAKEN') return COPY.auth.emailTaken

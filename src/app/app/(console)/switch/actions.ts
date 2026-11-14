@@ -30,6 +30,8 @@ export async function switchToPlatformAction(): Promise<void> {
   redirect('/admin/review')
 }
 
+// Signing out leaves the workspace too, so whoever signs in next on this browser starts outside it.
 export async function signOutAction(): Promise<void> {
+  await clearActiveWorkspace()
   await signOut({ redirectTo: '/sign-in' })
 }

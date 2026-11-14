@@ -1,6 +1,7 @@
 'use server'
 
 import { AuthError } from 'next-auth'
+import { clearActiveWorkspace } from '@/lib/active-workspace'
 import { signIn } from '@/lib/auth'
 import { COPY } from '@/lib/copy'
 import { joinFromInvite } from '@/lib/invite-join'
@@ -23,6 +24,8 @@ function safeRedirect(raw: string): string {
 export async function signInAction(_prev: string | null, formData: FormData): Promise<string | null> {
   const invite = String(formData.get('invite') ?? '')
   const redirectTo = invite ? '/app' : safeRedirect(String(formData.get('callbackUrl') ?? ''))
+  // A fresh session never inherits the last one's workspace: Global would land inside it, unaudited.
+  await clearActiveWorkspace()
   try {
     if (invite) {
       const user = await verifyCredentials(String(formData.get('email') ?? ''), String(formData.get('password') ?? ''))
