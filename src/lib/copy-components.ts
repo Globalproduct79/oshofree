@@ -42,6 +42,8 @@ export const COMPONENTS = {
     // Ours (Prompt 6): who created the campaign, on Global's cards of a workspace.
     createdBy: (name: string) => `Created by ${name}`,
   },
+  // Ours (Prompt 6): a campaign's creative, as a screen reader names it on the cards, the campaign page and Review.
+  creative: { image: "The campaign's image", video: "The campaign's video" },
   hero: {
     eyebrow: (country: string, placement: PlacementKey, when: string) =>
       `${country} · ${PLACEMENT_LABEL[placement]} · ${when}`,

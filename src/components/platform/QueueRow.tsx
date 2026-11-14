@@ -5,8 +5,8 @@ import {
   approveCampaignAction, approveRevisionAction, previewOffersAction, rejectCampaignAction, rejectRevisionAction,
 } from '@/app/admin/review/actions'
 import { PreviewButton } from '@/components/campaign/PreviewButton'
-import { Button } from '@/components/og'
-import { coverStyle } from '@/components/og/cover'
+import { Button, CreativeMedia } from '@/components/og'
+import { COMPONENTS } from '@/lib/copy-components'
 import { REVIEW } from '@/lib/copy-review'
 import type { QueueRow as Row } from '@/lib/review'
 import { tokens } from '@/lib/tokens'
@@ -31,14 +31,15 @@ export function QueueRow({ row }: { row: Row }) {
   return (
     <Fragment>
       <div className="q">
-        <div className="cv" style={coverStyle(row.cover.imageUrl, row.cover.color)}>
-          {row.cover.videoUrl ? (
-            // The first frame (#t=0.1 makes Safari draw it); Preview plays it on the phone.
-            <video src={`${row.cover.videoUrl}#t=0.1`} aria-label={Q.video} muted playsInline preload="metadata" />
-          ) : (
-            !row.cover.imageUrl && row.cover.initials
-          )}
-        </div>
+        {/* A video at its first frame; Preview plays it on the phone. */}
+        <CreativeMedia
+          image={row.cover.imageUrl}
+          video={row.cover.videoUrl}
+          labels={COMPONENTS.creative}
+          color={row.cover.color}
+          className="cv"
+          fallback={row.cover.initials}
+        />
         <div>
           <div>
             <b>{row.title}</b>

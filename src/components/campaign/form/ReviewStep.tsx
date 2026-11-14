@@ -2,7 +2,7 @@
 
 import type { ReactNode, RefObject } from 'react'
 import { PhoneThumb } from '@/components/campaign/PhoneFrame'
-import { KVGrid } from '@/components/og'
+import { CreativeMedia, KVGrid } from '@/components/og'
 import { ageGated, campaignDates, hasLicence, isBettingOrDraw, type CreditPosition } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { fd, loc, localAmount, usd } from '@/lib/format'
@@ -34,14 +34,17 @@ type Props = {
 // phone, or a line saying the card shows the tile colour.
 function Creative({ values: v, mine }: Pick<Props, 'values' | 'mine'>) {
   const c = v.creative
-  if (!c) return <p className="desc">{R.noCreative}</p>
-  if (v.placement === 'splash') return <PhoneThumb mine={mine} country={MARKETS[v.country].name} label={F.drop.splashFrame} />
-  if (c.kind === 'video') {
-    return <video src={`${c.url}#t=0.1`} aria-label={R.video} controls playsInline preload="metadata" className="cr" />
-  }
-  // An uploaded creative served by /uploads; next/image adds nothing here.
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={c.url} alt={R.image} className="cr" />
+  if (c && v.placement === 'splash') return <PhoneThumb mine={mine} country={MARKETS[v.country].name} label={F.drop.splashFrame} />
+  return (
+    <CreativeMedia
+      image={c?.kind === 'image' ? c.url : null}
+      video={c?.kind === 'video' ? c.url : null}
+      labels={R}
+      controls
+      className="cr"
+      fallback={<p className="desc">{R.noCreative}</p>}
+    />
+  )
 }
 
 // The flight as the campaign page prints it: the start, the (exclusive) end, both at the market's midnight.

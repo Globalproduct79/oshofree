@@ -38,8 +38,6 @@ export const REVIEW = {
     via: (brand: string, workspace: string) => `${brand} via ${workspace}`,
     // Ours (Prompt 6): after the byline, who created the campaign.
     createdBy: (name: string) => `created by ${name}`,
-    // Ours: a video offer's cover, drawn at its first frame.
-    video: "The campaign's video",
     sep: ' · ',
     dates: (start: string, end: string) => `${start} – ${end}`,
     claimCode: 'claim code',

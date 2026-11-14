@@ -164,8 +164,10 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
    (keyboard focus still shows one). */
 .summary{display:grid;gap:18px}.summary .subt{display:block;margin-bottom:8px}.summary .desc{margin:10px 0 0}.summary .est{margin-top:12px}
 .summary .cr{margin:0}.summary .kv b{overflow-wrap:anywhere}.box h3[tabindex="-1"]:focus:not(:focus-visible){outline:none}
-/* Who created a campaign: its own line under a card's sub-line; a Review row's video cover at its first frame. */
+/* Who created a campaign: its own line under a card's sub-line. A video's first frame fills a card's cover (under its
+   pills, which come after it) and a Review row's. */
 .cc .b .by{display:block}
+.cc .cv video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .q .cv video{width:100%;height:100%;object-fit:cover;border-radius:9px}
 
 /* Printing an invoice: the page only, without the shell or the buttons. */

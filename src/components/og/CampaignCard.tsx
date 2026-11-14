@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { COMPONENTS, type PlacementKey } from '@/lib/copy-components'
-import { coverStyle } from './cover'
+import { CreativeMedia } from './CreativeMedia'
 import { StatusBadge, type StatusKey } from './StatusBadge'
 
 export type CardModel = {
@@ -15,6 +15,8 @@ export type CardModel = {
   placementLabel?: string
   ageGated: boolean
   imageUrl?: string | null
+  // A video creative: the cover shows its first frame over the tile colour.
+  videoUrl?: string | null
   color: string
   initials: string
   // Adds " · {n}d left" to the sub-line (live and paused campaigns).
@@ -32,8 +34,8 @@ export type CardModel = {
 
 const clampPct = (n: number) => (Number.isNaN(n) ? 0 : Math.min(100, Math.max(0, n)))
 
-// The campaign card (ADV §1 "CampaignCard anatomy"): a 118 px cover with the status pill, 18+ and
-// placement overlays, then headline, brand · country, the main row and the spend bar. With an
+// The campaign card (ADV §1 "CampaignCard anatomy"): a 118 px cover (the image, a video's first frame, or the tile
+// colour with the initials) with the status pill, 18+ and placement overlays, then headline, brand · country, the main row and the spend bar. With an
 // href the whole card is a link; without one it is static (`data-static`, the form preview). A client
 // caller may take over the click (Review's "Live now" enters the campaign's workspace first).
 export function CampaignCard({
@@ -47,12 +49,18 @@ export function CampaignCard({
 }) {
   const body = (
     <>
-      <div className="cv" style={coverStyle(c.imageUrl, c.color)}>
-        {!c.imageUrl && <span className="ph">{c.initials}</span>}
+      <CreativeMedia
+        image={c.imageUrl}
+        video={c.videoUrl}
+        labels={COMPONENTS.creative}
+        color={c.color}
+        className="cv"
+        fallback={<span className="ph">{c.initials}</span>}
+      >
         {c.status && <StatusBadge status={c.status} />}
         {c.ageGated && <span className="age">{COMPONENTS.card.age}</span>}
         <span className="plb">{c.placementLabel ?? COMPONENTS.card.placement(c.placement)}</span>
-      </div>
+      </CreativeMedia>
       <div className="bd">
         <div className="t">{c.headline}</div>
         <div className="b">

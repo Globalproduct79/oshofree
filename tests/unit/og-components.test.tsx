@@ -7,6 +7,7 @@ import {
   Box,
   Button,
   CampaignCard,
+  CreativeMedia,
   DataTable,
   EmptyState,
   EstimatePanel,
@@ -516,5 +517,37 @@ describe('DataTable', () => {
   })
   it('leaves out the head when there are no headings', () => {
     expect(html(<DataTable head={[]} rows={[['Owner', 'Everything']]} emptyText="-" />)).not.toContain('<thead>')
+  })
+})
+
+describe('CreativeMedia', () => {
+  const labels = { image: "The campaign's image", video: "The campaign's video" }
+  const m = (el: ReactElement) => renderToStaticMarkup(el)
+
+  it('inline: the image, or the video with its controls from the first frame, or what stands in for none', () => {
+    // (Rendered alone, React also hints a preload for the image.)
+    expect(m(<CreativeMedia image="/uploads/a.jpg" video={null} labels={labels} className="cr" />)).toMatch(
+      /<img src="\/uploads\/a.jpg" alt="The campaign&#x27;s image" class="cr"\/>$/,
+    )
+    expect(m(<CreativeMedia image={null} video="/uploads/a.mp4" labels={labels} controls className="cr" />)).toBe(
+      '<video src="/uploads/a.mp4#t=0.1" aria-label="The campaign&#x27;s video" controls="" playsInline="" preload="metadata" class="cr"></video>',
+    )
+    expect(m(<CreativeMedia image={null} video={null} labels={labels} fallback={<p>None</p>} />)).toBe('<p>None</p>')
+  })
+
+  it('a still video is muted and has no controls', () => {
+    expect(m(<CreativeMedia image={null} video="/uploads/a.mp4" labels={labels} />)).toBe(
+      '<video src="/uploads/a.mp4#t=0.1" aria-label="The campaign&#x27;s video" muted="" playsInline="" preload="metadata"></video>',
+    )
+  })
+
+  it('a cover: the image or the tile colour as its background, a video filling it, the initials only over the colour', () => {
+    const cover = (image: string | null, video: string | null) =>
+      m(<CreativeMedia image={image} video={video} labels={labels} color="#0F766E" className="cv" fallback="KB"><i>pill</i></CreativeMedia>)
+    expect(cover('/uploads/a.jpg', null)).toBe('<div class="cv" style="background-image:url(&quot;/uploads/a.jpg&quot;)"><i>pill</i></div>')
+    expect(cover(null, null)).toBe('<div class="cv" style="background:#0F766E">KB<i>pill</i></div>')
+    expect(cover(null, '/uploads/a.mp4')).toBe(
+      '<div class="cv" style="background:#0F766E"><video src="/uploads/a.mp4#t=0.1" aria-label="The campaign&#x27;s video" muted="" playsInline="" preload="metadata"></video><i>pill</i></div>',
+    )
   })
 })

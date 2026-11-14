@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } fr
 import { COMPONENTS } from '@/lib/copy-components'
 import { tokens } from '@/lib/tokens'
 import { Button } from './Button'
+import { CreativeMedia } from './CreativeMedia'
 import { droppedFile, PickerMemory, zoneKey } from './picker-logic'
 
 const C = COMPONENTS.drop
@@ -34,19 +35,17 @@ type Props = {
   onRemove: () => void
 }
 
-// The image as it is, or the video with the browser's own controls, opened at its first frame (#t=0.1 makes
-// Safari draw it). `still` is the preview of a file still uploading: no controls, nothing to play yet.
+// The image as it is, or the video with the browser's own controls, opened at its first frame. `still` is the preview
+// of a file still uploading: no controls, nothing to play yet.
 function Media({ media, still }: { media: PickerMedia; still?: boolean }) {
-  if (media.kind === 'video') {
-    return still ? (
-      <video src={`${media.url}#t=0.1`} aria-label={C.chosen.video} muted playsInline preload="metadata" />
-    ) : (
-      <video src={`${media.url}#t=0.1`} aria-label={C.chosen.video} controls playsInline preload="metadata" />
-    )
-  }
-  // A local object URL or an uploaded creative; next/image adds nothing here.
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={media.url} alt={C.chosen.image} />
+  return (
+    <CreativeMedia
+      image={media.kind === 'image' ? media.url : null}
+      video={media.kind === 'video' ? media.url : null}
+      labels={C.chosen}
+      controls={!still}
+    />
+  )
 }
 
 // The creative upload (ADV §3): a `label.f` with its hint, then the dashed `.drop`. Empty, the zone is a button

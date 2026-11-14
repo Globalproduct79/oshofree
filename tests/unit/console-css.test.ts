@@ -31,6 +31,8 @@ it("draws an offer's creative inside its box, a creator's line under a card's su
   expect(css).toContain('.box .cr{display:block;max-width:100%;max-height:220px')
   expect(css).toContain('.cc .b .by{display:block}')
   expect(css).toContain('.q .cv video{width:100%;height:100%;object-fit:cover')
+  // A card's video fills its cover under the pills, which come after it.
+  expect(css).toContain('.cc .cv video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}')
 })
 it("spaces the New form's Review step into titled sections", () => {
   expect(css).toContain('.summary{display:grid;gap:18px}.summary .subt{display:block;margin-bottom:8px}')

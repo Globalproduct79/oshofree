@@ -1,5 +1,6 @@
 import type { RedeemMethod } from '@prisma/client'
 import { CAMPAIGN_FORM_COPY } from '@/lib/copy-campaign-form'
+import { COMPONENTS } from '@/lib/copy-components'
 
 // The campaign page and the Phoenix preview, split out of copy.ts. Reached through COPY.campaign/preview.
 
@@ -95,7 +96,7 @@ export const CAMPAIGN_COPY = {
     placementAt: (placement: string, cpmDollars: string) => `${placement} · $${cpmDollars}`,
     edit: 'Edit offer and resubmit',
     // Ours: the creative the offer runs, as a screen reader names it.
-    creative: { image: "The campaign's image", video: "The campaign's video" },
+    creative: COMPONENTS.creative,
   },
   // Ours (spec §6.8): Global's decisions on the campaign and its revised offers, newest first.
   history: {

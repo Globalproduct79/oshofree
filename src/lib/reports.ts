@@ -330,6 +330,7 @@ function cardOf(c: Campaign, m: { imp: number; opens: number; spendCents: number
     placement: c.placement,
     ageGated: c.ageGated,
     imageUrl: c.creativeImageKey ? imageUrl(c.creativeImageKey) : null,
+    videoUrl: c.creativeVideoKey ? imageUrl(c.creativeVideoKey) : null,
     color: c.tileColor ?? tokens.tileColors[0],
     initials: initials(c.brand),
     ...(running ? { daysLeft: daysLeft(c.endsAt, now) } : {}),

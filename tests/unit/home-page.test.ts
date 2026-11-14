@@ -223,6 +223,21 @@ describe('Campaigns home', () => {
     }
   })
 
+  it("a video campaign's card shows the clip at its first frame over the tile colour, under its pills", async () => {
+    const { ws, owner } = await workspace()
+    signIn(owner, ws.id)
+    clock('2026-11-14T12:00:00Z')
+    await mkCampaign(ws.id, 'Live one', 'live')
+    const key = '0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.mp4'
+    await mkCampaign(ws.id, 'Clip', 'review', { placement: 'video', creativeVideoKey: key, tileColor: '#2B5FD9' })
+    const { markup } = await home()
+    const card = markup.split('<a class="cc"').find((c) => c.includes('Clip headline'))!
+    expect(card).toContain(
+      `<div class="cv" style="background:#2B5FD9"><video src="/uploads/${key}#t=0.1" aria-label="The campaign&#x27;s video" muted="" playsInline="" preload="metadata"></video><span class="st st-review">In review</span>`,
+    )
+    expect(card).not.toContain('class="ph"')
+  })
+
   it('a workspace with no campaigns shows the dashed tile above "Nothing on Phoenix yet"', async () => {
     const { ws, owner } = await workspace('GH', 'SunFresh Juices', { status: 'pending' })
     signIn(owner, ws.id)
