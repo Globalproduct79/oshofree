@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
-  acceptInvite, changeRole, findInvite, invite, inviteUrl, members, openInvites, pendingInvites, removeMember, resendInvite, revokeInvite,
+  acceptInvite, changeRole, findInvite, invite, inviteUrl, members, openInvites, removeMember, resendInvite, revokeInvite,
 } from '@/lib/invitations'
 
 const mkUser = (email: string, name = email) => db.user.create({ data: { email, name, passwordHash: 'x' } })
@@ -39,7 +39,7 @@ describe('invitations', () => {
     const a = await invite(ws.id, owner.id, 'n@x.test', 'Manager')
     const b = await invite(ws.id, owner.id, 'n@x.test', 'Viewer')
     expect(a.token).not.toBe(b.token)
-    expect((await pendingInvites(ws.id)).map((p) => p.id)).toEqual([b.id])
+    expect((await openInvites(ws.id)).map((p) => p.id)).toEqual([b.id])
     await expect(acceptInvite(a.token, { id: 'u', email: 'n@x.test' })).rejects.toBe('INVALID')
   })
 
@@ -50,7 +50,7 @@ describe('invitations', () => {
     expect(await acceptInvite(inv.token, u)).toEqual({ workspaceId: ws.id, role: 'Viewer' })
     const m = await db.workspaceMember.findFirstOrThrow({ where: { userId: u.id, workspaceId: ws.id } })
     expect(m.role).toBe('Viewer')
-    expect(await pendingInvites(ws.id)).toHaveLength(0)
+    expect(await openInvites(ws.id)).toHaveLength(0)
     await expect(acceptInvite(inv.token, u)).rejects.toBe('INVALID')
   })
 
@@ -69,15 +69,31 @@ describe('invitations', () => {
     const inv = await invite(ws.id, owner.id, 'n@x.test', 'Manager')
     await db.invitation.update({ where: { id: inv.id }, data: { expiresAt: new Date(Date.now() - 1000) } })
     await expect(acceptInvite(inv.token, { id: 'u', email: 'n@x.test' })).rejects.toBe('EXPIRED')
-    expect(await pendingInvites(ws.id)).toHaveLength(0)
+    // Still listed, as expired, for Resend to revive.
+    expect((await openInvites(ws.id)).map((p) => p.id)).toEqual([inv.id])
   })
 
   it('a revoked token is refused', async () => {
     const { owner, ws } = await setup()
     const inv = await invite(ws.id, owner.id, 'n@x.test', 'Manager')
-    await revokeInvite(inv.id, owner.id)
+    expect(await revokeInvite(inv.id, owner.id)).toBe(true)
     await expect(acceptInvite(inv.token, { id: 'u', email: 'n@x.test' })).rejects.toBe('INVALID')
     await expect(revokeInvite(inv.id, owner.id, 'other-ws')).rejects.toBe('NOT_FOUND')
+  })
+
+  it('revoking says whether it revoked: an invite already revoked or accepted is left alone and not audited again', async () => {
+    const { owner, ws } = await setup()
+    const inv = await invite(ws.id, owner.id, 'n@x.test', 'Manager')
+    expect(await revokeInvite(inv.id, owner.id, ws.id)).toBe(true)
+    const revokedAt = (await db.invitation.findUniqueOrThrow({ where: { id: inv.id } })).revokedAt
+    expect(await revokeInvite(inv.id, owner.id, ws.id)).toBe(false)
+    expect((await db.invitation.findUniqueOrThrow({ where: { id: inv.id } })).revokedAt).toEqual(revokedAt)
+    const joined = await invite(ws.id, owner.id, 'j@x.test', 'Viewer')
+    await acceptInvite(joined.token, await mkUser('j@x.test'))
+    expect(await revokeInvite(joined.id, owner.id, ws.id)).toBe(false)
+    expect((await db.invitation.findUniqueOrThrow({ where: { id: joined.id } })).revokedAt).toBeNull()
+    await expect(revokeInvite('missing', owner.id, ws.id)).rejects.toBe('NOT_FOUND')
+    expect(await db.auditEvent.count({ where: { action: 'invite.revoke' } })).toBe(1)
   })
 
   it('refuses to demote or remove the only Owner, allows it with two', async () => {
@@ -153,6 +169,29 @@ describe('resendInvite', () => {
     expect(await acceptInvite(again.token, u)).toEqual({ workspaceId: ws.id, role: 'Manager' })
   })
 
+  it('a link Resend retired is refused even when it was looked up just before the resend', async () => {
+    const { owner, ws } = await setup()
+    const inv = await invite(ws.id, owner.id, 'n@x.test', 'Manager')
+    const u = await mkUser('n@x.test', 'Newbie')
+    // acceptInvite finds the invite by the old token, then Resend lands before its claim.
+    const find = db.invitation.findUnique.bind(db.invitation)
+    const spy = vi.spyOn(db.invitation, 'findUnique').mockImplementationOnce((async (args: Parameters<typeof find>[0]) => {
+      const found = await find(args)
+      await resendInvite(inv.id, owner.id, ws.id)
+      return found
+    }) as never)
+    try {
+      await expect(acceptInvite(inv.token, u)).rejects.toBe('INVALID')
+    } finally {
+      spy.mockRestore()
+    }
+    expect(await db.workspaceMember.count({ where: { userId: u.id, workspaceId: ws.id } })).toBe(0)
+    const now = await db.invitation.findUniqueOrThrow({ where: { id: inv.id } })
+    expect(now.acceptedAt).toBeNull()
+    expect(now.token).not.toBe(inv.token)
+    expect(await acceptInvite(now.token, u)).toEqual({ workspaceId: ws.id, role: 'Manager' })
+  })
+
   it('revives an expired invite', async () => {
     const { owner, ws } = await setup()
     const inv = await invite(ws.id, owner.id, 'n@x.test', 'Viewer')
@@ -160,7 +199,7 @@ describe('resendInvite', () => {
     await expect(acceptInvite(inv.token, { id: 'u', email: 'n@x.test' })).rejects.toBe('EXPIRED')
     const again = await resendInvite(inv.id, owner.id, ws.id)
     expect(days(again.expiresAt)).toBeGreaterThan(6.99)
-    expect((await pendingInvites(ws.id)).map((p) => p.id)).toEqual([inv.id])
+    expect((await openInvites(ws.id)).map((p) => [p.id, p.expiresAt])).toEqual([[inv.id, again.expiresAt]])
     const u = await mkUser('n@x.test', 'Newbie')
     expect(await acceptInvite(again.token, u)).toEqual({ workspaceId: ws.id, role: 'Viewer' })
   })

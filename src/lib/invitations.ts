@@ -9,6 +9,9 @@ const EMAIL = /^\S+@\S+\.\S+$/
 
 export const inviteUrl = (token: string) => `${process.env.APP_URL ?? ''}/invite/${token}`
 
+// An invite's bearer token: 32 hex characters.
+const newToken = () => randomBytes(16).toString('hex')
+
 export type MemberView = { userId: string; name: string; email: string; role: Role; isLastOwner: boolean }
 
 export async function members(workspaceId: string): Promise<MemberView[]> {
@@ -26,12 +29,6 @@ export async function members(workspaceId: string): Promise<MemberView[]> {
     isLastOwner: r.role === 'Owner' && owners === 1,
   }))
 }
-
-export const pendingInvites = (workspaceId: string) =>
-  db.invitation.findMany({
-    where: { workspaceId, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
-    orderBy: { expiresAt: 'asc' },
-  })
 
 export type OpenInvite = { id: string; email: string; role: Role; invitedBy: string | null; expiresAt: Date }
 
@@ -68,7 +65,7 @@ export async function invite(workspaceId: string, byUserId: string, rawEmail: st
         workspaceId,
         email,
         role,
-        token: randomBytes(16).toString('hex'),
+        token: newToken(),
         invitedById: byUserId,
         expiresAt: new Date(now.getTime() + WEEK),
       },
@@ -78,12 +75,18 @@ export async function invite(workspaceId: string, byUserId: string, rawEmail: st
   return created
 }
 
-export async function revokeInvite(id: string, byUserId: string, workspaceId?: string): Promise<void> {
-  const inv = await db.invitation.findUnique({ where: { id } })
+// True when this call revoked the invite; false when it was already accepted or revoked (left as it is). One
+// guarded write, so an accept that lands first wins.
+export async function revokeInvite(id: string, byUserId: string, workspaceId?: string): Promise<boolean> {
+  const inv = await db.invitation.findUnique({ where: { id }, select: { workspaceId: true, email: true } })
   if (!inv || (workspaceId && inv.workspaceId !== workspaceId)) throw 'NOT_FOUND'
-  if (inv.acceptedAt || inv.revokedAt) return
-  await db.invitation.update({ where: { id }, data: { revokedAt: new Date() } })
+  const done = await db.invitation.updateMany({
+    where: { id, acceptedAt: null, revokedAt: null },
+    data: { revokedAt: new Date() },
+  })
+  if (done.count !== 1) return false
   await audit(byUserId, 'invite.revoke', { type: 'Invitation', id, workspaceId: inv.workspaceId }, { email: inv.email })
+  return true
 }
 
 // A new link for an invite not yet accepted or revoked (an expired one too): a new token, so the old link stops
@@ -92,7 +95,7 @@ export async function revokeInvite(id: string, byUserId: string, workspaceId?: s
 export async function resendInvite(id: string, byUserId: string, workspaceId: string): Promise<Invitation> {
   const done = await db.invitation.updateMany({
     where: { id, workspaceId, acceptedAt: null, revokedAt: null },
-    data: { token: randomBytes(16).toString('hex'), expiresAt: new Date(Date.now() + WEEK) },
+    data: { token: newToken(), expiresAt: new Date(Date.now() + WEEK) },
   })
   if (done.count !== 1) {
     const inv = await db.invitation.findUnique({ where: { id }, select: { workspaceId: true } })
@@ -113,9 +116,10 @@ export async function acceptInvite(token: string, user: { id: string; email: str
   if (inv.expiresAt.getTime() <= Date.now()) throw 'EXPIRED'
   const now = new Date()
   await db.$transaction(async (tx) => {
-    // The claim is atomic: of two concurrent accepts only one flips acceptedAt.
+    // The claim is atomic: of two concurrent accepts only one flips acceptedAt. It matches the token it was given
+    // too, so a link Resend retired after the lookup above is refused.
     const claimed = await tx.invitation.updateMany({
-      where: { id: inv.id, acceptedAt: null, revokedAt: null, expiresAt: { gt: now } },
+      where: { id: inv.id, token, acceptedAt: null, revokedAt: null, expiresAt: { gt: now } },
       data: { acceptedAt: now },
     })
     if (claimed.count !== 1) throw 'INVALID'
