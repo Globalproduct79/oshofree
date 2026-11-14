@@ -3,7 +3,7 @@ import type { DefaultValues } from 'react-hook-form'
 import type { z } from 'zod'
 import { campaignDates, campaignInput, validateCampaign } from '@/lib/campaign-schema'
 import { COPY } from '@/lib/copy'
-import { CATEGORIES, MARKETS, type Category } from '@/lib/markets'
+import { CATEGORIES, MARKETS, type Category, type Country } from '@/lib/markets'
 import { tokens } from '@/lib/tokens'
 
 export type FormValues = z.input<typeof campaignInput>
@@ -13,8 +13,11 @@ export type FieldName = keyof typeof COPY.campaignForm.errors
 const DAY = 86_400_000
 
 // YYYY-MM-DD for "today" where the workspace is, not where the server is.
-function todayIn(timeZone: string, now: Date) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
+// The market's calendar day of an instant: campaign dates are the market's local midnight, so a UTC slice is a day out.
+export function ymd(at: Date, country: Country): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: MARKETS[country].timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(at)
 }
 
 export function newCampaignDefaults(ws: Pick<Workspace, 'name' | 'country'>, now = new Date()): FormDefaults {
@@ -27,7 +30,7 @@ export function newCampaignDefaults(ws: Pick<Workspace, 'name' | 'country'>, now
     tileColor: tokens.tileColors[0],
     placement: 'card',
     redeemMethod: 'code',
-    startsAt: todayIn(MARKETS[ws.country].timezone, now),
+    startsAt: ymd(now, ws.country),
     runsForDays: 14,
     rewardLocal: 50,
   }
@@ -36,7 +39,7 @@ export function newCampaignDefaults(ws: Pick<Workspace, 'name' | 'country'>, now
 // A flight of exactly 7, 14 or 30 days is a preset; any other ends on a date.
 function flightOf(c: Campaign): Pick<FormDefaults, 'runsForDays' | 'endsAt'> {
   const days = Math.round((c.endsAt.getTime() - c.startsAt.getTime()) / DAY)
-  return days === 7 || days === 14 || days === 30 ? { runsForDays: days } : { endsAt: c.endsAt.toISOString().slice(0, 10) }
+  return days === 7 || days === 14 || days === 30 ? { runsForDays: days } : { endsAt: ymd(c.endsAt, c.country) }
 }
 
 export function campaignDefaults(c: Campaign): FormDefaults {
@@ -54,7 +57,7 @@ export function campaignDefaults(c: Campaign): FormDefaults {
     claimCode: c.claimCode ?? undefined,
     linkUrl: c.linkUrl ?? undefined,
     budgetUsd: c.budgetUsd,
-    startsAt: c.startsAt.toISOString().slice(0, 10),
+    startsAt: ymd(c.startsAt, c.country),
     ...flightOf(c),
     rewardLocal: c.rewardLocal,
   }
@@ -70,9 +73,9 @@ export function formProblem(values: unknown): string | null {
 }
 
 // The exclusive end the card turns into its last day; until the dates are valid, a one-day run from today.
-export function previewEndsAt(startsAt: string | undefined, days: number | undefined): Date {
+export function previewEndsAt(startsAt: string | undefined, days: number | undefined, country: Country = 'NG'): Date {
   const ok = /^\d{4}-\d{2}-\d{2}$/.test(startsAt ?? '') && Number.isInteger(days) && (days ?? 0) > 0
-  const dates = campaignDates(ok ? startsAt! : new Date().toISOString().slice(0, 10), ok ? days! : 1, 'GH')
+  const dates = campaignDates(ok ? startsAt! : ymd(new Date(), country), ok ? days! : 1, country)
   return Number.isNaN(dates.endsAt.getTime()) ? new Date() : dates.endsAt
 }
 

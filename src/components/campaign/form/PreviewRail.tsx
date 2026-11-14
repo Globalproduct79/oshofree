@@ -20,7 +20,7 @@ export function PreviewRail({ values, imageUrl, campaignId }: Props) {
     imageUrl,
     color: values.tileColor,
     rewardLabel: values.shareRewardLabel?.trim() || P.reward,
-    endsAt: previewEndsAt(values.startsAt, values.runsForDays),
+    endsAt: previewEndsAt(values.startsAt, values.runsForDays, values.country),
   }
   return (
     <aside className="lg:sticky lg:top-6">
