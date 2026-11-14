@@ -435,6 +435,7 @@ model CampaignRevision {
   submittedAt      DateTime       @default(now())
   decidedAt        DateTime?
   campaign         Campaign       @relation(fields: [campaignId], references: [id])
+  cpmCents         Int? // Phoenix's rate for a new placement, priced at submission; null keeps the campaign's
 
   @@index([campaignId, status])
 }

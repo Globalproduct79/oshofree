@@ -132,7 +132,7 @@ describe('campaign lifecycle', () => {
   })
   it('submits a draft to review', async () => {
     const c = await makeCampaign()
-    const s = await submitCampaign(c.id, c.ownerId)
+    const s = await submitCampaign(c.id, c.ownerId, NOW)
     expect(s.status).toBe('review')
     expect(s.submittedAt).not.toBeNull()
   })
@@ -141,13 +141,13 @@ describe('campaign lifecycle', () => {
     await db.campaign.update({
       where: { id: c.id }, data: { status: 'rejected', rejectReasonCode: 'creative_standards', rejectReason: 'Blurry' },
     })
-    const s = await submitCampaign(c.id, c.ownerId)
+    const s = await submitCampaign(c.id, c.ownerId, NOW)
     expect(s).toMatchObject({ status: 'review', rejectReasonCode: null, rejectReason: null })
   })
   it('refuses to submit a campaign already in review and leaves the row unchanged', async () => {
     const c = await makeCampaign()
-    const first = await submitCampaign(c.id, c.ownerId)
-    await expect(submitCampaign(first.id, c.ownerId)).rejects.toBe('INVALID_TRANSITION')
+    const first = await submitCampaign(c.id, c.ownerId, NOW)
+    await expect(submitCampaign(first.id, c.ownerId, NOW)).rejects.toBe('INVALID_TRANSITION')
     const after = await db.campaign.findUniqueOrThrow({ where: { id: first.id } })
     expect(after.status).toBe('review')
     expect(after.submittedAt).toEqual(first.submittedAt)
@@ -158,15 +158,15 @@ describe('campaign lifecycle', () => {
   })
   it('refuses to pause a campaign in review', async () => {
     const c = await makeCampaign()
-    await submitCampaign(c.id, c.ownerId)
+    await submitCampaign(c.id, c.ownerId, NOW)
     await expect(pauseCampaign(c.id, c.ownerId)).rejects.toBe('INVALID_TRANSITION')
   })
   it('pauses and resumes a live campaign', async () => {
     const c = await makeCampaign()
-    await db.campaign.update({ where: { id: c.id }, data: { status: 'live', startsAt: new Date(Date.now() - DAY) } })
+    await db.campaign.update({ where: { id: c.id }, data: { status: 'live', startsAt: new Date(NOW.getTime() - DAY) } })
     expect((await pauseCampaign(c.id, c.ownerId)).status).toBe('paused')
-    expect((await resumeCampaign(c.id, c.ownerId)).status).toBe('live')
-    await expect(resumeCampaign(c.id, c.ownerId)).rejects.toBe('INVALID_TRANSITION')
+    expect((await resumeCampaign(c.id, c.ownerId, NOW)).status).toBe('live')
+    await expect(resumeCampaign(c.id, c.ownerId, NOW)).rejects.toBe('INVALID_TRANSITION')
   })
   it('updates a draft but not a live campaign', async () => {
     const c = await makeCampaign()
@@ -216,9 +216,10 @@ describe('submitCampaign', () => {
     expect((await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).status).toBe('draft')
   })
 
-  it('counts the whole budget again when an ended campaign is resubmitted', async () => {
-    // Limit $90; $40 already spent sits unbilled. Resubmitting the $50 campaign needs $50 more: $90 fits, $89 does not.
-    for (const [limitCents, ok] of [[8900, false], [9000, true]] as const) {
+  it('counts only the unspent budget when an ended campaign is resubmitted', async () => {
+    // $40 of the $50 budget is spent and sits unbilled; resubmitting adds the $10 still to spend: a $50 limit
+    // fits, $49.99 does not. (Counting the whole budget again would need $90.)
+    for (const [limitCents, ok] of [[4999, false], [5000, true]] as const) {
       await resetDb()
       const { owner, ws } = await world({ limitCents })
       const c = await createCampaign(ws.id, valid)
@@ -230,6 +231,13 @@ describe('submitCampaign', () => {
       if (ok) await expect(run).resolves.toMatchObject({ status: 'review', endedAt: null })
       else await expect(run).rejects.toThrow('CREDIT_LIMIT')
     }
+  })
+
+  it('refuses a flight that is already over', async () => {
+    const c = await makeCampaign()
+    await expect(submitCampaign(c.id, c.ownerId, new Date('2026-12-15T00:00:00Z'))).rejects.toBe('FLIGHT_ENDED')
+    expect((await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).status).toBe('draft')
+    expect(await db.notification.count()).toBe(0)
   })
 
   it('submits only a draft, a rejected or an ended campaign', async () => {

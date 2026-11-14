@@ -21,7 +21,8 @@ const input: CampaignInput = {
   redeemMethod: 'code',
   claimCode: 'ACME1',
   budgetUsd: 50,
-  startsAt: '2026-12-01',
+  // Tomorrow: the actions submit through the real clock, and an expired flight is refused.
+  startsAt: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
   runsForDays: 14,
   shareRewardLabel: 'Share with 10 friends, get ₦50 airtime',
   termsAccepted: true,

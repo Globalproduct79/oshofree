@@ -36,9 +36,10 @@ export async function seedCampaigns(workspaceId: string, adminId: string, now: D
         status: 'review', submittedAt, startsAt, endsAt: new Date(startsAt.getTime() + days * DAY), ...s },
     })
     if (s.name === 'Weekend cashback') { made.push(c); continue }
-    const approved = await approveCampaign(c.id, adminId, now)
-    // A flight already over is ended, as the daily job would have ended it.
-    made.push(approved.endsAt <= now
+    // A flight already over was approved as it started and ended as the daily job would have ended it.
+    const over = c.endsAt <= now
+    const approved = await approveCampaign(c.id, adminId, over ? c.startsAt : now)
+    made.push(over
       ? await db.campaign.update({ where: { id: c.id }, data: { status: 'ended', endedAt: approved.endsAt } })
       : approved)
   }

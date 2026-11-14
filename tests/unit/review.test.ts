@@ -27,7 +27,8 @@ const input: CampaignInput = {
   termsAccepted: true,
 }
 
-// The input starts on 1 Dec: approving after that puts it straight live.
+// The input runs 1–15 Dec: submitted in November, approving after the 1st puts it straight live.
+const SUBMITTED = new Date('2026-11-20T09:00:00Z')
 const AFTER_START = new Date('2026-12-02T09:00:00Z')
 const RATES_FROM = new Date('2026-01-01T00:00:00Z')
 
@@ -38,7 +39,7 @@ async function setup(wsStatus: 'pending' | 'approved' = 'approved') {
   await db.channel.create({ data: { key: 'other', name: 'Other', apiKeyHash: 'h2', isLive: false } })
   await db.rateCard.create({ data: { channelId: phoenix.id, country: 'NG', placement: 'card', cpmCents: 120, effectiveFrom: RATES_FROM } })
   await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1550, effectiveFrom: RATES_FROM } })
-  const c = await submitCampaign((await createCampaign(ws.id, input)).id, admin.id)
+  const c = await submitCampaign((await createCampaign(ws.id, input)).id, admin.id, SUBMITTED)
   return { admin, ws, c }
 }
 
@@ -72,7 +73,7 @@ describe('approveCampaign', () => {
   })
   it('refuses while the workspace is pending', async () => {
     const { admin, c } = await setup('pending')
-    await expect(approveCampaign(c.id, admin.id)).rejects.toBe('WORKSPACE_NOT_APPROVED')
+    await expect(approveCampaign(c.id, admin.id, AFTER_START)).rejects.toBe('WORKSPACE_NOT_APPROVED')
     expect((await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).status).toBe('review')
   })
 })
@@ -80,7 +81,7 @@ describe('approveCampaign', () => {
 describe('atomic decisions', () => {
   it('leaves the campaign in review with no links when the audit row cannot be written', async () => {
     const { c } = await setup()
-    await expect(approveCampaign(c.id, 'no-such-user')).rejects.toBeDefined()
+    await expect(approveCampaign(c.id, 'no-such-user', AFTER_START)).rejects.toBeDefined()
     expect((await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).status).toBe('review')
     expect(await db.shareLink.count({ where: { campaignId: c.id } })).toBe(0)
   })

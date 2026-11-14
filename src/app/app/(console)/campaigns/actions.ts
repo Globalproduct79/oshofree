@@ -30,7 +30,7 @@ async function change(
   try {
     await apply(row.id)
   } catch (e) {
-    if (e === 'INVALID_TRANSITION') return { error: COPY.campaignForm.invalidTransition }
+    if (e === 'INVALID_TRANSITION' || e === 'FLIGHT_ENDED') return { error: COPY.campaignForm.invalidTransition }
     if (isCreditLimit(e)) return { error: overCredit ?? MONEY.overCredit(e.limitCents, e.excessCents) }
     throw e
   }

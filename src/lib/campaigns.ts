@@ -21,10 +21,12 @@ export { campaignSpendCents } from '@/lib/money'
 //   review ──reject (code + note)──▶ rejected
 //   live ──pause──▶ paused ──resume (refused over the credit limit)──▶ live | scheduled
 //   live | paused ──end now──▶ ended
+// A flight whose end has passed is never submitted, approved or resumed ('FLIGHT_ENDED').
 // Editing the offer of a running campaign (live, scheduled, paused) opens a CampaignRevision that
-// goes to review while the current version keeps running; any other status is edited in place and
-// goes to review. Errors are plain string codes, as in slice 1, except CREDIT_LIMIT, which always
-// carries the limit and the excess (see isCreditLimit).
+// goes to review while the current version keeps running; it is decided only while the campaign is
+// still running, and any move out of running (end now) or into review deletes it. Any other status is
+// edited in place (offer, and money and timing too) and goes to review. Errors are plain string
+// codes, as in slice 1, except CREDIT_LIMIT, which always carries the limit and the excess.
 
 const RUNNING: CampaignStatus[] = ['live', 'scheduled', 'paused']
 const SUBMITTABLE: CampaignStatus[] = ['draft', 'rejected', 'ended']
@@ -43,6 +45,8 @@ export const isCreditLimit = (e: unknown): e is CreditLimitError => e instanceof
 const toCents = (usd: number) => usd * 100
 const campaignHref = (id: string) => `/app/campaigns/${id}`
 const auditTarget = (c: Campaign) => ({ type: 'Campaign', id: c.id, workspaceId: c.workspaceId })
+const isCount = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0
+const isDate = (d: unknown): d is Date => d instanceof Date && Number.isFinite(d.getTime())
 
 // The offer: what a revision holds and Global reviews. Money and timing are not part of it.
 export type OfferFields = {
@@ -59,6 +63,15 @@ export type OfferFields = {
   linkUrl?: string | null
   ageGated: boolean
 }
+
+// Money and timing.
+type Terms = { budgetUsd: number; startsAt: Date; endsAt: Date; rewardLocal: number }
+
+// The whole campaign as the Edit offer form holds it. A campaign edited in place (draft, review,
+// rejected, ended) takes all of it, so an ended one gets new dates before it goes back to review; a
+// running one's revision keeps the offer only (spec §6.14.3) and its money and timing change through
+// changeWithoutReview.
+export type CampaignEdit = OfferFields & Terms
 
 type OfferData = Omit<Required<OfferFields>, 'tileColor'> & {
   tileColor: string | null
@@ -85,6 +98,17 @@ function offerData(i: OfferFields): OfferData {
     linkUrl: i.linkUrl?.trim() || null,
     ageGated: i.ageGated,
   }
+}
+
+// Any money or timing key makes the input a full edit, which must then be complete and valid.
+const hasTerms = (i: OfferFields | CampaignEdit): i is CampaignEdit =>
+  'budgetUsd' in i || 'startsAt' in i || 'endsAt' in i || 'rewardLocal' in i
+
+function termsOf(i: CampaignEdit): Terms {
+  const { budgetUsd, startsAt, endsAt, rewardLocal } = i
+  if (!isCount(budgetUsd) || !isCount(rewardLocal) || !isDate(startsAt) || !isDate(endsAt)) throw 'INVALID'
+  if (endsAt <= startsAt) throw 'END_BEFORE_START'
+  return { budgetUsd, startsAt, endsAt, rewardLocal }
 }
 
 function fields(i: CampaignInput) {
@@ -129,6 +153,18 @@ async function load(id: string) {
   return { campaign, workspace }
 }
 
+// Revisions are written and decided under this lock, and only while the campaign is running.
+async function lockRunning(tx: Tx, id: string): Promise<{ placement: Placement }> {
+  const [row] = await tx.$queryRaw<{ status: CampaignStatus; placement: Placement }[]>`
+    SELECT status, placement FROM "Campaign" WHERE id = ${id} FOR UPDATE`
+  if (!row || !RUNNING.includes(row.status)) throw 'INVALID_TRANSITION'
+  return row
+}
+
+// A pending revision belongs to a running campaign; leaving running (end now, review) deletes it.
+const dropPendingRevision = (tx: Tx, campaignId: string) =>
+  tx.campaignRevision.deleteMany({ where: { campaignId, status: 'review' } })
+
 // Phoenix's CPM for the market and placement at `at`: 'NO_RATE' without the channel or a rate.
 async function phoenixCpmCents(country: Country, placement: Placement, at: Date): Promise<number> {
   const channel = await db.channel.findUnique({ where: { key: PHOENIX }, select: { id: true } })
@@ -158,26 +194,30 @@ export function updateCampaign(id: string, i: CampaignInput): Promise<Campaign> 
 
 // ---- Submit ----
 
-// Submit and the in-place offer edit share one path: snapshot Phoenix's CPM and the market FX, check
-// the budget against credit, then review. A budget that already counts (editing while in review)
-// adds nothing; a rejected or ended campaign's whole budget counts again.
+// Submit and the in-place edit share one path: refuse a flight already over, snapshot Phoenix's CPM
+// and the market FX, check credit, then review. Credit in use counts a committed campaign's
+// budget − spend, so review adds the new remainder less what the campaign already holds: nothing for
+// an unchanged campaign in review, budget − spend for a draft, rejected or ended one.
 async function sendToReview(
-  c: Campaign, workspaceName: string, from: CampaignStatus[], now: Date, offer?: OfferData,
+  c: Campaign, workspaceName: string, from: CampaignStatus[], now: Date, offer?: OfferData, terms?: Terms,
 ): Promise<Campaign> {
   if (!from.includes(c.status)) throw 'INVALID_TRANSITION'
-  const placement = offer?.placement ?? c.placement
-  const cpmCents = await phoenixCpmCents(c.country, placement, now)
+  const next = { ...c, ...offer, ...terms }
+  if (next.endsAt <= now) throw 'FLIGHT_ENDED'
+  const cpmCents = await phoenixCpmCents(c.country, next.placement, now)
   const fxPerUsd = await currentFx(c.country, now)
-  const budgetCents = toCents(c.budgetUsd)
-  const credit = await canSubmitBudget(c.workspaceId, budgetCents, COMMITTED.includes(c.status) ? 0 : budgetCents)
+  const spendCents = await campaignSpendCents(c.id)
+  const budgetCents = toCents(next.budgetUsd)
+  if (terms && budgetCents < spendCents) throw 'BUDGET_BELOW_SPEND'
+  const heldCents = COMMITTED.includes(c.status) ? Math.max(0, toCents(c.budgetUsd) - spendCents) : 0
+  const credit = await canSubmitBudget(c.workspaceId, budgetCents, Math.max(0, budgetCents - spendCents) - heldCents)
   if (!credit.ok) throw creditLimit(credit.limitCents, credit.excessCents)
   const sent = await db.$transaction(async (tx) => {
     const row = await move(c.id, from, {
-      ...offer, cpmCents, fxPerUsd, status: 'review', submittedAt: now,
+      ...offer, ...terms, cpmCents, fxPerUsd, status: 'review', submittedAt: now,
       decidedAt: null, endedAt: null, pausedBy: null, rejectReasonCode: null, rejectReason: null,
     }, tx)
-    // The edit carries the whole offer, so a revision left waiting when the campaign ended is superseded.
-    if (offer) await tx.campaignRevision.deleteMany({ where: { campaignId: c.id, status: 'review' } })
+    await dropPendingRevision(tx, c.id)
     return row
   })
   await tellInReview(sent, workspaceName)
@@ -189,19 +229,15 @@ export async function submitCampaign(id: string, byUserId: string, now = new Dat
   return sendToReview(campaign, workspace.name, SUBMITTABLE, now)
 }
 
-// ---- Global's decision ----
+// ---- Global's decision on a campaign in review ----
 
 // Approve puts the campaign live, or scheduled while its start is ahead, and mints its links. Status,
-// links and the decision commit together. A running campaign with a revised offer waiting has that
-// revision approved instead.
+// links and the decision commit together. A revised offer is decided with approveRevision.
 export async function approveCampaign(id: string, byUserId: string, now = new Date()): Promise<Campaign> {
   const { campaign: c, workspace } = await load(id)
   if (workspace.status !== 'approved') throw 'WORKSPACE_NOT_APPROVED'
-  if (c.status !== 'review') {
-    const revision = await pendingRevision(id)
-    if (revision) return approveRevision(revision.id, byUserId, now)
-    throw 'INVALID_TRANSITION'
-  }
+  if (c.status !== 'review') throw 'INVALID_TRANSITION'
+  if (c.endsAt <= now) throw 'FLIGHT_ENDED'
   const status = c.startsAt > now ? 'scheduled' : 'live'
   const approved = await db.$transaction(async (tx) => {
     const row = await move(id, ['review'], { status, decidedAt: now }, tx)
@@ -216,19 +252,12 @@ export async function approveCampaign(id: string, byUserId: string, now = new Da
   return approved
 }
 
-// A "no" needs a reason code; the note may be empty. A running campaign with a revised offer waiting
-// has that revision rejected instead, and stays as it is.
+// A "no" needs a reason code; the note may be empty. A revised offer is decided with rejectRevision.
 export async function rejectCampaign(
   id: string, byUserId: string, code: RejectReason, note = '', now = new Date(),
 ): Promise<Campaign> {
   if (!isRejectReason(code)) throw 'REASON_REQUIRED'
   const { campaign: c } = await load(id)
-  if (c.status !== 'review') {
-    const revision = await pendingRevision(id)
-    if (!revision) throw 'INVALID_TRANSITION'
-    await rejectRevision(revision.id, byUserId, code, note, now)
-    return c
-  }
   const why = note.trim() || null
   const rejected = await db.$transaction(async (tx) => {
     const row = await move(id, ['review'], { status: 'rejected', rejectReasonCode: code, rejectReason: why, decidedAt: now }, tx)
@@ -251,27 +280,32 @@ export function pauseCampaign(id: string, byUserId: string): Promise<Campaign> {
   return move(id, ['live'], { status: 'paused', pausedBy: 'user' })
 }
 
-// Refused while credit in use is over the limit. Back to live, or to scheduled while the start is ahead.
+// Refused once the flight is over, or while credit in use is over the limit. Back to live, or to
+// scheduled while the start is ahead.
 export async function resumeCampaign(id: string, byUserId: string, now = new Date()): Promise<Campaign> {
   const { campaign: c } = await load(id)
   if (c.status !== 'paused') throw 'INVALID_TRANSITION'
+  if (c.endsAt <= now) throw 'FLIGHT_ENDED'
   const credit = await creditSummary(c.workspaceId)
   if (credit.overLimit) throw creditLimit(credit.limitCents, credit.inUseCents - credit.limitCents)
   return move(id, ['paused'], { status: c.startsAt > now ? 'scheduled' : 'live', pausedBy: null })
 }
 
-// "End campaign now": the unspent budget stops counting as credit in use (money.ts COMMITTED).
+// "End campaign now": the unspent budget stops counting as credit in use (money.ts COMMITTED), and a
+// revised offer still waiting goes with it.
 export async function endCampaign(
   id: string, byUserId: string, now = new Date(),
 ): Promise<{ campaign: Campaign; releasedCents: number }> {
-  const campaign = await move(id, ['live', 'paused'], { status: 'ended', endedAt: now, pausedBy: null })
+  const campaign = await db.$transaction(async (tx) => {
+    const row = await move(id, ['live', 'paused'], { status: 'ended', endedAt: now, pausedBy: null }, tx)
+    await dropPendingRevision(tx, id)
+    return row
+  })
   const releasedCents = Math.max(0, toCents(campaign.budgetUsd) - (await campaignSpendCents(id)))
   return { campaign, releasedCents }
 }
 
 export type ChangeWithoutReview = { budgetUsd?: number; endsAt?: Date; rewardLocal?: number }
-
-const isCount = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0
 
 // Money and timing (ADV §2 "Change without review"), applied at once whatever the status, except
 // ended and rejected. The budget cannot drop below spend; an increase must fit under the credit limit
@@ -282,7 +316,7 @@ export async function changeWithoutReview(
   const { budgetUsd, endsAt, rewardLocal } = change
   if (budgetUsd !== undefined && !isCount(budgetUsd)) throw 'INVALID'
   if (rewardLocal !== undefined && !isCount(rewardLocal)) throw 'INVALID'
-  if (endsAt !== undefined && !(endsAt instanceof Date && Number.isFinite(endsAt.getTime()))) throw 'INVALID'
+  if (endsAt !== undefined && !isDate(endsAt)) throw 'INVALID'
   const { campaign: c } = await load(id)
   if (!CHANGEABLE.includes(c.status)) throw 'INVALID_TRANSITION'
   if (endsAt && (endsAt <= c.startsAt || endsAt <= now)) throw 'END_BEFORE_START'
@@ -300,26 +334,26 @@ export async function changeWithoutReview(
 
 // ---- The offer and its revisions ----
 
-// A running campaign keeps its live version: the edit becomes the one pending revision (a second edit
-// replaces its data). Any other status is overwritten in place and goes to review as a submission.
+// A running campaign keeps its live version: the offer fields become the one pending revision (a
+// second edit replaces it), priced now if the placement changes. Any other status is overwritten in
+// place — offer, and money and timing when the input carries them — and goes to review as a
+// submission.
 export async function editOffer(
-  id: string, byUserId: string, input: OfferFields, now = new Date(),
+  id: string, byUserId: string, input: OfferFields | CampaignEdit, now = new Date(),
 ): Promise<{ campaign: Campaign; revision: CampaignRevision | null }> {
   const { campaign: c, workspace } = await load(id)
   const offer = offerData(input)
   if (EDITED_IN_PLACE.includes(c.status)) {
-    return { campaign: await sendToReview(c, workspace.name, EDITED_IN_PLACE, now, offer), revision: null }
+    const terms = hasTerms(input) ? termsOf(input) : undefined
+    return { campaign: await sendToReview(c, workspace.name, EDITED_IN_PLACE, now, offer, terms), revision: null }
   }
-  // A new placement needs a Phoenix rate; it is charged from approval (approveRevision).
-  if (offer.placement !== c.placement) await phoenixCpmCents(c.country, offer.placement, now)
   const revision = await db.$transaction(async (tx) => {
-    // The row lock serialises edits to one campaign, so two cannot both open a revision.
-    const [row] = await tx.$queryRaw<{ status: CampaignStatus }[]>`SELECT status FROM "Campaign" WHERE id = ${id} FOR UPDATE`
-    if (!row || !RUNNING.includes(row.status)) throw 'INVALID_TRANSITION'
+    const { placement } = await lockRunning(tx, id)
+    const cpmCents = offer.placement === placement ? null : await phoenixCpmCents(c.country, offer.placement, now)
     const pending = await tx.campaignRevision.findFirst({ where: { campaignId: id, status: 'review' }, select: { id: true } })
     return pending
-      ? tx.campaignRevision.update({ where: { id: pending.id }, data: { data: offer, submittedAt: now } })
-      : tx.campaignRevision.create({ data: { campaignId: id, data: offer, submittedAt: now } })
+      ? tx.campaignRevision.update({ where: { id: pending.id }, data: { data: offer, cpmCents, submittedAt: now } })
+      : tx.campaignRevision.create({ data: { campaignId: id, data: offer, cpmCents, submittedAt: now } })
   })
   await tellInReview(c, workspace.name)
   return { campaign: c, revision }
@@ -330,26 +364,31 @@ export function pendingRevision(campaignId: string): Promise<CampaignRevision | 
   return db.campaignRevision.findFirst({ where: { campaignId, status: 'review' }, orderBy: { submittedAt: 'desc' } })
 }
 
-// Swaps the revised offer in and bumps the version; the status is untouched. A new placement is
-// charged at Phoenix's rate when the revision was submitted, as a submission snapshots it.
-export async function approveRevision(revisionId: string, byUserId: string, now = new Date()): Promise<Campaign> {
-  const revision = await db.campaignRevision.findUnique({ where: { id: revisionId } })
+async function revisionCampaign(revisionId: string) {
+  const revision = await db.campaignRevision.findUnique({ where: { id: revisionId }, select: { campaignId: true } })
   if (!revision) throw 'NOT_FOUND'
-  if (revision.status !== 'review') throw 'INVALID_TRANSITION'
-  const { campaign: c, workspace } = await load(revision.campaignId)
+  return load(revision.campaignId)
+}
+
+// Swaps the revised offer in (with its new placement's price, if any) and bumps the version; the
+// status is untouched. Under the campaign lock the revision is read as it is now, so an edit that
+// replaced its data is the one applied.
+export async function approveRevision(revisionId: string, byUserId: string, now = new Date()): Promise<Campaign> {
+  const { campaign: c, workspace } = await revisionCampaign(revisionId)
   if (workspace.status !== 'approved') throw 'WORKSPACE_NOT_APPROVED'
-  const offer = offerData(revision.data as OfferFields)
-  const cpmCents = offer.placement === c.placement ? undefined : await phoenixCpmCents(c.country, offer.placement, revision.submittedAt)
   const applied = await db.$transaction(async (tx) => {
-    const { count } = await tx.campaignRevision.updateMany({
-      where: { id: revisionId, status: 'review' }, data: { status: 'applied', decidedAt: now },
+    await lockRunning(tx, c.id)
+    const revision = await tx.campaignRevision.findUnique({ where: { id: revisionId } })
+    if (!revision || revision.status !== 'review') throw 'INVALID_TRANSITION'
+    await tx.campaignRevision.update({ where: { id: revisionId }, data: { status: 'applied', decidedAt: now } })
+    const offer = offerData(revision.data as OfferFields)
+    const row = await tx.campaign.update({
+      where: { id: c.id }, data: { ...offer, cpmCents: revision.cpmCents ?? undefined, version: { increment: 1 } },
     })
-    if (count === 0) throw 'INVALID_TRANSITION'
-    const row = await tx.campaign.update({ where: { id: c.id }, data: { ...offer, cpmCents, version: { increment: 1 } } })
     await tx.reviewAction.create({ data: { targetType: 'Campaign', targetId: c.id, action: 'Approve', byUserId, at: now } })
     return row
   })
-  await audit(byUserId, 'campaign.revision.approve', auditTarget(applied), { version: c.version },
+  await audit(byUserId, 'campaign.revision.approve', auditTarget(applied), { version: applied.version - 1 },
     { version: applied.version, revisionId })
   const told = NOTIFY.revisionApproved(c.name)
   await notifyWorkspace(c.workspaceId, 'approved', told.title, told.detail, campaignHref(c.id))
@@ -361,11 +400,10 @@ export async function rejectRevision(
   revisionId: string, byUserId: string, code: RejectReason, note = '', now = new Date(),
 ): Promise<CampaignRevision> {
   if (!isRejectReason(code)) throw 'REASON_REQUIRED'
-  const revision = await db.campaignRevision.findUnique({ where: { id: revisionId } })
-  if (!revision) throw 'NOT_FOUND'
-  const { campaign: c } = await load(revision.campaignId)
+  const { campaign: c } = await revisionCampaign(revisionId)
   const why = note.trim() || null
   const rejected = await db.$transaction(async (tx) => {
+    await lockRunning(tx, c.id)
     const { count } = await tx.campaignRevision.updateMany({
       where: { id: revisionId, status: 'review' },
       data: { status: 'rejected', rejectReasonCode: code, rejectReason: why, decidedAt: now },

@@ -13,6 +13,7 @@ import {
   rejectCampaign,
   rejectRevision,
   resumeCampaign,
+  submitCampaign,
   type OfferFields,
 } from '@/lib/campaigns'
 import { CAMPAIGN, PACE, REJECT_REASONS } from '@/lib/copy-campaign'
@@ -124,13 +125,22 @@ describe('approveCampaign', () => {
     await expect(approveCampaign(c.id, admin.id, NOW)).rejects.toBe('INVALID_TRANSITION')
   })
 
-  it('approves the revised offer of a live campaign through the same call', async () => {
+  it('leaves a revised offer to approveRevision and rejectRevision: a running campaign is not in review', async () => {
     const { admin, owner, ws } = await world()
     const c = await campaign(ws.id)
-    await editOffer(c.id, owner.id, offer, NOW)
-    const after = await approveCampaign(c.id, admin.id, NOW)
-    expect(after).toMatchObject({ status: 'live', headline: 'Buy 3 bottles, get 2 free', version: 2 })
-    expect(await pendingRevision(c.id)).toBeNull()
+    const { revision } = await editOffer(c.id, owner.id, offer, NOW)
+    await expect(approveCampaign(c.id, admin.id, NOW)).rejects.toBe('INVALID_TRANSITION')
+    await expect(rejectCampaign(c.id, admin.id, 'creative_standards', '', NOW)).rejects.toBe('INVALID_TRANSITION')
+    expect(await reload(c.id)).toMatchObject({ status: 'live', version: 1, headline: 'Buy 2 bottles, get 1 free' })
+    expect((await pendingRevision(c.id))?.id).toBe(revision!.id)
+  })
+
+  it('refuses a campaign whose flight is already over', async () => {
+    const { admin, ws } = await world()
+    const c = await campaign(ws.id, { status: 'review', startsAt: days(-14), endsAt: NOW })
+    await expect(approveCampaign(c.id, admin.id, NOW)).rejects.toBe('FLIGHT_ENDED')
+    expect((await reload(c.id)).status).toBe('review')
+    expect(await db.reviewAction.count()).toBe(0)
   })
 })
 
@@ -194,6 +204,13 @@ describe('pause and resume', () => {
     await expect(refused).rejects.toThrow('CREDIT_LIMIT')
     await expect(refused).rejects.toMatchObject({ limitCents: 20000, excessCents: 10000 })
     expect(await reload(c.id)).toMatchObject({ status: 'paused', pausedBy: 'credit' })
+  })
+
+  it('refuses to resume a flight that is already over', async () => {
+    const { owner, ws } = await world()
+    const c = await campaign(ws.id, { status: 'paused', pausedBy: 'user', startsAt: days(-14), endsAt: days(-1) })
+    await expect(resumeCampaign(c.id, owner.id, NOW)).rejects.toBe('FLIGHT_ENDED')
+    expect((await reload(c.id)).status).toBe('paused')
   })
 
   it('resumes to scheduled when the start is still ahead', async () => {
@@ -339,12 +356,23 @@ describe('editOffer', () => {
     expect(titles).not.toContain('Buy 2 get 1 is live on Phoenix')
   })
 
-  it('a revision that changes the placement charges the new placement\'s rate once applied', async () => {
-    const { admin, owner, ws } = await world()
+  it('a revision that changes the placement is priced when submitted and charged at that rate once applied', async () => {
+    const { admin, owner, ws, phoenix } = await world()
+    // Featured is $2.20 when the edit is made and $3.00 from tomorrow, before Global approves.
+    await db.rateCard.create({ data: { channelId: phoenix.id, country: 'NG', placement: 'featured', cpmCents: 300, effectiveFrom: days(1) } })
     const c = await campaign(ws.id)
     const { revision } = await editOffer(c.id, owner.id, { ...offer, placement: 'featured' }, NOW)
+    expect(revision).toMatchObject({ cpmCents: 220 })
     expect((await reload(c.id)).cpmCents).toBe(120)
-    expect(await approveRevision(revision!.id, admin.id, NOW)).toMatchObject({ placement: 'featured', cpmCents: 220 })
+    expect(await approveRevision(revision!.id, admin.id, days(2))).toMatchObject({ placement: 'featured', cpmCents: 220 })
+  })
+
+  it('a revision that keeps the placement keeps the campaign\'s submitted rate', async () => {
+    const { admin, owner, ws } = await world()
+    const c = await campaign(ws.id, { cpmCents: 100 })
+    const { revision } = await editOffer(c.id, owner.id, offer, NOW)
+    expect(revision).toMatchObject({ cpmCents: null })
+    expect((await approveRevision(revision!.id, admin.id, NOW)).cpmCents).toBe(100)
   })
 
   it('refuses a revision to a placement Phoenix has no rate for', async () => {
@@ -384,15 +412,83 @@ describe('editOffer', () => {
     expect((await inbox(admin.id)).map((n) => n.title)).toEqual(['Buy 2 get 1 needs review', 'Buy 2 get 1 needs review'])
   })
 
-  it('an in-place edit supersedes a revision left pending when the campaign ended', async () => {
+  it('a revision pending when the campaign ends goes with it, so a resubmission never picks it up', async () => {
+    const { admin, owner, ws } = await world()
+    const c = await campaign(ws.id)
+    const { revision } = await editOffer(c.id, owner.id, offer, NOW)
+    await endCampaign(c.id, owner.id, NOW)
+    expect(await pendingRevision(c.id)).toBeNull()
+    await submitCampaign(c.id, owner.id, NOW)
+    expect(await approveCampaign(c.id, admin.id, NOW)).toMatchObject({ status: 'live', headline: 'Buy 2 bottles, get 1 free', version: 1 })
+    await expect(approveCampaign(c.id, admin.id, NOW)).rejects.toBe('INVALID_TRANSITION')
+    await expect(approveRevision(revision!.id, admin.id, NOW)).rejects.toBe('NOT_FOUND')
+    expect((await reload(c.id)).headline).toBe('Buy 2 bottles, get 1 free')
+  })
+
+  it('every move to review deletes a revision left pending (a campaign the daily job ended)', async () => {
     const { owner, ws } = await world()
     const c = await campaign(ws.id)
     await editOffer(c.id, owner.id, offer, NOW)
-    await endCampaign(c.id, owner.id, NOW)
-    expect(await pendingRevision(c.id)).not.toBeNull()
-    await editOffer(c.id, owner.id, { ...offer, headline: 'Back again' }, NOW)
+    await db.campaign.update({ where: { id: c.id }, data: { status: 'ended', endedAt: NOW } })
+    await submitCampaign(c.id, owner.id, NOW)
     expect(await pendingRevision(c.id)).toBeNull()
-    expect(await reload(c.id)).toMatchObject({ status: 'review', headline: 'Back again' })
+    expect(await db.campaignRevision.count()).toBe(0)
+  })
+
+  it('decides a revision only while the campaign is still running', async () => {
+    const { admin, owner, ws } = await world()
+    const c = await campaign(ws.id)
+    const { revision } = await editOffer(c.id, owner.id, offer, NOW)
+    await db.campaign.update({ where: { id: c.id }, data: { status: 'ended', endedAt: NOW } })
+    await expect(approveRevision(revision!.id, admin.id, NOW)).rejects.toBe('INVALID_TRANSITION')
+    await expect(rejectRevision(revision!.id, admin.id, 'creative_standards', '', NOW)).rejects.toBe('INVALID_TRANSITION')
+    expect(await reload(c.id)).toMatchObject({ version: 1, headline: 'Buy 2 bottles, get 1 free' })
+    expect((await pendingRevision(c.id))?.status).toBe('review')
+  })
+
+  it('never loses an edit made while Global approves: it is either applied or still waiting', async () => {
+    const { admin, owner, ws } = await world()
+    const c = await campaign(ws.id)
+    const { revision } = await editOffer(c.id, owner.id, offer, NOW)
+    await Promise.all([
+      approveRevision(revision!.id, admin.id, NOW),
+      editOffer(c.id, owner.id, { ...offer, headline: 'Late change' }, NOW),
+    ])
+    const live = await reload(c.id)
+    const waiting = (await pendingRevision(c.id))?.data as { headline: string } | undefined
+    expect([live.headline, waiting?.headline]).toContain('Late change')
+    expect(live.version).toBe(2)
+  })
+
+  it('on an ended campaign takes new dates and budget with the offer, and goes back to review', async () => {
+    const { admin, owner, ws } = await world()
+    const c = await campaign(ws.id, { status: 'ended', startsAt: days(-30), endsAt: days(-16), endedAt: days(-16) })
+    await spend(ws.id, c.id, 25000)
+    await expect(submitCampaign(c.id, owner.id, NOW)).rejects.toBe('FLIGHT_ENDED')
+    await expect(editOffer(c.id, owner.id, offer, NOW)).rejects.toBe('FLIGHT_ENDED')
+    const edit = { ...offer, budgetUsd: 500, startsAt: days(2), endsAt: days(16), rewardLocal: 100 }
+    const { campaign: after, revision } = await editOffer(c.id, owner.id, edit, NOW)
+    expect(revision).toBeNull()
+    expect(after).toMatchObject({
+      status: 'review', headline: 'Buy 3 bottles, get 2 free', budgetUsd: 500, startsAt: days(2), endsAt: days(16),
+      rewardLocal: 100, endedAt: null,
+    })
+    // Credit in use: $250 spent (unbilled) + the $250 still to spend.
+    expect((await creditSummary(ws.id)).inUseCents).toBe(50000)
+    expect((await approveCampaign(c.id, admin.id, NOW)).status).toBe('scheduled')
+  })
+
+  it('checks the new money and timing of an in-place edit', async () => {
+    const { owner, ws } = await world({ limitCents: 30000 })
+    const c = await campaign(ws.id, { status: 'ended', startsAt: days(-30), endsAt: days(-16) })
+    await spend(ws.id, c.id, 25000)
+    const edit = { ...offer, budgetUsd: 300, startsAt: days(2), endsAt: days(16), rewardLocal: 50 }
+    await expect(editOffer(c.id, owner.id, { ...edit, endsAt: days(2) }, NOW)).rejects.toBe('END_BEFORE_START')
+    await expect(editOffer(c.id, owner.id, { ...edit, budgetUsd: 200 }, NOW)).rejects.toBe('BUDGET_BELOW_SPEND')
+    await expect(editOffer(c.id, owner.id, { ...offer, budgetUsd: 300 } as never, NOW)).rejects.toBe('INVALID')
+    // $250 unbilled + $100 still to spend is over the $300 limit; $250 + $50 fits.
+    await expect(editOffer(c.id, owner.id, { ...edit, budgetUsd: 350 }, NOW)).rejects.toMatchObject({ message: 'CREDIT_LIMIT', excessCents: 5000 })
+    expect((await editOffer(c.id, owner.id, edit, NOW)).campaign.status).toBe('review')
   })
 })
 
