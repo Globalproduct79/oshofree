@@ -42,8 +42,8 @@ export const MONEY = {
     noCharges: 'No charges yet.',
     howYouPayTitle: 'How you pay',
     // e.g. "… in NGN at a rate fixed for the month (1 USD = ₦1,550 in November). Pay by bank transfer within 14 days, …"
-    howYouPay: (currency: string, symbol: string, fxPerUsd: number, month: string, termsDays: number) =>
-      `We invoice on the 1st for the previous month's delivery and rewards, in ${currency} at a rate fixed for the month (1 USD = ${symbol}${fxNumber.format(fxPerUsd)} in ${month}). Pay by bank transfer within ${termsDays} days, quoting the invoice number.`,
+    howYouPay: (currency: string, symbol: string, fxPerUsd: number | null, month: string, termsDays: number) =>
+      `We invoice on the 1st for the previous month's delivery and rewards, in ${currency} at a rate fixed for the month (1 USD = ${symbol}${fxPerUsd === null ? '—' : fxNumber.format(fxPerUsd)} in ${month}). Pay by bank transfer within ${termsDays} days, quoting the invoice number.`,
     currencyKey: 'Billing currency',
     termsKey: 'Terms',
     terms: (termsDays: number) => `Net ${termsDays}`,
