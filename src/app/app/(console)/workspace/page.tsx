@@ -1,19 +1,53 @@
-import { PageHead } from '@/components/console/PageHead'
+import { Box, KVGrid, LinkButton, StatusBadge } from '@/components/og'
+import { PageHead } from '@/components/shell/PageHead'
 import { COPY } from '@/lib/copy'
-import { requireWorkspace } from '@/lib/workspaces'
-import { WorkspaceForm } from '../workspace-form'
+import { usd } from '@/lib/format'
+import { requireMember } from '@/lib/permissions'
+import { clientBrands, workspaceStatusBox } from '@/lib/workspaces'
 import { updateWorkspaceAction } from './actions'
+import { WorkspaceSettings } from './WorkspaceSettings'
 
 export default async function WorkspacePage() {
-  const ws = await requireWorkspace()
+  const { workspace: ws, role } = await requireMember('view')
+  const status = workspaceStatusBox(ws)
+  const brands = ws.type === 'Agency' ? await clientBrands(ws.id) : null
+  const locked = ws.status !== 'pending' && role !== 'Global'
   return (
-    <div className="max-w-xl">
-      <PageHead title={COPY.page.workspace.title} subtitle={COPY.page.workspace.subtitle} />
-      <WorkspaceForm
-        action={updateWorkspaceAction}
-        submitLabel={COPY.workspace.saveAction}
-        initial={{ name: ws.name, type: ws.type, country: ws.country }}
+    <>
+      <PageHead
+        crumb={[{ label: ws.name }, { label: 'Organisation' }, { label: COPY.workspace.crumb }]}
+        title={COPY.workspace.title}
+        lead={COPY.workspace.lead}
       />
-    </div>
+      <div className="two">
+        <Box>
+          <WorkspaceSettings
+            action={updateWorkspaceAction}
+            typeCountryLocked={locked}
+            initial={{ name: ws.name, type: ws.type, country: ws.country, registrationNumber: ws.registrationNumber ?? '' }}
+          />
+        </Box>
+        <div>
+          <Box title={COPY.workspace.statusBox}>
+            <KVGrid
+              items={[
+                { label: COPY.workspace.approval, value: <StatusBadge status={status.approval} /> },
+                { label: COPY.workspace.creditLimit, value: usd(status.creditLimitCents) },
+                { label: COPY.workspace.channels, value: status.channels },
+                { label: COPY.workspace.since, value: status.since },
+              ]}
+            />
+          </Box>
+          {brands && (
+            <Box title={COPY.workspace.clientsBox} sub={COPY.workspace.clientsSub}>
+              {brands.map((b) => (
+                <p key={b.brand}>{b.brand} · {COPY.workspace.clientCount(b.campaigns)}</p>
+              ))}
+              <LinkButton href="/app/campaigns/new?brand=&focus=brand">{COPY.workspace.addClient}</LinkButton>
+            </Box>
+          )}
+        </div>
+      </div>
+    </>
   )
 }

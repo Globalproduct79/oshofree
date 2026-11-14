@@ -30,7 +30,9 @@ export async function requireWorkspace(): Promise<Workspace> {
   return (await requireMember('view')).workspace
 }
 
-export async function updateWorkspace(id: string, input: WorkspaceInput): Promise<Workspace> {
+export type WorkspaceUpdate = Partial<WorkspaceInput> & { registrationNumber?: string | null }
+
+export async function updateWorkspace(id: string, input: WorkspaceUpdate): Promise<Workspace> {
   return db.workspace.update({ where: { id }, data: input })
 }
 
@@ -82,4 +84,24 @@ export async function declineWorkspace(id: string, byUserId: string, reason: str
     })
     return ws
   })
+}
+
+const since = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+
+// The Status box on the Workspace page (ADV §10), as data.
+export function workspaceStatusBox(ws: Pick<Workspace, 'status' | 'creditLimitCents' | 'createdAt'>) {
+  return {
+    approval: ws.status,
+    creditLimitCents: ws.creditLimitCents,
+    channels: 'Phoenix',
+    since: since.format(ws.createdAt).replace(/^Sept\b/, 'Sep'),
+  }
+}
+
+// An agency's client brands: the distinct Campaign.brand values with their campaign counts.
+export async function clientBrands(workspaceId: string): Promise<{ brand: string; campaigns: number }[]> {
+  const rows = await db.campaign.groupBy({ by: ['brand'], where: { workspaceId }, _count: { _all: true } })
+  return rows
+    .map((r) => ({ brand: r.brand, campaigns: r._count._all }))
+    .sort((a, b) => b.campaigns - a.campaigns || a.brand.localeCompare(b.brand))
 }
