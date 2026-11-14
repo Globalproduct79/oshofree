@@ -1,4 +1,3 @@
-import 'server-only'
 import type { Placement } from '@prisma/client'
 import { audit } from '@/lib/audit'
 import { db } from '@/lib/db'

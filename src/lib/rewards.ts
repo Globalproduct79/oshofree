@@ -1,4 +1,3 @@
-import 'server-only'
 import type { RewardPayout } from '@prisma/client'
 import { audit } from '@/lib/audit'
 import { MONEY } from '@/lib/copy-money'

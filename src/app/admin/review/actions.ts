@@ -3,10 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { approveCampaign, rejectCampaign } from '@/lib/campaigns'
 import { COPY } from '@/lib/copy'
+import { runDaily, type DailyResult } from '@/lib/jobs/daily'
 import { isCountry } from '@/lib/markets'
 import { previewOffersFor } from '@/lib/offers'
 import type { PreviewOffer } from '@/lib/preview-merge'
-import { requireAdmin } from '@/lib/session'
+import { isAdminInDb, requireAdmin, requireUser } from '@/lib/session'
 import { approveWorkspace, declineWorkspace } from '@/lib/workspaces'
 
 type Result = { ok: true } | { error: string }
@@ -47,4 +48,14 @@ export async function rejectCampaignAction(id: unknown, reason: unknown) {
 export async function previewOffersAction(country: unknown): Promise<PreviewOffer[]> {
   await requireAdmin()
   return isCountry(country) ? previewOffersFor(country, new Date()) : []
+}
+
+// "Run daily job" (Review, non-production): Global only, and only with DEMO_CONTROLS=1. It runs today's job;
+// a second click the same UTC day is a no-op ({ skipped: true }).
+export async function runDailyJobAction(): Promise<{ ok: true; summary: DailyResult } | { error: 'FORBIDDEN' }> {
+  const user = await requireUser()
+  if (process.env.DEMO_CONTROLS !== '1' || !(await isAdminInDb(user.id))) return { error: 'FORBIDDEN' }
+  const summary = await runDaily(new Date())
+  revalidatePath('/', 'layout')
+  return { ok: true, summary }
 }

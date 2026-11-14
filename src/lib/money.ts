@@ -1,4 +1,3 @@
-import 'server-only'
 import type {
   CampaignStatus, CreditRequest, Invoice, InvoiceStatus, LedgerEntry, LedgerKind, SettlementStatement,
 } from '@prisma/client'
@@ -122,19 +121,24 @@ export async function campaignSpendCents(campaignId: string): Promise<number> {
   return charged(_sum.amountCents)
 }
 
+// campaignSpendCents for many campaigns in one query; a campaign with no charges is absent.
+export async function spendByCampaign(campaignIds: string[]): Promise<Map<string, number>> {
+  if (!campaignIds.length) return new Map()
+  const spent = await db.ledgerEntry.groupBy({
+    by: ['campaignId'],
+    where: { campaignId: { in: campaignIds }, kind: { in: CHARGES } },
+    _sum: { amountCents: true },
+  })
+  return new Map(spent.flatMap((s) => (s.campaignId ? [[s.campaignId, charged(s._sum.amountCents)] as const] : [])))
+}
+
 // Σ (budget − spend) over live, review, scheduled and paused campaigns, each floored at 0.
 export async function committedCents(workspaceId: string): Promise<number> {
   const campaigns = await db.campaign.findMany({
     where: { workspaceId, status: { in: COMMITTED } },
     select: { id: true, budgetUsd: true },
   })
-  if (!campaigns.length) return 0
-  const spent = await db.ledgerEntry.groupBy({
-    by: ['campaignId'],
-    where: { campaignId: { in: campaigns.map((c) => c.id) }, kind: { in: CHARGES } },
-    _sum: { amountCents: true },
-  })
-  const spend = new Map(spent.map((s) => [s.campaignId, charged(s._sum.amountCents)]))
+  const spend = await spendByCampaign(campaigns.map((c) => c.id))
   return campaigns.reduce((sum, c) => sum + Math.max(0, c.budgetUsd * 100 - (spend.get(c.id) ?? 0)), 0)
 }
 

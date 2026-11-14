@@ -1,4 +1,3 @@
-import 'server-only'
 import type { NotificationKind } from '@prisma/client'
 import { db } from '@/lib/db'
 

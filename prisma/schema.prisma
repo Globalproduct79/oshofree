@@ -402,7 +402,7 @@ model NotificationPref {
 
 model AuditEvent {
   id          String   @id @default(cuid())
-  actorId     String
+  actorId     String? // null: the daily job (audit's SYSTEM_ACTOR)
   action      String
   targetType  String
   targetId    String
@@ -410,7 +410,7 @@ model AuditEvent {
   before      Json?
   after       Json?
   at          DateTime @default(now())
-  actor       User     @relation(fields: [actorId], references: [id])
+  actor       User?    @relation(fields: [actorId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId, at])
   @@index([targetType, targetId])

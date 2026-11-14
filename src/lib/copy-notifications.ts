@@ -2,6 +2,8 @@ import { fd, fmt, usd } from '@/lib/format'
 
 type Item = { title: string; detail?: string }
 
+const dayCount = (n: number) => (n === 1 ? '1 day' : `${n} days`)
+
 export const NOTIFY = {
   inReview: (name: string): Item => ({ title: `${name} is in review`, detail: 'Global usually decides within one working day' }),
   live: (name: string): Item => ({ title: `${name} is live on Phoenix` }),
@@ -21,6 +23,20 @@ export const NOTIFY = {
   pausedOverCredit: (name: string): Item => ({
     title: `${name} paused — credit limit reached`,
     detail: 'pay an open invoice or ask Global to raise the limit',
+  }),
+  // The daily job's pace warning (controller copy): `days` is how far from the flight the budget lands.
+  paceFast: (name: string, days: number): Item => ({
+    title: `${name} is delivering faster than planned`,
+    detail: `budget will finish ~${dayCount(days)} early`,
+  }),
+  paceSlow: (name: string, days: number): Item => ({
+    title: `${name} is delivering slower than planned`,
+    detail: `budget will last ~${dayCount(days)} longer`,
+  }),
+  // Monday's digest of the week before (controller copy).
+  weekly: (live: number, impressions: number, spendCents: number): Item => ({
+    title: 'Your week on Phoenix',
+    detail: `${live} live · ${fmt(impressions)} impressions · ${usd(spendCents)} spent`,
   }),
   needsReview: (campaignName: string, workspaceName: string): Item => ({
     title: `${campaignName} needs review`,

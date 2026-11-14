@@ -312,6 +312,49 @@ export async function endCampaign(
   return { campaign, releasedCents }
 }
 
+// ---- The daily job's moves (spec §6.5, §6.7) ----
+
+// A campaign another change already moved is skipped, not an error.
+const unlessMoved = (e: unknown): null => {
+  if (e === 'INVALID_TRANSITION') return null
+  throw e
+}
+
+// A scheduled flight goes live once its start — stored as the market's midnight — has come, and its
+// workspace hears that it is live.
+export async function startScheduled(now = new Date()): Promise<Campaign[]> {
+  const due = await db.campaign.findMany({
+    where: { status: 'scheduled', startsAt: { lte: now } },
+    select: { id: true },
+    orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
+  })
+  const started: Campaign[] = []
+  for (const { id } of due) {
+    const c = await move(id, ['scheduled'], { status: 'live' }).catch(unlessMoved)
+    if (!c) continue
+    started.push(c)
+    const told = NOTIFY.live(c.name)
+    await notifyWorkspace(c.workspaceId, 'approved', told.title, told.detail, campaignHref(c.id))
+  }
+  return started
+}
+
+// Auto-pause: while a workspace's credit in use is over its limit, its live campaigns pause (pausedBy
+// 'credit'; Resume stays refused until it is back under) and its members hear why.
+export async function pauseOverCredit(workspaceId: string): Promise<Campaign[]> {
+  if (!(await creditSummary(workspaceId)).overLimit) return []
+  const live = await db.campaign.findMany({ where: { workspaceId, status: 'live' }, select: { id: true }, orderBy: { id: 'asc' } })
+  const paused: Campaign[] = []
+  for (const { id } of live) {
+    const c = await move(id, ['live'], { status: 'paused', pausedBy: 'credit' }).catch(unlessMoved)
+    if (!c) continue
+    paused.push(c)
+    const told = NOTIFY.pausedOverCredit(c.name)
+    await notifyWorkspace(c.workspaceId, 'credit', told.title, told.detail, campaignHref(c.id))
+  }
+  return paused
+}
+
 export type ChangeWithoutReview = { budgetUsd?: number; endsAt?: Date; rewardLocal?: number }
 
 // Money and timing (ADV §2 "Change without review"), applied at once whatever the status, except
@@ -442,13 +485,16 @@ export type CampaignFacts = {
   paceNote: string
 }
 
+// On pace between these; the hero's note and the daily job's pace warning share them.
+export const PACE_BAND = { slow: 0.8, fast: 1.2 }
+
 // The hero's note (ADV §1): bands < 0.8 slow and > 1.2 fast apply to live campaigns only.
 export function paceNote(status: CampaignStatus, pace: number): string {
   if (status === 'paused') return PACE.paused
   if (status === 'review') return PACE.review
   if (status !== 'live') return ''
-  if (pace < 0.8) return PACE.slow
-  if (pace > 1.2) return PACE.fast
+  if (pace < PACE_BAND.slow) return PACE.slow
+  if (pace > PACE_BAND.fast) return PACE.fast
   return PACE.onPace
 }
 
