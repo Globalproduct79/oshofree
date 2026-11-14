@@ -353,6 +353,28 @@ describe('closeMonth', () => {
     expect(await unbilledCents(kola.id)).toBe(0)
   })
 
+  it("Phoenix settles the October straggler on November's statement, not October's", async () => {
+    const { user, channel, kola } = await closeFixture()
+    await db.marketFx.create({ data: { country: 'GH', fxPerUsd: 15.5, effectiveFrom: at('2026-09-01T00:00:00Z') } })
+    const statementFor = (period: Date) =>
+      db.settlementStatement.findUniqueOrThrow({ where: { channelId_period: { channelId: channel.id, period } } })
+
+    await closeMonth(at('2026-10-01T00:00:00Z'), user.id, CLOSED_AT)
+    // (12800 + 9300) × 0.55
+    expect((await statementFor(at('2026-10-01T00:00:00Z'))).amountCents).toBe(12155)
+
+    await line(kola.id, '2026-10-31T12:00:00Z', -600, 'Buy 2 get 1 — delivery')
+    await closeMonth(at('2026-10-01T00:00:00Z'), user.id, at('2026-11-02T06:00:00Z'))
+    expect((await statementFor(at('2026-10-01T00:00:00Z'))).amountCents).toBe(12155)
+
+    // November's invoices carry delivery 2000 + 600 (straggler) + 700 + 400 = 3700; the share is 0.6 from 10 Nov.
+    const nov = await closeMonth(at('2026-11-01T00:00:00Z'), user.id, at('2026-12-01T06:00:00Z'))
+    // 3700 × 0.6
+    expect(nov.statements).toMatchObject([{ period: at('2026-11-01T00:00:00Z'), amountCents: 2220 }])
+    expect((await statementFor(at('2026-10-01T00:00:00Z'))).amountCents).toBe(12155)
+    expect(await db.settlementStatement.count()).toBe(2)
+  })
+
   it('refuses a month that has not ended in every market', async () => {
     const { user } = await closeFixture()
     await expect(closeMonth(at('2026-11-01T00:00:00Z'), user.id, NOW)).rejects.toBe('MONTH_NOT_OVER')

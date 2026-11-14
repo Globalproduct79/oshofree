@@ -308,26 +308,22 @@ export async function closeMonth(
     })
   }
 
-  return { invoices, statements: await settle(year, month, bounds) }
+  return { invoices, statements: await settle(year, month, thisMonth) }
 }
 
-// Phoenix is owed its share of the month's delivery charges (each market's own month); rewards are
-// not delivery. One statement per channel and month, keyed on the 1st at 00:00 UTC.
+// Phoenix is owed its share of the delivery charges invoiced in this month's close — a straggler from an
+// earlier month included, so each charge is settled exactly once; rewards are not delivery. One
+// statement per channel and month, keyed on the 1st at 00:00 UTC; an existing one is kept.
 async function settle(
-  year: number, month: number, bounds: Map<Country, { start: Date; end: Date }>,
+  year: number, month: number, invoicePeriod: { gte: Date; lt: Date },
 ): Promise<SettlementStatement[]> {
   const channel = await db.channel.findUnique({ where: { key: SETTLEMENT_CHANNEL }, select: { id: true } })
   if (!channel) return []
-  const sums = await Promise.all(
-    COUNTRIES.map((country) => {
-      const { start, end } = bounds.get(country)!
-      return db.ledgerEntry.aggregate({
-        where: { kind: 'delivery', at: { gte: start, lt: end }, workspace: { country } },
-        _sum: { amountCents: true },
-      })
-    }),
-  )
-  const delivered = sums.reduce((s, r) => s + charged(r._sum.amountCents), 0)
+  const { _sum } = await db.ledgerEntry.aggregate({
+    where: { kind: 'delivery', invoice: { period: invoicePeriod } },
+    _sum: { amountCents: true },
+  })
+  const delivered = charged(_sum.amountCents)
   if (!delivered) return []
   const period = new Date(Date.UTC(year, month, 1))
   const share = await currentShare(channel.id, lastInstant(new Date(Date.UTC(year, month + 1, 1))))
