@@ -17,8 +17,10 @@ export const COPY = {
     toSignIn: 'Already have an account? Sign in',
   },
   workspace: {
+    // /app/new-workspace, before the user has any workspace.
+    newCrumb: 'New workspace',
     newTitle: 'Create your workspace',
-    newSubtitle: 'Global checks every new advertiser before campaigns can go live, usually within a working day.',
+    newLead: 'Tell us who you are and where you bill. Global approves new workspaces within one working day.',
     title: 'Workspace',
     subtitle: 'The name, type and billing country Global sees. Invoices will use the billing country.',
     nameLabel: 'Workspace name',
