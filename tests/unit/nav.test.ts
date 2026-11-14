@@ -19,6 +19,20 @@ describe('navFor', () => {
     ])
   })
 
+  it('gives New campaign to those who can create campaigns, and not to a Viewer', () => {
+    const items = (role: 'Owner' | 'Manager' | 'Viewer' | 'Global') =>
+      navFor({ role, inWorkspace: true, counts: zero }).filter((g) => g.label !== 'Platform').flatMap((g) => g.items)
+    for (const role of ['Owner', 'Manager', 'Global'] as const) {
+      expect(items(role)).toHaveLength(9)
+      expect(items(role).map((i) => i.href)).toContain('/app/campaigns/new')
+    }
+    const viewer = items('Viewer')
+    expect(viewer).toHaveLength(8)
+    expect(viewer.map((i) => i.label)).not.toContain('New campaign')
+    expect(viewer.map((i) => i.href)).not.toContain('/app/campaigns/new')
+    expect(navFor({ role: 'Viewer', inWorkspace: true, counts: zero })[0].items.map((i) => i.label)).toEqual(['Campaigns'])
+  })
+
   it('never gives a Manager or a Viewer the PLATFORM group', () => {
     for (const role of ['Manager', 'Viewer'] as const) {
       const groups = navFor({ role, inWorkspace: true, counts: { campaigns: 1, invoices: 1, review: 4 } })

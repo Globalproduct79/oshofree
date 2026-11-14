@@ -1,5 +1,5 @@
 // The sidebar's groups, items, hrefs and counts (GLB §4.2, spec §6.12). Pure: the layouts pass the counts in.
-import type { Role } from '@prisma/client'
+import { can, type MemberRole } from '@/lib/capabilities'
 import { SHELL } from '@/lib/copy-shell'
 
 export type NavIcon =
@@ -12,7 +12,8 @@ export type NavCounts = { campaigns: number; invoices: number; review: number }
 const item = (label: string, href: string, icon: NavIcon, count = 0): NavItem =>
   count > 0 ? { label, href, icon, count } : { label, href, icon }
 
-export function navFor(ctx: { role: Role | 'Global'; inWorkspace: boolean; counts: NavCounts }): NavGroup[] {
+// New campaign only for a role that may create one: a Viewer opening it would land back on Campaigns.
+export function navFor(ctx: { role: MemberRole; inWorkspace: boolean; counts: NavCounts }): NavGroup[] {
   const { nav, groups } = SHELL
   const { counts } = ctx
   const out: NavGroup[] = []
@@ -20,7 +21,7 @@ export function navFor(ctx: { role: Role | 'Global'; inWorkspace: boolean; count
     out.push(
       { label: groups.campaigns, items: [
         item(nav.campaigns, '/app', 'home', counts.campaigns),
-        item(nav.newCampaign, '/app/campaigns/new', 'plus'),
+        ...(can(ctx.role, 'campaigns') ? [item(nav.newCampaign, '/app/campaigns/new', 'plus')] : []),
       ] },
       { label: groups.growth, items: [item(nav.sharing, '/app/sharing', 'share'), item(nav.rewards, '/app/rewards', 'gift')] },
       { label: groups.money, items: [
