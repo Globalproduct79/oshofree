@@ -15,6 +15,7 @@
     "db:seed": "dotenv -- tsx prisma/seed.ts",
     "db:reset": "dotenv -- prisma migrate reset --force",
     "job:daily": "dotenv -- tsx scripts/daily.ts",
+    "bootstrap": "dotenv -- tsx scripts/bootstrap.ts",
     "docker:up": "docker compose up -d",
     "pretest": "dotenv -o -e .env.test -- prisma migrate deploy",
     "postinstall": "prisma generate"

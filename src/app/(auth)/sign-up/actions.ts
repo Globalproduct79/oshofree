@@ -4,12 +4,12 @@ import { z } from 'zod'
 import { signIn } from '@/lib/auth'
 import { COPY } from '@/lib/copy'
 import { joinFromInvite } from '@/lib/invite-join'
-import { createUser } from '@/lib/users'
+import { createUser, MIN_PASSWORD_LENGTH } from '@/lib/users'
 
 const schema = z.object({
   name: z.string().trim().min(1),
   email: z.string().trim().email(),
-  password: z.string().min(8),
+  password: z.string().min(MIN_PASSWORD_LENGTH),
 })
 
 export async function signUpAction(_prev: string | null, formData: FormData): Promise<string | null> {

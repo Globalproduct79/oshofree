@@ -39,10 +39,13 @@ function randomKeyBody(): string {
   return out
 }
 
+// A fresh channel key in plain text: `phx_live_` and 24 base62 characters. Only its hash is ever stored.
+export const newChannelKey = (): string => KEY_PREFIX + randomKeyBody()
+
 // A new key for the channel, returned in plain text this once and stored only as its hash. The key it
 // replaces keeps working for 24 hours (a second rotation inside that window retires it at once).
 export async function rotateKey(channelId: string, byUserId: string, now: Date = new Date()): Promise<string> {
-  const key = KEY_PREFIX + randomKeyBody()
+  const key = newChannelKey()
   const validUntil = new Date(now.getTime() + PREVIOUS_KEY_GRACE_MS)
   await db.$transaction(async (tx) => {
     // Two rotations at once must not both demote the same key: the second waits and demotes the first's.

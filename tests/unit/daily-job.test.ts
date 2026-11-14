@@ -609,8 +609,9 @@ describe('scripts/daily.ts — the day to run', () => {
   })
 })
 
-// `npm run job:daily` runs under tsx, where `server-only` does not resolve: nothing the job imports may pull it.
-describe('the daily job under tsx', () => {
+// `npm run job:daily` and `npm run bootstrap` run under tsx, where `server-only` does not resolve: nothing they
+// import may pull it.
+describe('the scripts under tsx', () => {
   const root = path.resolve(import.meta.dirname, '../..')
   const resolve = (spec: string, from: string): string | null => {
     const base = spec.startsWith('@/') ? path.join(root, 'src', spec.slice(2)) : spec.startsWith('.') ? path.resolve(path.dirname(from), spec) : null
@@ -618,9 +619,9 @@ describe('the daily job under tsx', () => {
     return [base, `${base}.ts`, `${base}.tsx`, path.join(base, 'index.ts')].find((f) => existsSync(f) && f.match(/\.tsx?$/)) ?? null
   }
 
-  it('imports nothing that pulls server-only', () => {
+  it.each(['scripts/daily.ts', 'scripts/bootstrap.ts'])('%s imports nothing that pulls server-only', (entry) => {
     const seen = new Map<string, string>()
-    const queue = [path.join(root, 'src/lib/jobs/daily.ts')]
+    const queue = [path.join(root, entry)]
     const offenders: string[] = []
     while (queue.length) {
       const file = queue.shift()!

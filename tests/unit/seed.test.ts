@@ -6,10 +6,10 @@ import { MARKETS } from '@/lib/markets'
 import { localMidnight, wallClock } from '@/lib/market-clock'
 import { campaignSpendCents, creditSummary, invoiceStatus, nextInvoiceNumber } from '@/lib/money'
 import { PLACEMENTS } from '@/lib/rates'
+import { CPM_CENTS, FX_PER_USD } from '@/lib/reference-rates'
 import { uploadDir } from '@/lib/upload-dir'
 import { resetDb } from '../../scripts/db-truncate'
 import { seed } from '../../prisma/seed'
-import { CPM_CENTS, FX_PER_USD } from '../../prisma/seed/rates'
 
 // A day after the prototype's own (ADV "Seed campaigns" is relative to 13 Nov): the inventory's dates land a day on.
 const NOW = new Date('2026-11-14T10:00:00Z')

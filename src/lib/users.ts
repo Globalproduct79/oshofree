@@ -5,6 +5,11 @@ import { db } from '@/lib/db'
 // Compared against when the email is unknown, so response time doesn't reveal which emails exist.
 const DUMMY_HASH = bcrypt.hashSync('x', 10)
 
+// Sign-up's rule, and the bootstrap's for the first Global user.
+export const MIN_PASSWORD_LENGTH = 8
+
+export const hashPassword = (password: string): Promise<string> => bcrypt.hash(password, 10)
+
 export async function createUser(input: {
   email: string
   password: string
@@ -12,7 +17,7 @@ export async function createUser(input: {
 }): Promise<User> {
   const email = input.email.trim().toLowerCase()
   if (await db.user.findUnique({ where: { email } })) throw 'EMAIL_TAKEN'
-  const passwordHash = await bcrypt.hash(input.password, 10)
+  const passwordHash = await hashPassword(input.password)
   try {
     return await db.user.create({ data: { email, passwordHash, name: input.name.trim() } })
   } catch (e) {

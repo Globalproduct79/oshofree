@@ -192,10 +192,35 @@ NEXT_DIST_DIR=.next-build npm run build
 
 ## Deploy checklist
 
-- `DATABASE_URL`: the production Postgres. Run `npx prisma migrate deploy` on each release. Slice 2 adds six
-  migrations: `20261113230000_slice2`, `20261114020000_revision_cpm`,
-  `20261114100000_claim_code_per_campaign`, `20261114120000_reward_lookups`,
-  `20261114140000_system_audit_actor` and `20261114160000_invoice_country`. Never run the seed there.
+On each release, in this order:
+
+```sh
+npx prisma migrate deploy
+npm run bootstrap
+```
+
+then make sure the daily job is in cron:
+
+```cron
+0 2 * * * npm run job:daily
+```
+
+- `npx prisma migrate deploy` applies new migrations. Slice 2 adds six: `20261113230000_slice2`,
+  `20261114020000_revision_cpm`, `20261114100000_claim_code_per_campaign`, `20261114120000_reward_lookups`,
+  `20261114140000_system_audit_actor` and `20261114160000_invoice_country`. Never run the seed in production.
+- `npm run bootstrap` creates what production needs before anyone signs in, and only what is missing:
+  the Global user, the Phoenix channel (live in all five markets), Phoenix's rate card, FX and 55 % share
+  (the seed's reference figures, from `src/lib/reference-rates.ts`), the three fraud rules and the aggregator
+  account. It never changes what is there, so Global's own rates, FX, share, fraud toggles and rotated key
+  survive every release. It prints one line saying what it created and what was already there.
+  - `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`: the Global user. Needed on the first run; it stops
+    without writing anything if there is no Global user to create. Later runs make that user Global again
+    if needed and set the password only when it has changed. The password is never printed.
+  - `PHOENIX_CHANNEL_KEY`: Phoenix's API key. If it is unset when the channel is first created, the bootstrap
+    makes a key and prints it once. Store it then; only its hash is kept. Once the channel exists, the bootstrap
+    leaves its key alone; rotate it from Platform › Phoenix API.
+- The daily job runs at 02:00 UTC, from the app's folder with the app's environment (see "The daily job").
+- `DATABASE_URL`: the production Postgres.
 - `APP_URL`: the public `https://` origin. Share links are built from it, and the visitor cookie is
   marked Secure only when it starts with `https://`.
 - `AUTH_SECRET`: a random string of 32 or more characters.
@@ -206,8 +231,3 @@ NEXT_DIST_DIR=.next-build npm run build
   persistent volume and run a single instance.
 - `DEMO_CONTROLS`, `DEMO_WALL`, `DEMO_CHANNEL_KEY`, `SEED_SCALE`, `SEED_FORCE`: unset. The demo controls
   and the wall are off unless their variable is exactly `1`.
-- The daily job: `0 2 * * * npm run job:daily`, at 02:00 UTC, from the app's folder with its environment.
-- Phoenix's key: there is no seed in production, so issue a key and store only its sha256 hex digest in the
-  Phoenix Channel row's `apiKeyHash`, with `isLive` true. After that, Global rotates it from Platform ›
-  Phoenix API.
-  `node -e "console.log(require('crypto').createHash('sha256').update(process.argv[1]).digest('hex'))" <key>`
