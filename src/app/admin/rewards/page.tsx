@@ -1,6 +1,7 @@
-import { Box, DataTable, MetricCard, StatusBadge } from '@/components/og'
+import { Box, DataTable, LinkButton, MetricCard, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { REWARDS_LEDGER as R } from '@/lib/copy-rewards-ledger'
+import { SHELL } from '@/lib/copy-shell'
 import { FRAUD_RULES, ensureFraudRules } from '@/lib/fraud'
 import { db } from '@/lib/db'
 import { fd, fmt, pct, usd } from '@/lib/format'
@@ -9,10 +10,11 @@ import {
   FULL_BALANCE_CENTS, LOW_BALANCE_CENTS, aggregatorBalance, commonPointsPerShare, heldPayouts, monthTotals, pointsIssued, recentTopUps,
 } from '@/lib/rewards-ledger'
 import { requireAdmin } from '@/lib/session'
-import { FraudToggle, HeldButtons, TopUpForm } from './RewardsControls'
+import { FraudToggle, HeldButtons } from './RewardsControls'
 
-// Rewards ledger (GLB §2.5): what sharers are owed per campaign, the aggregator balance that pays it,
-// the three fraud checks as real switches, and the held rewards Global releases or rejects.
+// Rewards ledger (GLB §2.5): what sharers are owed per campaign, the aggregator balance that pays it, the recent
+// top-ups, the three fraud checks as real switches, and the held rewards Global releases or rejects. Topping up
+// has its own page, opened from the head.
 export default async function RewardsLedgerPage() {
   await requireAdmin()
   const now = new Date()
@@ -31,7 +33,16 @@ export default async function RewardsLedgerPage() {
 
   return (
     <>
-      <PageHead crumb={[{ label: 'Platform' }, { label: R.crumb }]} title={R.title} lead={R.lead} />
+      <PageHead
+        crumb={[{ label: SHELL.groups.platform }, { label: R.crumb }]}
+        title={R.title}
+        lead={R.lead}
+        actions={
+          <LinkButton variant="primary" href="/admin/rewards/top-up">
+            {R.topUpTitle}
+          </LinkButton>
+        }
+      />
       <div className="mgrid m4">
         <MetricCard title={R.kpi.earnedTitle} value={usd(earnedCents)} sub={R.kpi.earnedSub} fill={100} />
         <MetricCard title={R.kpi.sentTitle} value={usd(sentCents)} sub={R.kpi.sentSub(pct(queuedCents, earnedCents))} fill={earnedCents ? (sentCents / earnedCents) * 100 : 0} />
@@ -50,24 +61,18 @@ export default async function RewardsLedgerPage() {
               <b key="o">{usd(r.owedCents)}</b>,
               <StatusBadge key="s" status={r.rechargeStatus === 'paid' ? 'paid' : 'issued'} />,
             ])}
-            emptyText=""
+            emptyText={R.empty}
             align={[undefined, undefined, 'right', 'right', 'right', undefined]}
           />
         </Box>
         <div>
-          <Box title={R.topUpTitle} sub={R.topUpSub}>
-            <TopUpForm />
-            {topUps.length > 0 && (
-              <>
-                <h4 style={{ margin: '16px 0 6px' }}>{R.recentTitle}</h4>
-                <DataTable
-                  head={[]}
-                  rows={topUps.map((t) => [fd(t.at, 'UTC'), <b key="a">{usd(t.amountCents)}</b>, t.by])}
-                  emptyText={R.recentEmpty}
-                  align={[undefined, 'right', undefined]}
-                />
-              </>
-            )}
+          <Box title={R.recentTitle}>
+            <DataTable
+              head={[]}
+              rows={topUps.map((t) => [fd(t.at, 'UTC'), <b key="a">{usd(t.amountCents)}</b>, t.by])}
+              emptyText={R.recentEmpty}
+              align={[undefined, 'right', undefined]}
+            />
           </Box>
           <Box title={R.fraudTitle}>
             {FRAUD_RULES.map((r) => (

@@ -18,11 +18,16 @@ export const REWARDS_LEDGER = {
   },
   campaignTitle: 'By campaign',
   campaignHead: ['Campaign', 'Advertiser', 'Successful shares', 'Per share', 'Owed', 'Recharged on invoice'],
+  // Controller: the By campaign table before any reward is earned.
+  empty: "No rewards yet. They appear as sharers' friends claim offers.",
+  // The head's primary, and the title of its page (/admin/rewards/top-up).
   topUpTitle: 'Top up aggregator',
   topUpSub: 'Reloadly prepaid balance pays the airtime. Global funds it; advertisers are recharged on their invoice.',
   amountLabel: 'Amount (USD)',
   topUpButton: 'Top up',
   topUpToast: 'Aggregator topped up',
+  // Controller: the top-up page's balance, beside the form.
+  balanceNow: 'Balance now',
   // Controller's additions.
   invalidAmount: 'Enter an amount above zero.',
   // The balance is capped at what its column holds ($21,474,836.47).

@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { Button, ToggleRow } from '@/components/og'
 import { toast } from '@/components/shell/toast-store'
@@ -17,25 +18,39 @@ function useRun() {
     })
 }
 
+const LEDGER = '/admin/rewards'
+
+// A top-up says so and returns to the ledger, which shows the new balance; a refusal stays on the page to correct.
+export async function topUpAndReturn(amount: string, act: (dollars: number) => Promise<Result>, go: (path: string) => void) {
+  const res = await act(Number(amount))
+  toast('toast' in res ? res.toast : res.error)
+  if ('toast' in res) go(LEDGER)
+}
+
+// The top-up page's form. The browser's own number checks are off so every refusal is the action's sentence.
 export function TopUpForm() {
-  const run = useRun()
+  const router = useRouter()
+  const [pending, start] = useTransition()
   const [amount, setAmount] = useState('1000')
   return (
-    <>
-      <label style={{ display: 'block', marginBottom: 10 }}>
-        <span style={{ display: 'block', marginBottom: 6 }}>{R.amountLabel}</span>
-        <input
-          type="number"
-          step="100"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 7, padding: '6px 8px' }}
-        />
+    <form
+      className="stack"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault()
+        start(() => topUpAndReturn(amount, topUpAction, (path) => router.push(path)))
+      }}
+    >
+      <label className="f">
+        {R.amountLabel}
+        <input type="number" step="100" value={amount} onChange={(e) => setAmount(e.target.value)} />
       </label>
-      <Button variant="primary" style={{ width: '100%' }} onClick={() => run(() => topUpAction(Number(amount)))}>
-        {R.topUpButton}
-      </Button>
-    </>
+      <div className="btns">
+        <Button type="submit" variant="primary" disabled={pending}>
+          {R.topUpButton}
+        </Button>
+      </div>
+    </form>
   )
 }
 
