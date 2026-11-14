@@ -34,22 +34,32 @@ function Featured({ o, mine }: { o: PreviewOffer; mine: boolean }) {
   )
 }
 
-// A splash takes the whole screen: the creative (a video shows its poster), the brand, and a way out.
-function Splash({ o }: { o: PreviewOffer }) {
+// A splash takes the whole screen: the creative, the brand, and a way out. A video opens at its first frame
+// (#t=0.1 makes Safari draw it) and plays with the browser's controls; `still` (the form's small phone) shows
+// that frame only.
+function Splash({ o, still }: { o: PreviewOffer; still?: boolean }) {
+  const { image, video } = o.creative
   return (
     <div className="splash" style={{ background: o.creative.color ?? undefined }}>
-      {o.creative.image && (
+      {image && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={o.creative.image} alt="" />
+        <img src={image} alt="" />
       )}
-      {!o.creative.image && <span className="ini">{initials(o.brand)}</span>}
+      {!image &&
+        video &&
+        (still ? (
+          <video src={`${video}#t=0.1`} muted playsInline preload="metadata" />
+        ) : (
+          <video src={`${video}#t=0.1`} controls playsInline preload="metadata" />
+        ))}
+      {!image && !video && <span className="ini">{initials(o.brand)}</span>}
       <span className="skip">{P.skip}</span>
     </div>
   )
 }
 
 // The inside of the phone: Phoenix's More → Offers screen with the previewed campaign among the live offers.
-export function PhoneScreen({ mine, live, country }: { mine: PreviewOffer; live: PreviewOffer[]; country: string }) {
+export function PhoneScreen({ mine, live, country, still }: { mine: PreviewOffer; live: PreviewOffer[]; country: string; still?: boolean }) {
   const { featured, tiles } = previewWall(mine, live)
   return (
     <>
@@ -79,16 +89,28 @@ export function PhoneScreen({ mine, live, country }: { mine: PreviewOffer; live:
           ))}
         </div>
       </div>
-      {mine.placement === 'splash' && <Splash o={mine} />}
+      {mine.placement === 'splash' && <Splash o={mine} still={still} />}
     </>
   )
 }
 
-export function PhoneFrame(props: { mine: PreviewOffer; live: PreviewOffer[]; country: string }) {
+export function PhoneFrame(props: { mine: PreviewOffer; live: PreviewOffer[]; country: string; still?: boolean }) {
   return (
     <div className="phone">
       <div className="notch" />
       <PhoneScreen {...props} />
+    </div>
+  )
+}
+
+// The same phone at 40% (104 × 192): the campaign form's splash preview. Not interactive inside; the caller's
+// View full size opens it at full size.
+export function PhoneThumb({ mine, country, label }: { mine: PreviewOffer; country: string; label: string }) {
+  return (
+    <div className="phone-thumb" role="img" aria-label={label}>
+      <div inert>
+        <PhoneFrame mine={mine} live={[]} country={country} still />
+      </div>
     </div>
   )
 }

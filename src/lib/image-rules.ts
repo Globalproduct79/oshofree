@@ -19,9 +19,13 @@ export const MAX_UPLOAD_BODY_BYTES = Math.max(...Object.values(UPLOAD_CAP)) + 65
 // An MP4 is video wherever it goes. An image is a splash only when the caller's placement says so, and that
 // only picks the image cap: the type itself is always judged from the bytes.
 export function uploadKind(type: string, placement?: unknown): UploadKind {
-  if ((VIDEO_TYPES as readonly string[]).includes(type)) return 'video'
-  return placement === 'splash' ? 'splash' : 'image'
+  return capKind((VIDEO_TYPES as readonly string[]).includes(type) ? 'video' : 'image', placement)
 }
+const capKind = (kind: 'image' | 'video', placement?: unknown): UploadKind =>
+  kind === 'video' ? 'video' : placement === 'splash' ? 'splash' : 'image'
+
+// The cap a creative of this kind meets on this placement (the picker and the form's placement switch).
+export const capFor = (kind: 'image' | 'video', placement?: unknown): number => UPLOAD_CAP[capKind(kind, placement)]
 
 export function acceptableImage(file: { type: string; size: number }): boolean {
   return (IMAGE_TYPES as readonly string[]).includes(file.type) && file.size > 0 && file.size <= MAX_IMAGE_BYTES

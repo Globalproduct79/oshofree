@@ -2,12 +2,15 @@ import type { Campaign, Workspace } from '@prisma/client'
 import { campaignDates, flightDays, isRealDay, REVISION_TERMS, ymd } from '@/lib/campaign-schema'
 import type { PlacementKey } from '@/lib/copy-components'
 import { CATEGORIES, type Category, type Country } from '@/lib/markets'
+import { capFor, IMAGE_TYPES } from '@/lib/image-rules'
 import { tokens } from '@/lib/tokens'
 
 // The New campaign form's state (ADV §3), exactly as the inputs hold it: text stays text until
 // toInput turns it into what campaignInput parses. Plain JSON, so the draft store can keep it.
 
-export type Creative = { key: string; kind: 'image' | 'video'; url: string }
+// `bytes` is the size the picker sent, so a placement switch can tell a 3 MB splash image is too big for a card.
+// A creative from before (Edit offer, an older draft) has none and is judged by its kind.
+export type Creative = { key: string; kind: 'image' | 'video'; url: string; bytes?: number }
 export const PLACEMENT_ORDER: readonly PlacementKey[] = ['card', 'featured', 'video', 'splash']
 export type RunsFor = '7' | '14' | '30' | 'custom'
 export const RUNS_FOR: readonly RunsFor[] = ['7', '14', '30', 'custom']
@@ -35,17 +38,21 @@ export type FormValues = {
 
 const DAY = 86_400_000
 
-// Which creatives a placement takes: an image for a card or tile, an MP4 for video, either for splash.
+// Which creatives a placement takes: an image for a card or tile, an MP4 for video, either for splash. The file
+// picker offers only those types (a JPG, PNG or WebP image).
+const IMAGES = IMAGE_TYPES.join(',')
 export const ACCEPT: Record<PlacementKey, string> = {
-  card: 'image/*',
-  featured: 'image/*',
+  card: IMAGES,
+  featured: IMAGES,
   video: 'video/mp4',
-  splash: 'image/*,video/mp4',
+  splash: `${IMAGES},video/mp4`,
 }
 
+// The kind the placement takes, at a size within its cap (image-rules: a splash image may be larger than a card's).
 export const fits = (placement: PlacementKey, creative: Creative | null): boolean =>
   creative === null ||
-  (creative.kind === 'image' ? placement !== 'video' : placement === 'video' || placement === 'splash')
+  ((creative.kind === 'image' ? placement !== 'video' : placement === 'video' || placement === 'splash') &&
+    (creative.bytes === undefined || creative.bytes <= capFor(creative.kind, placement)))
 
 // ADV §3 defaults: the workspace's name (a Brand) or nothing (an Agency), its country, Food & drink,
 // orange, Wall card, a link offer, $300 for 14 days from tomorrow, reward 50, terms unticked.

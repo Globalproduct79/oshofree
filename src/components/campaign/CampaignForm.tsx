@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 import { editOfferAction, previewOffers, submitAction } from '@/app/app/(console)/campaigns/actions'
 import { PreviewButton } from '@/components/campaign/PreviewButton'
-import { Box, Button } from '@/components/og'
+import { Box, Button, type PickerStatus } from '@/components/og'
 import { toast } from '@/components/shell/toast-store'
 import { ageGated, checkCampaign, ruleContext, todayIn, type CreditPosition, type FormEdit } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
@@ -18,7 +18,7 @@ import { CostBox } from './form/CostBox'
 import { OfferFields } from './form/OfferFields'
 import { PlacementFields } from './form/PlacementFields'
 import { TermsFields } from './form/TermsFields'
-import { uploadCreative } from './form/upload'
+import { clearedNote, pickCreative } from './form/upload'
 import { fits, offerInput, revisionInput, sameValues, toInput, type FormValues } from './form/values'
 
 export type FormMode =
@@ -43,9 +43,12 @@ const P = F.previewBox
 export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props) {
   const router = useRouter()
   const [values, setValues] = useState(defaults)
-  // An upload's or the server's refusal, shown until the next change.
+  // The server's refusal, shown until the next change.
   const [notice, setNotice] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
+  // The creative picker: resting, uploading (with its percentage) or refused; Retry sends the last file again.
+  const [creativeStatus, setCreativeStatus] = useState<PickerStatus>({ state: 'idle' })
+  const lastFile = useRef<File | null>(null)
+  const uploading = creativeStatus.state === 'uploading'
   // Whether this browser holds a draft of the New form (Start over shows while it does).
   const [hasDraft, setHasDraft] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -91,25 +94,37 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
     setValues((v) => ({ ...v, ...patch }))
     setNotice(null)
   }
-  // A creative the new placement cannot take (a video on a card) goes.
+  // A creative the new placement cannot take (a video on a card, a 3 MB splash image on a card) goes, and the
+  // picker says why. An upload under way keeps its progress; pickCreative judges it against the new placement.
   const choose = (placement: PlacementKey) => {
+    const gone = values.creative && !fits(placement, values.creative) ? values.creative : null
     setValues((v) => ({ ...v, placement, creative: fits(placement, v.creative) ? v.creative : null }))
+    setCreativeStatus((s) => (s.state === 'uploading' ? s : { state: 'idle', note: gone ? clearedNote(gone, placement) : undefined }))
     setNotice(null)
   }
   // The placement may have changed while the file uploaded: a creative it cannot take is discarded.
-  async function pick(file: File) {
+  function pick(file: File) {
+    lastFile.current = file
     setNotice(null)
-    setUploading(true)
-    const res = await uploadCreative(file)
-    setUploading(false)
-    if (!res.ok) return setNotice(res.message)
-    if (!fits(latest.current.placement, res.creative)) return setNotice(F.validation.creativeMismatch)
-    setValues((v) => (fits(v.placement, res.creative) ? { ...v, creative: res.creative } : v))
+    return pickCreative(file, {
+      placement: () => latest.current.placement,
+      status: setCreativeStatus,
+      chosen: (creative) => setValues((v) => (fits(v.placement, creative) ? { ...v, creative } : v)),
+      local: (f) => {
+        const url = URL.createObjectURL(f)
+        return { url, revoke: () => URL.revokeObjectURL(url) }
+      },
+    })
+  }
+  function removeCreative() {
+    update({ creative: null })
+    setCreativeStatus({ state: 'idle' })
   }
   function onStartOver() {
     setValues(startOver(workspace.id, defaults))
     setHasDraft(false)
     setNotice(null)
+    if (!uploading) setCreativeStatus({ state: 'idle' })
   }
 
   const cpmCents = rates.cpmCents[values.country]
@@ -174,8 +189,12 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
             values={values}
             cpmCents={cpmCents}
             choose={choose}
+            status={creativeStatus}
             pick={pick}
-            remove={() => update({ creative: null })}
+            retry={() => lastFile.current && pick(lastFile.current)}
+            remove={removeCreative}
+            mine={mine}
+            loadLive={() => previewOffers(values.country)}
           />
           <TermsFields values={values} update={update} locked={locked} minStart={isNew ? todayIn(values.country) : undefined} />
           <label className="chk full">

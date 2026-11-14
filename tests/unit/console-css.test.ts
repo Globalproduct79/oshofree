@@ -15,3 +15,10 @@ it('stacks a team row under 600 px: who on the first line, the controls on the s
   expect(css).toMatch(/@media\(max-width:600px\)\{[^@]*\.team-row \.nm\{flex-basis:calc\(100% - 42px\)\}[^@]*\.team-row \.ctl\{flex-basis:100%;padding-left:42px\}/)
 })
 it("keeps the head's primary on one line", () => expect(css).toContain('.head .acts .btn.p{white-space:nowrap}'))
+it('the creative picker: a lit zone for a drag, the upload bar, a message line, and a splash phone at 40%', () => {
+  for (const sel of ['.f + .drop{margin-top:6px}', '.drop[data-over]', '.drop .bar i', '.dacts', '.dmsg.bad{color:var(--red)}'])
+    expect(css).toContain(sel)
+  expect(css).toContain('.phone-thumb .phone{transform:scale(.4)')
+  // The prototype's `.drop img` clamps a thumbnail to 90 px; inside the phone the splash must fill the screen.
+  expect(css).toContain('.drop .phone-thumb img,.drop .phone-thumb video{max-height:none;max-width:none;margin:0;border-radius:0}')
+})

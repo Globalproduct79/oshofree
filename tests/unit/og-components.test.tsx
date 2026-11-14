@@ -8,7 +8,6 @@ import {
   Button,
   CampaignCard,
   DataTable,
-  DropZone,
   EmptyState,
   EstimatePanel,
   FilterPills,
@@ -460,43 +459,6 @@ describe('Swatches', () => {
     expect(count(m, /aria-label="colour"/g)).toBe(7)
     expect(count(m, /aria-pressed="true"/g)).toBe(1)
     expect(m).toContain(`<button type="button" aria-label="colour" aria-pressed="true" style="background:${tokens.tileColors[2]}"></button>`)
-  })
-})
-
-describe('DropZone', () => {
-  // The brief's props; `accept` is optional on top of them.
-  const briefProps = {
-    label: 'Ad image',
-    hint: '— optional. Square or landscape works best.',
-    zoneTitle: 'Upload image',
-    zoneHint: 'tap to attach an image',
-    onPick: noop,
-    onRemove: noop,
-  }
-  const props = { ...briefProps, accept: 'image/jpeg,image/png,image/webp' }
-  it('shows the label, hint and zone copy with a hidden file input', () => {
-    const m = html(<DropZone {...props} />)
-    expect(m).toMatch(/<label class="f" for="[^"]+">Ad image <small>— optional\. Square or landscape works best\.<\/small><\/label>/)
-    expect(m).toContain('class="drop"')
-    expect(m).toContain('Upload image</b><br/>tap to attach an image')
-    expect(m).toMatch(/<input [^>]*type="file" [^>]*accept="image\/jpeg,image\/png,image\/webp"[^>]*hidden=""/)
-  })
-  it('accepts images by default', () => {
-    expect(html(<DropZone {...briefProps} />)).toMatch(/<input [^>]*type="file" [^>]*accept="image\/\*"/)
-  })
-  it('passes the accept the caller gives', () => {
-    expect(html(<DropZone {...briefProps} accept="image/*,video/mp4" />)).toMatch(
-      /<input [^>]*type="file" [^>]*accept="image\/\*,video\/mp4"/,
-    )
-  })
-  it('previews a video creative as a muted video', () => {
-    const m = html(<DropZone {...props} preview="/uploads/a.mp4" previewKind="video" />)
-    expect(m).toContain('<video src="/uploads/a.mp4" muted="" playsInline="" preload="metadata"></video>Tap to remove')
-  })
-  it('shows the preview with "Tap to remove"', () => {
-    const m = html(<DropZone {...props} preview="blob:abc" />)
-    expect(m).toContain('<img src="blob:abc" alt=""/>Tap to remove')
-    expect(m).not.toContain('Upload image')
   })
 })
 

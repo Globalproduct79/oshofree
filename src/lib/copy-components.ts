@@ -69,5 +69,13 @@ export const COMPONENTS = {
   },
   option: { soon: 'inventory TBC' },
   swatch: 'colour',
-  drop: { remove: 'Tap to remove' },
+  // The creative picker: its buttons, the upload's progress, and what a preview is called to a screen reader.
+  drop: {
+    replace: 'Replace',
+    remove: 'Remove',
+    retry: 'Retry',
+    uploading: 'Uploading',
+    progress: (percent: number) => `Uploading… ${percent}%`,
+    chosen: { image: 'The image you chose', video: 'The video you chose' },
+  },
 } as const

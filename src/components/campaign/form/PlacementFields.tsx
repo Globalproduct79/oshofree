@@ -1,8 +1,12 @@
 'use client'
 
-import { DropZone, OptionTile } from '@/components/og'
+import { PhoneThumb } from '@/components/campaign/PhoneFrame'
+import { PreviewButton } from '@/components/campaign/PreviewButton'
+import { Button, CreativePicker, OptionTile, type PickerStatus } from '@/components/og'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import type { PlacementKey } from '@/lib/copy-components'
+import { MARKETS } from '@/lib/markets'
+import type { PreviewOffer } from '@/lib/preview-merge'
 import { ACCEPT, PLACEMENT_ORDER, type FormValues } from './values'
 
 type Props = {
@@ -10,15 +14,24 @@ type Props = {
   // Phoenix's current CPM per placement in the chosen country; null where Global has set none.
   cpmCents: Record<PlacementKey, number | null>
   choose: (placement: PlacementKey) => void
+  // The creative picker's state, and its three actions.
+  status: PickerStatus
   pick: (file: File) => void
+  retry: () => void
   remove: () => void
+  // The draft as Phoenix draws it, and the live offers around it: a splash's View full size opens that preview.
+  mine: PreviewOffer
+  loadLive: () => Promise<PreviewOffer[]>
 }
 
 const INVENTORY_TBC: readonly PlacementKey[] = ['video', 'splash']
 
-// ADV §3 fields 8–9: the four placement tiles with their live CPM, then the drop zone the placement asks for.
-export function PlacementFields({ values: v, cpmCents, choose, pick, remove }: Props) {
+// ADV §3 fields 8–9: the four placement tiles with their live CPM, then the creative picker the placement asks for:
+// an image for a card or tile, an MP4 (played with controls) for video, either for a splash, shown in a small phone.
+export function PlacementFields({ values: v, cpmCents, choose, status, pick, retry, remove, mine, loadLive }: Props) {
   const drop = F.drop[v.placement]
+  const splash = v.placement === 'splash' && v.creative !== null
+  const country = MARKETS[v.country].name
   return (
     <>
       <div className="full">
@@ -43,15 +56,31 @@ export function PlacementFields({ values: v, cpmCents, choose, pick, remove }: P
         </div>
       </div>
       <div className="full">
-        <DropZone
+        <CreativePicker
           label={drop.label}
           hint={drop.hint}
           zoneTitle={drop.zoneTitle}
           zoneHint={drop.zoneHint}
-          preview={v.creative?.url}
-          previewKind={v.creative?.kind}
           accept={ACCEPT[v.placement]}
+          chosen={v.creative && { url: v.creative.url, kind: v.creative.kind }}
+          status={status}
+          frame={splash ? <PhoneThumb mine={mine} country={country} label={F.drop.splashFrame} /> : undefined}
+          actions={
+            splash ? (
+              <PreviewButton
+                mine={mine}
+                country={v.country}
+                load={loadLive}
+                trigger={(show) => (
+                  <Button variant="ghost" size="s" type="button" onClick={show}>
+                    {F.drop.viewFull}
+                  </Button>
+                )}
+              />
+            ) : undefined
+          }
           onPick={pick}
+          onRetry={retry}
           onRemove={remove}
         />
       </div>

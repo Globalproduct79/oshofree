@@ -65,15 +65,19 @@ export const CAMPAIGN_FORM_COPY = {
       label: 'Ad image', hint: '— optional. Square or landscape works best.',
       zoneTitle: 'Upload image', zoneHint: 'tap to attach a sample (demo)',
     },
+    // The size in these two hints is ours: the caps by kind (image-rules) replaced the prototype's "under 2 MB".
     video: {
-      label: 'Video clip', hint: '— MP4, 6–15 s, under 2 MB. Required.',
+      label: 'Video clip', hint: '— MP4, 6–15 s, under 25 MB. Required.',
       zoneTitle: 'Upload creative', zoneHint: 'tap to attach a sample (demo)',
     },
     splash: {
-      label: 'Splash creative', hint: '— portrait image or video, under 2 MB. Required.',
+      label: 'Splash creative', hint: '— portrait image under 4 MB, or an MP4 under 25 MB. Required.',
       zoneTitle: 'Upload creative', zoneHint: 'tap to attach a sample (demo)',
     },
     attached: 'Tap to remove',
+    // Ours: a chosen splash shows in a small phone; this opens the Phoenix preview with it full screen.
+    viewFull: 'View full size',
+    splashFrame: 'Your splash on a phone',
   },
   validation: {
     name: 'Give the campaign a name.',
@@ -133,12 +137,23 @@ export const CAMPAIGN_FORM_COPY = {
     terms: 'Change these without review on the campaign page.',
     running: '— fixed while the campaign runs',
   },
+  // The creative picker: refused in the browser before sending (type for the placement, size for the kind), then
+  // what the server answered, and why a placement switch took the creative off.
   upload: {
     uploading: 'Uploading…',
     videoLength: 'Video must be 6–15 seconds.',
-    tooLarge: 'That file is over 2 MB.',
+    tooLarge: (size: string, limit: string) => `That file is ${size}; the limit is ${limit}.`,
+    overLimit: (limit: string) => `That file is over the ${limit} limit.`,
+    wrongImage: (type: string) => `That file is ${type}. Use a JPG, PNG or WebP.`,
+    wrongVideo: 'MP4 only for video.',
+    wrongSplash: (type: string) => `That file is ${type}. Use a JPG, PNG or WebP image, or an MP4 video.`,
     bad: "That file can't be used. Attach a JPG, PNG or WebP image, or an MP4 video.",
     failed: "The upload didn't finish. Try again.",
+    cleared: {
+      video: (placement: string) => `The video was removed — a ${placement} shows an image.`,
+      image: 'The image was removed — Video needs an MP4.',
+      tooLarge: (placement: string, limit: string) => `The image was removed — a ${placement} takes images up to ${limit}.`,
+    },
   },
   // What the server answers when submitting or saving fails after the form's own rules passed.
   errors: {

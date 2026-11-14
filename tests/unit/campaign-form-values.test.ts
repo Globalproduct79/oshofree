@@ -1,7 +1,7 @@
 import type { Campaign } from '@prisma/client'
 import { describe, expect, it } from 'vitest'
 import {
-  campaignDefaults, fits, flightLength, newCampaignDefaults, offerInput, plusDays, previewEndsAt, revisionInput, toInput,
+  ACCEPT, campaignDefaults, fits, flightLength, newCampaignDefaults, offerInput, plusDays, previewEndsAt, revisionInput, toInput,
 } from '@/components/campaign/form/values'
 import { campaignDates, campaignInput, checkCampaign, ruleContext, ymd } from '@/lib/campaign-schema'
 
@@ -121,6 +121,23 @@ describe('helpers', () => {
     expect([fits('card', image), fits('featured', image), fits('video', image), fits('splash', image)]).toEqual([true, true, false, true])
     expect([fits('card', video), fits('featured', video), fits('video', video), fits('splash', video)]).toEqual([false, false, true, true])
     expect(fits('video', null)).toBe(true)
+  })
+  it('fits: an image past the placement\'s cap does not, so a 3 MB splash image leaves when the placement becomes a card', () => {
+    const image = (bytes?: number) => ({ key: 'k.png', kind: 'image', url: '/u', bytes }) as const
+    const mb = 1024 * 1024
+    expect([fits('splash', image(3 * mb)), fits('card', image(3 * mb)), fits('featured', image(3 * mb))]).toEqual([true, false, false])
+    expect([fits('card', image(2 * mb)), fits('splash', image(4 * mb)), fits('splash', image(4 * mb + 1))]).toEqual([true, true, false])
+    // A creative from before sizes were kept (Edit offer, an old draft) is judged by its kind only.
+    expect(fits('card', image())).toBe(true)
+    expect(fits('splash', { key: 'k.mp4', kind: 'video', url: '/u', bytes: 20 * mb })).toBe(true)
+  })
+  it('ACCEPT: the picker offers only the types each placement takes', () => {
+    expect(ACCEPT).toEqual({
+      card: 'image/jpeg,image/png,image/webp',
+      featured: 'image/jpeg,image/png,image/webp',
+      video: 'video/mp4',
+      splash: 'image/jpeg,image/png,image/webp,video/mp4',
+    })
   })
   it('flightLength: the preset, or the custom days while usable', () => {
     const v = { runsFor: 'custom', startsAt: '2026-12-01', endsAt: '2026-12-11' } as const

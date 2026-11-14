@@ -1,11 +1,51 @@
+import type { PickerStatus } from '@/components/og'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
-import { MAX_IMAGE_BYTES } from '@/lib/image-rules'
-import type { Creative } from './values'
+import type { PlacementKey } from '@/lib/copy-components'
+import { capFor, IMAGE_TYPES, VIDEO_TYPES } from '@/lib/image-rules'
+import { fits, type Creative } from './values'
 
-// The creative upload (spec §6.3): images and MP4 up to 2 MB through /api/upload, which checks type,
-// bytes and size; a video's 6–15 s length is checked here first, from its metadata.
+// The creative upload (spec §6.3): the picker refuses in the browser what the placement can't take (type) or its
+// kind can't hold (size: an image 2 MB, a splash image 4 MB, an MP4 25 MB) and a video outside 6–15 s; then the
+// file goes to /api/upload, which checks type, bytes and size again, with its progress reported as it goes.
 
-export type Uploaded = { ok: true; creative: Creative } | { ok: false; message: string }
+const U = F.upload
+const MB = 1_048_576
+
+export type Uploaded = { ok: true; creative: Creative } | { ok: false; message: string; retry: boolean }
+
+const isImage = (type: string) => (IMAGE_TYPES as readonly string[]).includes(type)
+const isVideo = (type: string) => (VIDEO_TYPES as readonly string[]).includes(type)
+
+// A cap reads "2 MB"; a file's size is rounded up to a tenth, so one byte over 2 MB reads 2.1 MB, never 2 MB.
+const limitText = (bytes: number) => `${bytes / MB} MB`
+const sizeText = (bytes: number) => `${Math.ceil((bytes * 10) / MB) / 10} MB`
+
+// "a GIF", "an MP4", "an SVG": the file's extension (else its declared type) as a reader says it. Letters read
+// one by one (a digit, or no vowel) take "an" before A, E, F, H, I, L, M, N, O, R, S and X; a word before a vowel.
+function typeName(file: { name: string; type: string }): string | null {
+  const ext = /\.([a-z0-9]{1,8})$/i.exec(file.name)?.[1] ?? /^[a-z]+\/(?:x-)?([a-z0-9.-]+)/i.exec(file.type)?.[1]
+  if (!ext) return null
+  const label = ext.toUpperCase()
+  const spelt = /\d/.test(label) || !/[AEIOU]/.test(label)
+  const an = (spelt ? 'AEFHILMNORSX' : 'AEIOU').includes(label[0])
+  return `${an ? 'an' : 'a'} ${label}`
+}
+
+// The sentence for a file the placement can't take, or null when it may be sent.
+export function checkCreativeFile(file: { name: string; type: string; size: number }, placement: PlacementKey): string | null {
+  const image = isImage(file.type)
+  const video = isVideo(file.type)
+  const takes = placement === 'video' ? video : placement === 'splash' ? image || video : image
+  if (!takes) {
+    if (placement === 'video') return U.wrongVideo
+    const name = typeName(file)
+    if (!name) return U.bad
+    return placement === 'splash' ? U.wrongSplash(name) : U.wrongImage(name)
+  }
+  if (file.size === 0) return U.bad
+  const cap = capFor(video ? 'video' : 'image', placement)
+  return file.size > cap ? U.tooLarge(sizeText(file.size), limitText(cap)) : null
+}
 
 // Whole seconds as a player shows them, so a "15 s" export of 15.03 s passes. NaN when unreadable.
 function videoSeconds(file: File): Promise<number> {
@@ -23,26 +63,87 @@ function videoSeconds(file: File): Promise<number> {
   })
 }
 
-export async function uploadCreative(file: File): Promise<Uploaded> {
-  if (file.size > MAX_IMAGE_BYTES) return { ok: false, message: F.upload.tooLarge }
-  if (file.type.startsWith('video/')) {
-    const seconds = await videoSeconds(file)
-    if (Number.isNaN(seconds)) return { ok: false, message: F.upload.bad }
-    if (seconds < 6 || seconds > 15) return { ok: false, message: F.upload.videoLength }
-  }
-  try {
-    const body = new FormData()
-    body.set('file', file)
-    const res = await fetch('/api/upload', { method: 'POST', body })
-    const json: { key?: unknown; kind?: unknown; url?: unknown } | null = await res.json().catch(() => null)
-    if (res.status === 413) return { ok: false, message: F.upload.tooLarge }
-    if (res.status === 400) return { ok: false, message: F.upload.bad }
-    const { key, kind, url } = json ?? {}
-    if (!res.ok || typeof key !== 'string' || typeof url !== 'string' || (kind !== 'image' && kind !== 'video')) {
-      return { ok: false, message: F.upload.failed }
+// XMLHttpRequest, not fetch: only it reports how much of the body has gone. Null when the connection failed.
+function send(file: File, placement: PlacementKey, onProgress?: (percent: number) => void) {
+  return new Promise<{ status: number; body: unknown } | null>((resolve) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/upload')
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) onProgress?.(Math.min(100, Math.floor((e.loaded / e.total) * 100)))
     }
-    return { ok: true, creative: { key, kind, url } }
-  } catch {
-    return { ok: false, message: F.upload.failed }
+    xhr.onload = () => {
+      let body: unknown = null
+      try {
+        body = JSON.parse(xhr.responseText)
+      } catch {
+        // Not JSON: judged as a failed upload below.
+      }
+      resolve({ status: xhr.status, body })
+    }
+    xhr.onerror = xhr.onabort = xhr.ontimeout = () => resolve(null)
+    const body = new FormData()
+    // Only picks between the image caps on the server (a splash image may be larger).
+    body.set('placement', placement)
+    body.set('file', file)
+    xhr.send(body)
+  })
+}
+
+export async function uploadCreative(file: File, placement: PlacementKey, onProgress?: (percent: number) => void): Promise<Uploaded> {
+  const refused = checkCreativeFile(file, placement)
+  if (refused) return { ok: false, message: refused, retry: false }
+  if (isVideo(file.type)) {
+    const seconds = await videoSeconds(file)
+    if (Number.isNaN(seconds)) return { ok: false, message: U.bad, retry: false }
+    if (seconds < 6 || seconds > 15) return { ok: false, message: U.videoLength, retry: false }
   }
+  const failed = { ok: false, message: U.failed, retry: true } as const
+  const res = await send(file, placement, onProgress)
+  if (!res) return failed
+  if (res.status === 413) return { ok: false, message: U.overLimit(limitText(capFor(isVideo(file.type) ? 'video' : 'image', placement))), retry: false }
+  if (res.status === 400) return { ok: false, message: U.bad, retry: false }
+  const { key, kind, url } = (res.body ?? {}) as { key?: unknown; kind?: unknown; url?: unknown }
+  if (res.status < 200 || res.status > 299 || typeof key !== 'string' || typeof url !== 'string' || (kind !== 'image' && kind !== 'video')) {
+    return failed
+  }
+  return { ok: true, creative: { key, kind, url, bytes: file.size } }
+}
+
+export type PickRun = {
+  // The placement now: read when the file is picked, and again when its upload lands.
+  placement: () => PlacementKey
+  status: (s: PickerStatus) => void
+  chosen: (c: Creative) => void
+  // A local URL for the file's own preview while it uploads (an object URL in the browser), revoked after.
+  local?: (file: File) => { url: string; revoke: () => void }
+}
+
+// One pick, through the picker's states: refused at once, or uploading (with the file's own preview and the
+// percentage) and then chosen, or refused by the server (Retry when trying again could work). A placement that
+// changed meanwhile to one that can't take the creative drops it (the server's rule says the same at submit).
+export async function pickCreative(file: File, run: PickRun): Promise<void> {
+  const placement = run.placement()
+  const refused = checkCreativeFile(file, placement)
+  if (refused) return run.status({ state: 'error', message: refused, retry: false })
+  const local = run.local?.(file)
+  const preview = local && ({ url: local.url, kind: isVideo(file.type) ? 'video' : 'image' } as const)
+  run.status({ state: 'uploading', percent: 0, preview })
+  let res: Uploaded
+  try {
+    res = await uploadCreative(file, placement, (percent) => run.status({ state: 'uploading', percent, preview }))
+  } finally {
+    local?.revoke()
+  }
+  if (!res.ok) return run.status({ state: 'error', message: res.message, retry: res.retry })
+  if (!fits(run.placement(), res.creative)) return run.status({ state: 'error', message: F.validation.creativeMismatch, retry: false })
+  run.chosen(res.creative)
+  run.status({ state: 'idle' })
+}
+
+// Why switching to `placement` took the creative off: the wrong kind, or an image over the placement's cap.
+export function clearedNote(c: Creative, placement: PlacementKey): string {
+  const name = F.placements[placement].name
+  if (c.kind === 'video') return U.cleared.video(name)
+  if (placement === 'video') return U.cleared.image
+  return U.cleared.tooLarge(name, limitText(capFor('image', placement)))
 }
