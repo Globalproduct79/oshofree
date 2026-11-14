@@ -68,6 +68,13 @@ export const PEOPLE = {
 export const INVITE_PAGE = {
   headline: (who: string, workspace: string, role: string) => `${who} invited you to ${workspace} as ${role}.`,
   invalid: 'This invite is no longer valid.',
+  // Under it: what to do about it, and on sign-in or sign-up a way on without the invite.
+  askForNew: 'Ask the person who invited you for a new link.',
+  signInWithout: 'Sign in without the invite',
+  signUpWithout: 'Create an account without the invite',
+  // Signed in as someone who is already a member: the invite is left for whoever it was meant for.
+  alreadyIn: (workspace: string) => `You're already in ${workspace}.`,
+  open: (workspace: string) => `Open ${workspace}`,
   createAccount: 'Create an account',
   signIn: 'Sign in',
   // Already signed in: whose account the invite would join, or sign out and sign in with another.

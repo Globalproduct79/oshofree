@@ -10,6 +10,7 @@ import { inviteAction } from '@/app/app/(console)/people/actions'
 import { createWorkspaceAction } from '@/app/app/new-workspace/actions'
 import { acceptInviteAction, signInAsSomeoneElseAction } from '@/app/invite/[token]/actions'
 import InvitePage from '@/app/invite/[token]/page'
+import { firstTime, withoutParam } from '@/components/shell/ArrivalToast'
 import { auth, signIn as authSignIn, signOut } from '@/lib/auth'
 import { INVITE_PAGE } from '@/lib/copy-people'
 import { SHELL } from '@/lib/copy-shell'
@@ -46,9 +47,10 @@ function signIn(u: { id: string; name?: string; email?: string } | null, workspa
   jar.get.mockImplementation((k: string) => (k === 'of_ws' && workspaceId ? { value: workspaceId } : undefined))
 }
 
-// The workspace keeps the cookie the actions write, as a browser would.
-function keepCookie() {
-  let ofWs: string | undefined
+// The browser's of_ws cookie, starting at the workspace it last had open; the actions' writes stick, as a
+// browser's would. Returns a reader for what the cookie holds now.
+function browserCookie(open?: string) {
+  let ofWs = open
   jar.get.mockImplementation((k: string) => (k === 'of_ws' && ofWs ? { value: ofWs } : undefined))
   jar.set.mockImplementation((k: string, v: string) => {
     if (k === 'of_ws') ofWs = v
@@ -56,6 +58,16 @@ function keepCookie() {
   jar.delete.mockImplementation((k: string) => {
     if (k === 'of_ws') ofWs = undefined
   })
+  return () => ofWs
+}
+
+// The of_ws delete (the action's fresh start) came before the join's write.
+function clearedThenJoined() {
+  const del = jar.delete.mock.calls.findIndex(([k]) => k === 'of_ws')
+  const set = jar.set.mock.calls.findIndex(([k]) => k === 'of_ws')
+  expect(del).toBeGreaterThanOrEqual(0)
+  expect(set).toBeGreaterThanOrEqual(0)
+  expect(jar.delete.mock.invocationCallOrder[del]).toBeLessThan(jar.set.mock.invocationCallOrder[set])
 }
 
 // Kola Bright with Tunde as Owner and one open invite for Ada as `role`.
@@ -122,11 +134,13 @@ describe('sign-up and sign-in opened from an invite link', () => {
       expect(inputTag(html, 'invite')).toContain('value=""')
     })
 
-    it(`${name}: a link that can no longer be accepted shows the invite page's invalid view, with no form`, async () => {
+    it(`${name}: a link that can no longer be accepted says so, says to ask for a new one, and offers a way on without it`, async () => {
       await world('Manager', { expiresAt: new Date(Date.now() - DAY) })
+      const way = name === 'sign-up' ? { href: '/sign-up', label: INVITE_PAGE.signUpWithout } : { href: '/sign-in', label: INVITE_PAGE.signInWithout }
       for (const token of [TOKEN, 'nope']) {
         const html = await page(Page(search({ invite: token })))
-        expect(text(html)).toContain(INVITE_PAGE.invalid)
+        expect(text(html)).toBe(`${INVITE_PAGE.invalid} ${INVITE_PAGE.askForNew} ${way.label}`)
+        expect(html).toMatch(new RegExp(`<a [^>]*href="${way.href}"[^>]*>${way.label}</a>`))
         expect(html).not.toContain('<form')
         expect(html).not.toContain(token === TOKEN ? TOKEN : 'name="invite"')
       }
@@ -148,30 +162,37 @@ describe('joining from an invite link', () => {
   it('sign-up joins the workspace with the invited role, opens it, and lands on its home saying so', async () => {
     const { ws } = await world('Viewer')
     signIn(null)
-    keepCookie()
+    // This browser last had another workspace open; the new account must end up in the one it joined.
+    const cookie = browserCookie('somebody-elses-workspace')
     expect(await signUpAction(null, form({ name: 'Ada Obi', email: 'ada.other@x.test', password: 'password123', invite: TOKEN }))).toBeNull()
     const ada = await db.user.findUniqueOrThrow({ where: { email: 'ada.other@x.test' } })
     expect((await db.workspaceMember.findFirstOrThrow({ where: { userId: ada.id } })).role).toBe('Viewer')
-    expect(jar.set).toHaveBeenCalledWith('of_ws', ws.id, expect.anything())
+    clearedThenJoined()
+    expect(cookie()).toBe(ws.id)
     expect(authSignIn).toHaveBeenCalledWith('credentials', expect.objectContaining({ redirectTo: `/app?joined=${ws.id}` }))
   })
 
-  it('sign-in with an invite joins and lands on the home saying so', async () => {
+  it('sign-in with an invite joins, opens the joined workspace over the one last open, and lands on its home saying so', async () => {
     const { ws } = await world('Manager')
     const ada = await mkUser('Ada Obi', 'ada@x.test', 'right-password')
+    const before = await db.workspace.create({ data: { name: 'Obi Foods', type: 'Brand', country: 'NG', status: 'approved' } })
+    await db.workspaceMember.create({ data: { userId: ada.id, workspaceId: before.id, role: 'Owner' } })
     signIn(null)
-    keepCookie()
+    const cookie = browserCookie(before.id)
     expect(await signInAction(null, form({ email: 'ada@x.test', password: 'right-password', invite: TOKEN }))).toBeNull()
-    expect((await db.workspaceMember.findFirstOrThrow({ where: { userId: ada.id } })).role).toBe('Manager')
+    expect((await db.workspaceMember.findUniqueOrThrow({ where: { userId_workspaceId: { userId: ada.id, workspaceId: ws.id } } })).role).toBe('Manager')
+    clearedThenJoined()
+    expect(cookie()).toBe(ws.id)
     expect(authSignIn).toHaveBeenCalledWith('credentials', expect.objectContaining({ redirectTo: `/app?joined=${ws.id}` }))
   })
 
   it('a link that died before the form was sent joins nothing and lands on /app as before', async () => {
     await world('Manager', { revokedAt: new Date() })
     signIn(null)
-    keepCookie()
+    const cookie = browserCookie('somebody-elses-workspace')
     expect(await signUpAction(null, form({ name: 'Ada Obi', email: 'ada@x.test', password: 'password123', invite: TOKEN }))).toBeNull()
     expect(await db.workspaceMember.count({ where: { user: { email: 'ada@x.test' } } })).toBe(0)
+    expect(cookie()).toBeUndefined()
     expect(authSignIn).toHaveBeenCalledWith('credentials', expect.objectContaining({ redirectTo: '/app' }))
   })
 
@@ -182,9 +203,44 @@ describe('joining from an invite link', () => {
     signIn(ada, ws.id)
     const said = INVITE_PAGE.joined('Kola Bright', 'Viewer')
     expect(said).toBe("You've joined Kola Bright as Viewer.")
-    expect(JSON.stringify(await HomePage(search({ joined: ws.id })))).toContain(said)
+    const tree = JSON.stringify(await HomePage(search({ joined: ws.id })))
+    expect(tree).toContain(said)
+    // Once per tab for this person in this workspace, so going back to the cached home doesn't say it again, but a
+    // second person joining the same workspace on the same browser is still told.
+    expect(tree).toContain(`"onceKey":"joined:${ada.id}:${ws.id}"`)
+    expect(tree).toContain('"param":"joined"')
     expect(JSON.stringify(await HomePage(search({})))).not.toContain(said)
     expect(JSON.stringify(await HomePage(search({ joined: 'another-workspace' })))).not.toContain(said)
+  })
+})
+
+describe('the arrival toast', () => {
+  // A sessionStorage stand-in.
+  const storage = () => {
+    const m = new Map<string, string>()
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) }
+  }
+
+  it('says it once per key in a tab, so back or forward to the cached home stays quiet', () => {
+    const tab = storage()
+    expect(firstTime('joined:w1', () => tab)).toBe(true)
+    expect(firstTime('joined:w1', () => tab)).toBe(false)
+    expect(firstTime('joined:w2', () => tab)).toBe(true)
+  })
+
+  it('still says it when storage is refused (private mode, blocked site data)', () => {
+    const refusing = () => {
+      throw new Error('SecurityError')
+    }
+    expect(firstTime('joined:w1', refusing)).toBe(true)
+    const broken = { getItem: () => null, setItem: () => { throw new Error('QuotaExceededError') } }
+    expect(firstTime('joined:w1', () => broken)).toBe(true)
+  })
+
+  it('drops only its own query from the address, keeping the rest and the hash', () => {
+    expect(withoutParam('http://x.test/app?joined=w1', 'joined')).toBe('/app')
+    expect(withoutParam('http://x.test/app?filter=live&joined=w1#top', 'joined')).toBe('/app?filter=live#top')
+    expect(withoutParam('http://x.test/app?filter=live', 'joined')).toBe('/app?filter=live')
   })
 })
 
@@ -212,20 +268,40 @@ describe('the invite page', () => {
     expect(html).not.toContain('href="/sign-up?invite=')
   })
 
-  it('a dead link says so and offers nothing, signed in or not', async () => {
+  it('a dead link says so and to ask for a new one, and offers nothing to act on, signed in or not', async () => {
     await world('Manager', { acceptedAt: new Date() })
     for (const who of [null, await mkUser('Kemi Balogun')]) {
       signIn(who)
       const html = await page(InvitePage({ params: Promise.resolve({ token: TOKEN }) }))
-      expect(text(html)).toBe(INVITE_PAGE.invalid)
+      expect(text(html)).toBe(`${INVITE_PAGE.invalid} ${INVITE_PAGE.askForNew}`)
+      expect(html).not.toMatch(/<a |<form|<button/)
     }
+  })
+
+  it('someone already in the workspace is told so and offered its home; the invite is left for its invitee', async () => {
+    const { ws } = await world('Viewer')
+    const kemi = await mkUser('Kemi Balogun', 'kemi@x.test')
+    await db.workspaceMember.create({ data: { userId: kemi.id, workspaceId: ws.id, role: 'Manager' } })
+    signIn(kemi)
+    const html = await page(InvitePage({ params: Promise.resolve({ token: TOKEN }) }))
+    const t = text(html)
+    expect(t).toContain(INVITE_PAGE.alreadyIn('Kola Bright'))
+    expect(t).not.toContain(INVITE_PAGE.headline('Tunde Okafor', 'Kola Bright', 'Viewer'))
+    expect(html).toMatch(new RegExp(`<button[^>]*type="submit"[^>]*>${INVITE_PAGE.open('Kola Bright')}</button>`))
+    expect(html).toMatch(new RegExp(`<button[^>]*type="submit"[^>]*>${INVITE_PAGE.signInOther}</button>`))
+    expect(t).not.toContain('Accept as')
+
+    // A stale Accept (the page was open before they joined) doesn't take the invite either.
+    await expect(acceptInviteAction(TOKEN)).rejects.toMatchObject({ digest: expect.stringContaining(`;/invite/${TOKEN};`) })
+    expect(await validInvite(TOKEN)).not.toBeNull()
+    expect((await db.workspaceMember.findFirstOrThrow({ where: { userId: kemi.id } })).role).toBe('Manager')
+    expect(await db.auditEvent.count({ where: { action: 'member.join' } })).toBe(0)
   })
 
   it('Accept as {name} joins that account with the invited role and lands on the home saying so', async () => {
     const { ws } = await world('Viewer')
     const kemi = await mkUser('Kemi Balogun', 'kemi@x.test')
     signIn(kemi)
-    keepCookie()
     await expect(acceptInviteAction(TOKEN)).rejects.toMatchObject({ digest: expect.stringContaining(`;/app?joined=${ws.id};`) })
     expect((await db.workspaceMember.findFirstOrThrow({ where: { userId: kemi.id } })).role).toBe('Viewer')
     expect(jar.set).toHaveBeenCalledWith('of_ws', ws.id, expect.anything())
@@ -273,7 +349,6 @@ describe('a new owner’s workspace while it waits for Global', () => {
     const kemi = await mkUser('Kemi Balogun', 'kemi@x.test')
     const token = (await db.invitation.findFirstOrThrow({ where: { workspaceId: ws.id } })).token
     signIn(kemi)
-    keepCookie()
     await expect(acceptInviteAction(token)).rejects.toMatchObject({ digest: expect.stringContaining(';/app?joined=') })
     signIn(kemi, ws.id)
     expect(await layout()).toContain(PENDING)

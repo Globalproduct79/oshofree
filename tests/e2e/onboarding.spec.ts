@@ -10,9 +10,10 @@ import { ADMIN, box, expectToast, signIn } from './helpers'
 // F6, onboarding: a new owner signs up and creates a workspace, which waits under the banner until Global approves
 // it on Review. The owner invites a Manager and a Viewer from Organisation. The Manager opens their link, creates
 // an account and lands in the workspace with New campaign but no Invite user. On the same browser the Viewer's link
-// names who is signed in; "Sign in as someone else" leads to sign-in and on to sign-up, and the Viewer lands with
-// neither. The owner makes the Viewer a Manager (their next page load offers New campaign), then removes them
-// (their next page load is New workspace).
+// sees the Manager is already in (and offers the workspace, not the invite); "Sign in as someone else" leads to
+// sign-in and on to sign-up, and the Viewer lands with neither. The owner makes the Viewer a Manager (their next
+// page load offers New campaign), then removes them (their next page load is New workspace). A used link on
+// sign-in or sign-up then says to ask for a new one and goes on without the invite.
 
 test.describe.configure({ mode: 'serial' })
 
@@ -132,11 +133,12 @@ test('F6: a new owner is approved, invites a Manager and a Viewer, and each sees
     await expect(inviteUser(desk)).toHaveCount(0)
   })
 
-  await test.step("on the same browser the Viewer's link names who is signed in; Sign in as someone else", async () => {
+  await test.step("on the same browser the Viewer's link sees the Manager is already in; Sign in as someone else", async () => {
     await desk.goto(links.Viewer)
-    await expect(desk.getByText(INVITE_PAGE.headline(OWNER.name, WORKSPACE, 'Viewer'))).toBeVisible()
+    await expect(desk.getByText(INVITE_PAGE.alreadyIn(WORKSPACE))).toBeVisible()
     await expect(desk.getByText(INVITE_PAGE.signedInAs(MANAGER.name, MANAGER.email))).toBeVisible()
-    await expect(desk.getByRole('button', { name: INVITE_PAGE.acceptAs(MANAGER.name) })).toBeVisible()
+    await expect(desk.getByRole('button', { name: INVITE_PAGE.open(WORKSPACE) })).toBeVisible()
+    await expect(desk.getByRole('button', { name: /^Accept as/ })).toHaveCount(0)
     await desk.getByRole('button', { name: INVITE_PAGE.signInOther }).click()
     // Signed out, on sign-in with the same link: it names the workspace and role, and starts at the invited email.
     await desk.waitForURL('**/sign-in?invite=*')
@@ -183,6 +185,19 @@ test('F6: a new owner is approved, invites a Manager and a Viewer, and each sees
     await desk.reload()
     await desk.waitForURL('**/app/new-workspace')
     await expect(desk.getByRole('heading', { name: COPY.workspace.newTitle })).toBeVisible()
+  })
+
+  await test.step('a used link on sign-in or sign-up says to ask for a new one, and goes on without the invite', async () => {
+    const used = new URL(links.Manager).pathname.split('/').pop()
+    for (const [path, way] of [['/sign-in', INVITE_PAGE.signInWithout], ['/sign-up', INVITE_PAGE.signUpWithout]] as const) {
+      await desk.goto(`${path}?invite=${used}`)
+      await expect(desk.getByText(INVITE_PAGE.invalid)).toBeVisible()
+      await expect(desk.getByText(INVITE_PAGE.askForNew)).toBeVisible()
+      await desk.getByRole('link', { name: way, exact: true }).click()
+      await desk.waitForURL((url) => url.pathname === path && url.search === '')
+      await expect(desk.getByLabel(COPY.auth.emailLabel)).toHaveValue('')
+      await expect(desk.getByText(/You're joining/)).toHaveCount(0)
+    }
   })
 
   await ownerContext.close()

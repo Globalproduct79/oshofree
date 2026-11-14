@@ -4,12 +4,16 @@ import { redirect } from 'next/navigation'
 import { clearActiveWorkspace, setActiveWorkspace } from '@/lib/active-workspace'
 import { signOut } from '@/lib/auth'
 import { joinedHref } from '@/lib/invite-join'
-import { acceptInvite } from '@/lib/invitations'
+import { acceptInvite, isMember, validInvite } from '@/lib/invitations'
 import { requireUser } from '@/lib/session'
 
-// "Accept as {name}": the signed-in account joins, and lands on the workspace's home, which says so.
+// "Accept as {name}": the signed-in account joins, and lands on the workspace's home, which says so. Someone
+// already in that workspace (a stale page) is sent back to the invite page, which says so, and the invite is left
+// for whoever it was meant for.
 export async function acceptInviteAction(token: string): Promise<void> {
   const user = await requireUser()
+  const inv = await validInvite(token)
+  if (inv && (await isMember(user.id, inv.workspaceId))) redirect(`/invite/${token}`)
   let workspaceId: string
   try {
     ;({ workspaceId } = await acceptInvite(token, user))

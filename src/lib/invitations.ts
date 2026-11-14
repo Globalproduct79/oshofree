@@ -110,24 +110,42 @@ export async function findInvite(token: string) {
   return db.invitation.findUnique({ where: { token }, include: { workspace: true } })
 }
 
-// An invite its link can still accept (not accepted, revoked or expired), with its workspace; null for any other
-// token. The invite, sign-up and sign-in pages show what it offers; none of them shows the token.
+// The one rule for whether an invite's link can still be accepted: not accepted, not revoked, not expired.
+// `linkState` says it of a row (and which refusal fits); `openLink` is the same rule as the claim's filter.
+type LinkFields = Pick<Invitation, 'acceptedAt' | 'revokedAt' | 'expiresAt'>
+function linkState(inv: LinkFields | null, now: Date): 'open' | 'INVALID' | 'EXPIRED' {
+  if (!inv || inv.acceptedAt || inv.revokedAt) return 'INVALID'
+  return inv.expiresAt.getTime() > now.getTime() ? 'open' : 'EXPIRED'
+}
+const openLink = (now: Date) => ({ acceptedAt: null, revokedAt: null, expiresAt: { gt: now } })
+
+// An invite its link can still accept, with its workspace; null for any other token. The invite, sign-up and
+// sign-in pages show what it offers; none of them shows the token.
 export async function validInvite(token: string) {
   if (!token) return null
   const inv = await findInvite(token)
-  return inv && !inv.acceptedAt && !inv.revokedAt && inv.expiresAt.getTime() > Date.now() ? inv : null
+  return inv && linkState(inv, new Date()) === 'open' ? inv : null
+}
+
+// Already in the workspace: the invite page then offers the workspace instead of taking the invite.
+export async function isMember(userId: string, workspaceId: string): Promise<boolean> {
+  const m = await db.workspaceMember.findUnique({
+    where: { userId_workspaceId: { userId, workspaceId } },
+    select: { userId: true },
+  })
+  return m !== null
 }
 
 export async function acceptInvite(token: string, user: { id: string; email: string }) {
-  const inv = await db.invitation.findUnique({ where: { token } })
-  if (!inv || inv.revokedAt || inv.acceptedAt) throw 'INVALID'
-  if (inv.expiresAt.getTime() <= Date.now()) throw 'EXPIRED'
   const now = new Date()
+  const inv = await db.invitation.findUnique({ where: { token } })
+  const state = linkState(inv, now)
+  if (!inv || state !== 'open') throw state
   await db.$transaction(async (tx) => {
     // The claim is atomic: of two concurrent accepts only one flips acceptedAt. It matches the token it was given
     // too, so a link Resend retired after the lookup above is refused.
     const claimed = await tx.invitation.updateMany({
-      where: { id: inv.id, token, acceptedAt: null, revokedAt: null, expiresAt: { gt: now } },
+      where: { id: inv.id, token, ...openLink(now) },
       data: { acceptedAt: now },
     })
     if (claimed.count !== 1) throw 'INVALID'

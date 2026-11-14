@@ -22,7 +22,8 @@ const campaignHref = (id: string) => `/app/campaigns/${id}`
 // Campaigns home (ADV §1): the greeting (to whoever is signed in), the pills, the campaign that matters most,
 // then the grid.
 // The filter is `?filter=`; one the workspace has no pill for reads as All. `?joined={workspace}` (where an invite
-// lands) toasts whom they joined as, for that workspace only.
+// lands) toasts whom they joined as, for that workspace only, once per tab for this person and workspace (a shared
+// browser where a second person joins the same workspace still tells them).
 type Search = { filter?: string | string[]; [JOINED_PARAM]?: string | string[] }
 
 export default async function CampaignsHome({ searchParams }: { searchParams: Promise<Search> }) {
@@ -42,7 +43,9 @@ export default async function CampaignsHome({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      {joined && <ArrivalToast message={INVITE_PAGE.joined(ws.name, role)} />}
+      {joined && (
+        <ArrivalToast message={INVITE_PAGE.joined(ws.name, role)} param={JOINED_PARAM} onceKey={`joined:${user.id}:${ws.id}`} />
+      )}
       <PageHead
         crumb={[{ label: ws.name }, { label: HOME.crumb }]}
         title={HOME.title(greeting, firstName(user.name))}
