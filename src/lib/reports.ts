@@ -523,14 +523,6 @@ export async function homeNumbers(campaignId: string, now: Date) {
   }
 }
 
-// The slice-1 Sharing table's counts, from workspaceSharing.
-export async function workspaceCampaignShares(
-  workspaceId: string,
-): Promise<{ campaignId: string; shares: number; friendClaims: number }[]> {
-  const { byCampaign } = await workspaceSharing(workspaceId)
-  return byCampaign.map((r) => ({ campaignId: r.id, shares: r.shares, friendClaims: r.sClaims }))
-}
-
 async function timezoneOf(campaignId: string): Promise<string> {
   const c = await db.campaign.findUniqueOrThrow({ where: { id: campaignId }, select: { country: true } })
   return MARKETS[c.country].timezone
@@ -655,8 +647,3 @@ function emptySharing(): Sharing {
 }
 
 export const campaignSharing = (campaignId: string) => sharingFor([campaignId])
-
-export async function workspaceSharingLegacy(workspaceId: string): Promise<Sharing> {
-  const campaigns = await db.campaign.findMany({ where: { workspaceId }, select: { id: true } })
-  return sharingFor(campaigns.map((c) => c.id))
-}

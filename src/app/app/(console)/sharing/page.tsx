@@ -1,81 +1,90 @@
-import Link from 'next/link'
-import { SharingSection } from '@/components/campaign/SharingSection'
-import { Box } from '@/components/console/Section'
-import { PageHead } from '@/components/console/PageHead'
-import { StatusPill } from '@/components/console/StatusPill'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { effectiveStatus } from '@/lib/campaign-status'
-import { COPY } from '@/lib/copy'
-import { db } from '@/lib/db'
-import { num } from '@/lib/format'
-import { workspaceCampaignShares, workspaceSharingLegacy } from '@/lib/reports'
-import { tokens } from '@/lib/tokens'
-import { requireWorkspace } from '@/lib/workspaces'
+import { Box, DataTable, EstimatePanel, HBarList, MetricCard, Steps, TokenChip } from '@/components/og'
+import { PageHead } from '@/components/shell/PageHead'
+import { SHARING } from '@/lib/copy-sharing'
+import { fmt, pct, usd } from '@/lib/format'
+import { MARKETS } from '@/lib/markets'
+import { requireMember } from '@/lib/permissions'
+import { pointsIssued, workspaceSharing } from '@/lib/reports'
 
-const S = COPY.campaign.sharing
+const S = SHARING
 
+// Sharing (ADV §5): totals over every campaign of the workspace, how a share works, the
+// by-campaign table, where people share and the points issued.
 export default async function SharingPage() {
-  const ws = await requireWorkspace()
-  const now = new Date()
-  const [sharing, counts, campaigns] = await Promise.all([
-    workspaceSharingLegacy(ws.id),
-    workspaceCampaignShares(ws.id),
-    db.campaign.findMany({ where: { workspaceId: ws.id } }),
+  const { workspace: ws } = await requireMember('view')
+  const [s, points] = await Promise.all([workspaceSharing(ws.id), pointsIssued(ws.id)])
+  const viral = (s.opens === 0 ? 0 : s.sOpens / s.opens).toFixed(2)
+  const steps = [
+    {
+      title: S.how.shareTitle,
+      body: (
+        <>
+          {S.how.share.before}
+          <TokenChip>{S.how.share.token}</TokenChip>
+          {S.how.share.after}
+        </>
+      ),
+    },
+    {
+      title: S.how.claimTitle,
+      body: (
+        <>
+          {S.how.claim.before}
+          <TokenChip>{S.how.claim.token}</TokenChip>
+          {S.how.claim.after}
+        </>
+      ),
+    },
+    { title: S.how.earnTitle, body: S.how.earn(ws.pointsPerShare) },
+  ]
+  const rows = s.byCampaign.map((c) => [
+    <>
+      <b>{c.name}</b>
+      <br />
+      <small style={{ color: 'var(--ink3)' }}>{`${c.brand} · ${MARKETS[c.country].name}`}</small>
+    </>,
+    fmt(c.shares),
+    fmt(c.sOpens),
+    fmt(c.sClaims),
+    c.viral.toFixed(2),
+    usd(c.rewardCents),
   ])
-  const rows = campaigns
-    .map((c) => {
-      const n = counts.find((r) => r.campaignId === c.id)
-      return { c, shares: n?.shares ?? 0, friendClaims: n?.friendClaims ?? 0 }
-    })
-    .sort((a, b) => b.shares - a.shares || a.c.name.localeCompare(b.c.name))
-  const head = { color: tokens.ink3 }
-  const th = 'h-auto py-2 align-bottom font-medium whitespace-normal'
 
   return (
     <>
-      <PageHead title={COPY.page.sharing.title} subtitle={COPY.page.sharing.subtitle} />
-      {sharing.shares === 0 ? (
-        <p className="text-sm" style={{ color: tokens.ink2 }}>
-          {S.workspaceEmpty}
-        </p>
-      ) : (
-        <SharingSection sharing={sharing} />
-      )}
-      {rows.length > 0 && (
-        <Box>
-          <h3 className="mb-2 text-sm font-semibold" style={{ color: tokens.ink }}>
-            {S.campaigns}
-          </h3>
-          <Table>
-            <TableHeader>
-              <TableRow style={{ borderColor: tokens.line }}>
-                <TableHead className={`${th} pl-0`} style={head}>{S.campaign}</TableHead>
-                <TableHead className={th} style={head}>{S.brand}</TableHead>
-                <TableHead className={th} style={head} />
-                <TableHead className={`${th} text-right`} style={head}>{S.shares}</TableHead>
-                <TableHead className={`${th} pr-0 text-right`} style={head}>{S.friendClaims}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map(({ c, shares, friendClaims }) => (
-                <TableRow key={c.id} className="hover:bg-transparent" style={{ borderColor: tokens.line, color: tokens.ink }}>
-                  <TableCell className="pl-0 font-medium">
-                    <Link href={`/app/campaigns/${c.id}`} className="underline-offset-2 hover:underline">
-                      {c.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{c.brand}</TableCell>
-                  <TableCell>
-                    <StatusPill status={effectiveStatus(c, now)} />
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{num(shares)}</TableCell>
-                  <TableCell className="pr-0 text-right tabular-nums">{num(friendClaims)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Box>
-      )}
+      <PageHead crumb={[{ label: ws.name }, { label: S.growth }, { label: S.crumb }]} title={S.title} lead={S.lead} />
+      <div className="mgrid m4">
+        <MetricCard title={S.kpi.shares.title} value={fmt(s.shares)} sub={S.kpi.shares.sub(s.campaigns)} fill={100} />
+        <MetricCard title={S.kpi.opened.title} value={fmt(s.sOpens)} sub={S.kpi.opened.sub(viral)} fill={100} />
+        <MetricCard title={S.kpi.claimed.title} value={fmt(s.sClaims)} sub={S.kpi.claimed.sub(pct(s.sClaims, s.sOpens))} fill={100} />
+        <MetricCard title={S.kpi.rewards.title} value={usd(s.rewardCents)} sub={S.kpi.rewards.sub} fill={100} />
+      </div>
+      <div className="two">
+        <div>
+          <Box title={S.how.title} sub={S.how.sub}>
+            <Steps steps={steps} />
+          </Box>
+          <Box title={S.byCampaign.title}>
+            <DataTable
+              head={S.byCampaign.head}
+              rows={rows}
+              emptyText=""
+              align={[undefined, 'right', 'right', 'right', 'right', 'right']}
+              rowHref={(i) => `/app/campaigns/${s.byCampaign[i].id}`}
+            />
+          </Box>
+        </div>
+        <div>
+          <Box title={S.where.title} sub={S.where.sub}>
+            {s.shares > 0 && (
+              <HBarList rows={s.channels.map((c) => ({ label: c.label, value: c.count, display: `${c.pct.toFixed(1)}%` }))} />
+            )}
+          </Box>
+          <Box title={S.points.title}>
+            <EstimatePanel label={S.points.label} big={fmt(points)} note={S.points.note(ws.pointsPerShare)} />
+          </Box>
+        </div>
+      </div>
     </>
   )
 }

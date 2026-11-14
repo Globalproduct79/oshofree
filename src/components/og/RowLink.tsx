@@ -8,6 +8,7 @@ export function RowLink({ href, children }: { href: string; children: React.Reac
   return (
     <tr
       className="row"
+      data-href={href}
       tabIndex={0}
       onClick={() => router.push(href)}
       onKeyDown={(e) => {

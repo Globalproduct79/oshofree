@@ -14,9 +14,7 @@ import {
   pointsIssued,
   rewardsLedgerRows,
   settlementByMarket,
-  workspaceCampaignShares,
   workspaceSharing,
-  workspaceSharingLegacy,
 } from '@/lib/reports'
 
 // Lagos is UTC+1 and Nairobi UTC+3, so 23:30 UTC is already tomorrow in both.
@@ -390,16 +388,11 @@ describe('platform', () => {
 })
 
 describe('slice-1 exports kept for the old pages', () => {
-  it('homeNumbers and workspaceCampaignShares read the new metrics', async () => {
-    const { kola, a, b, c } = await world()
+  it('homeNumbers reads the new metrics', async () => {
+    const { a } = await world()
     expect(await homeNumbers(a.id, NOW)).toEqual({
       impressions: 10, impressionsToday: 7, uniqueLinkOpens: 10, shares: 7, claims: 2 + 8, daysElapsed: 7, daysTotal: 14,
     })
-    expect(await workspaceCampaignShares(kola.id)).toEqual([
-      { campaignId: a.id, shares: 7, friendClaims: 8 },
-      { campaignId: b.id, shares: 3, friendClaims: 1 },
-      { campaignId: c.id, shares: 0, friendClaims: 0 },
-    ])
   })
 
   const NOW1 = new Date('2026-12-03T12:00:00Z')
@@ -432,11 +425,10 @@ describe('slice-1 exports kept for the old pages', () => {
   })
 
   it('reports sharing by channel and by medium', async () => {
-    const { campaign, ws } = await slice1Fixture()
+    const { campaign } = await slice1Fixture()
     const s = await campaignSharing(campaign.id)
     expect(s).toMatchObject({ shares: 3, friendOpens: 1, friendClaims: 1, detailsLeft: 1, deepestChain: 2 })
     expect(s.byMedium.map((m) => m.via).sort()).toEqual(['sms', 'unknown', 'whatsapp'])
-    expect(await workspaceSharingLegacy(ws.id)).toEqual(s)
   })
 
   it('zero-fills the daily series in the market timezone', async () => {
