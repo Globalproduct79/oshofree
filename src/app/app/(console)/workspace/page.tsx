@@ -50,7 +50,9 @@ export default async function WorkspacePage() {
               {brands.map((b) => (
                 <p key={b.brand}>{b.brand} · {COPY.workspace.clientCount(b.campaigns)}</p>
               ))}
-              <LinkButton href="/app/campaigns/new?brand=&focus=brand">{COPY.workspace.addClient}</LinkButton>
+              {can(role, 'campaigns') && (
+                <LinkButton href="/app/campaigns/new?brand=&focus=brand">{COPY.workspace.addClient}</LinkButton>
+              )}
             </Box>
           )}
         </div>

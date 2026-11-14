@@ -316,6 +316,21 @@ describe('the two new pages', () => {
   })
 })
 
+describe('Workspace', () => {
+  it("offers an agency's Add client brand only to those who can create campaigns", async () => {
+    const w = await world()
+    await db.workspace.update({ where: { id: w.ws.id }, data: { type: 'Agency' } })
+    signIn(w.owner, w.ws.id)
+    expect(await render(WorkspacePage())).toContain('href="/app/campaigns/new?brand=&amp;focus=brand"')
+    signIn(await member(w, 'Manager'), w.ws.id)
+    expect(await render(WorkspacePage())).toContain('href="/app/campaigns/new?brand=&amp;focus=brand"')
+    signIn(await member(w, 'Viewer'), w.ws.id)
+    const viewer = await render(WorkspacePage())
+    expect(viewer).toContain('Client workspaces')
+    expect(viewer).not.toContain('/app/campaigns/new')
+  })
+})
+
 describe('empty states', () => {
   it('Sharing and Rewards, before any campaign, say what is missing and link to New campaign', async () => {
     const w = await world({ empty: true })
