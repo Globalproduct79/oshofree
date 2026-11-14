@@ -1,4 +1,5 @@
 import { Banner } from '@/components/shell/Banner'
+import { Palette } from '@/components/shell/Palette'
 import { Sidebar } from '@/components/shell/Sidebar'
 import { Toaster } from '@/components/shell/Toast'
 import { TopBar } from '@/components/shell/TopBar'
@@ -30,6 +31,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <Banner kind="global" />
         <main className="wrap">{children}</main>
       </div>
+      <Palette mode="platform" />
       <Toaster />
     </div>
   )

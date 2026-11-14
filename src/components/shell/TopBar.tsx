@@ -5,15 +5,13 @@ import { useEffect, useRef, useState } from 'react'
 import type { SwitcherItem } from '@/lib/active-workspace'
 import { SHELL } from '@/lib/copy-shell'
 import { tokens } from '@/lib/tokens'
+import { openPalette } from './palette-store'
 import { BellPanel, type BellItem } from './BellPanel'
 import { setDrawer, SIDEBAR_ID, useDrawer } from './Sidebar'
 import { Switcher } from './Switcher'
 
 type Popover = 'bell' | 'switcher'
 const PANEL_ID: Record<Popover, string> = { bell: 'bell-panel', switcher: 'switcher' }
-
-// The search palette arrives in a later task; the button is its hook.
-const openPalette = () => {}
 
 // The topbar (GLB §4.3): menu (below 980 px), search, bell, "Workspaces", avatar + current name.
 export function TopBar({

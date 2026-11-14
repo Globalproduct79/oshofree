@@ -148,3 +148,4 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
   .side, .top, .no-print { display: none !important; }
   .main { margin: 0; }
 }
+.palette input{width:100%;margin-bottom:8px}.palette .h{font-weight:700;color:var(--ink3);font-size:11px;text-transform:uppercase;letter-spacing:.1em;padding:8px 12px 4px}.palette button{display:block;width:100%;text-align:left;border:0;background:none;padding:10px 12px;border-radius:9px;font-size:13px;color:inherit;cursor:pointer}.palette button.on,.palette button:hover{background:var(--bg)}.palette button small{display:block;color:var(--ink3);font-size:11px}.palette .sub{padding:10px 12px;margin:0}

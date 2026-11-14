@@ -14,6 +14,14 @@ export async function switchWorkspaceAction(id: string): Promise<void> {
   redirect('/app')
 }
 
+// The search palette's campaign hit for Global: enter that workspace and land on the page. Only
+// in-app paths are followed.
+export async function switchWorkspaceToAction(id: string, next: string): Promise<void> {
+  await setActiveWorkspace(id)
+  revalidatePath('/', 'layout')
+  redirect(/^\/app(\/[\w-]+)*$/.test(next) ? next : '/app')
+}
+
 // "Platform (Global)" and the banner's "Back to Platform": leave the workspace, land on Review.
 export async function switchToPlatformAction(): Promise<void> {
   await requireAdmin()

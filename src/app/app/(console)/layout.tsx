@@ -1,4 +1,5 @@
 import { Banner, type BannerKind } from '@/components/shell/Banner'
+import { Palette } from '@/components/shell/Palette'
 import { Sidebar } from '@/components/shell/Sidebar'
 import { Toaster } from '@/components/shell/Toast'
 import { TopBar } from '@/components/shell/TopBar'
@@ -51,6 +52,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
         {banner && <Banner kind={banner} workspaceName={workspace.name} reason={workspace.declineReason} />}
         <main className="wrap">{children}</main>
       </div>
+      <Palette mode="workspace" />
       <Toaster />
     </div>
   )

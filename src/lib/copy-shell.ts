@@ -35,7 +35,14 @@ export const SHELL = {
   },
   version: (v: string) => `v${v}`,
   menu: 'Menu',
-  search: { label: 'Search', placeholder: 'Search campaigns, invoices, people…', kbd: '⌘K' },
+  search: {
+    label: 'Search',
+    placeholder: 'Search campaigns, invoices, people…',
+    placeholderGlobal: 'Search workspaces and campaigns…',
+    kbd: '⌘K',
+    empty: 'Nothing matches.',
+    groups: { campaigns: 'Campaigns', invoices: 'Invoices', people: 'People', workspaces: 'Workspaces' },
+  },
   bell: {
     label: 'Notifications',
     title: 'Notifications',
