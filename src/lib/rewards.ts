@@ -207,11 +207,15 @@ export async function sendQueuedPayouts(now = new Date()): Promise<{ sent: numbe
   }, { timeout: 30_000 })
 }
 
-// Global funds the aggregator: a positive whole number of cents, recorded and audited.
+// Global funds the aggregator: a positive whole number of cents, recorded and audited. The balance is a 32-bit
+// integer: a top-up that would take it past that is refused ('TOO_LARGE'), never overflowed into an error.
 export async function topUpAggregator(amountCents: number, byUserId: string, now = new Date()): Promise<{ balanceCents: number }> {
-  if (!Number.isInteger(amountCents) || amountCents <= 0 || amountCents > MAX_INT) throw 'INVALID'
+  if (!(amountCents > 0)) throw 'INVALID'
+  if (amountCents > MAX_INT) throw 'TOO_LARGE'
+  if (!Number.isInteger(amountCents)) throw 'INVALID'
   const { before, after } = await db.$transaction(async (tx) => {
     const balance = await lockedBalance(tx)
+    if (balance + amountCents > MAX_INT) throw 'TOO_LARGE'
     const account = await tx.aggregatorAccount.update({ where: { id: AGGREGATOR_ID }, data: { balanceCents: { increment: amountCents } } })
     await tx.aggregatorTopup.create({ data: { amountCents, byUserId, at: now } })
     return { before: balance, after: account.balanceCents }

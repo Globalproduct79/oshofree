@@ -102,6 +102,16 @@ describe('/admin/rewards', () => {
     expect(html).toContain('Ada Global')
   })
 
+  it('top-up refuses an amount the balance cannot hold, saying so', async () => {
+    await signIn(true)
+    // $21,474,837 is 2,147,483,700 cents: past the balance's ceiling of 2,147,483,647.
+    expect(await topUpAction(21_474_837)).toEqual({ error: 'That top-up is too large.' })
+    await db.aggregatorAccount.create({ data: { id: 'reloadly', balanceCents: 2_147_483_600 } })
+    expect(await topUpAction(1)).toEqual({ error: 'That top-up is too large.' })
+    expect(await db.aggregatorTopup.count()).toBe(0)
+    expect((await db.aggregatorAccount.findUniqueOrThrow({ where: { id: 'reloadly' } })).balanceCents).toBe(2_147_483_600)
+  })
+
   it('a fraud toggle persists and audits', async () => {
     const admin = await signIn(true)
     expect(await setFraudRuleAction('same_device', false)).toHaveProperty('toast')

@@ -9,7 +9,7 @@ import { db, type Tx } from '@/lib/db'
 import { daysLeft } from '@/lib/format'
 import { mintRootLink } from '@/lib/links'
 import { isCountry, MARKETS, type Country } from '@/lib/markets'
-import { campaignSpendCents, canSubmitBudget, COMMITTED, creditSummary } from '@/lib/money'
+import { campaignSpendCents, canSubmitBudget, COMMITTED, creditSummary, MAX_LIMIT_CENTS } from '@/lib/money'
 import { notifyGlobal, notifyWorkspace } from '@/lib/notifications'
 import { currentCpmCents, currentFx } from '@/lib/rates'
 
@@ -369,11 +369,14 @@ export type ChangeWithoutReview = { budgetUsd?: number; endsAt?: Date; rewardLoc
 // Money and timing (ADV §2 "Change without review"), applied at once whatever the status, except
 // ended and rejected. The budget cannot drop below spend; an increase must fit under the credit limit
 // (a draft's budget is not in use yet); the end must be after the start and not already past.
+// No budget may be larger than the largest credit limit ('TOO_LARGE'): a draft's is held against no
+// credit, so that ceiling is what keeps it inside its column instead of overflowing into an error.
 export async function changeWithoutReview(
   id: string, byUserId: string, change: ChangeWithoutReview, now = new Date(),
 ): Promise<Campaign> {
   const { budgetUsd, endsAt, rewardLocal } = change
   if (budgetUsd !== undefined && !isCount(budgetUsd)) throw 'INVALID'
+  if (budgetUsd !== undefined && toCents(budgetUsd) > MAX_LIMIT_CENTS) throw 'TOO_LARGE'
   if (rewardLocal !== undefined && !isCount(rewardLocal)) throw 'INVALID'
   if (endsAt !== undefined && !isDate(endsAt)) throw 'INVALID'
   const { campaign: c } = await load(id)

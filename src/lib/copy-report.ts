@@ -78,6 +78,8 @@ export const CAMPAIGN_COPY = {
     // Refusals the prototype never reached: it checked neither the dates nor the numbers.
     endBeforeStart: 'The end date must be after the start and after today.',
     invalid: 'Use whole numbers for the budget and reward, and a real end date.',
+    // The credit limit's sibling (ADVERTISERS.errors.tooLarge): past the largest limit a workspace can have.
+    budgetTooLarge: 'That budget is too large.',
   },
   offer: {
     title: 'The offer',

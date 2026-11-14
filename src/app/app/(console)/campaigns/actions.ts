@@ -192,6 +192,7 @@ const numberOf = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'stri
 
 function changeRefusal(e: unknown): string {
   if (e === 'BUDGET_BELOW_SPEND') return CAMPAIGN.budgetBelowSpend
+  if (e === 'TOO_LARGE') return C.budgetTooLarge
   if (isCreditLimit(e)) return CAMPAIGN.overCredit(e.limitCents)
   if (e === 'END_BEFORE_START') return C.endBeforeStart
   if (e === 'INVALID') return C.invalid

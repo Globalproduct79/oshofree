@@ -25,6 +25,8 @@ export const REWARDS_LEDGER = {
   topUpToast: 'Aggregator topped up',
   // Controller's additions.
   invalidAmount: 'Enter an amount above zero.',
+  // The balance is capped at what its column holds ($21,474,836.47).
+  topUpTooLarge: 'That top-up is too large.',
   recentTitle: 'Recent top-ups',
   recentEmpty: 'No top-ups yet.',
   fraudTitle: 'Fraud checks',

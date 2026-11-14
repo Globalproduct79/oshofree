@@ -439,6 +439,16 @@ describe('Change without review', () => {
     })
   })
 
+  it("refuses a draft's budget too large to store, and changes nothing", async () => {
+    const { ws } = await setup()
+    const c = await mkCampaign(ws.id, 'draft')
+    clock('2026-11-14T08:00:00Z')
+    expect(await changeWithoutReviewAction(c.id, { budgetUsd: '3000000000', endsAt: '2026-11-22', rewardLocal: 50 })).toEqual({
+      error: 'That budget is too large.',
+    })
+    expect((await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).budgetUsd).toBe(300)
+  })
+
   it('refuses an end date before the start or already past, and a rejected or ended campaign', async () => {
     const { ws } = await setup()
     const c = await mkCampaign(ws.id, 'live')

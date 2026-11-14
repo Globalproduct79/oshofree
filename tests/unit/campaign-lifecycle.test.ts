@@ -291,6 +291,17 @@ describe('changeWithoutReview', () => {
     await expect(changeWithoutReview(c.id, owner.id, { endsAt: days(-1) }, NOW)).rejects.toBe('END_BEFORE_START')
   })
 
+  it('refuses a budget past the largest credit limit, on a draft too (its budget is not held against credit)', async () => {
+    const { owner, ws } = await world()
+    const c = await campaign(ws.id, { status: 'draft' })
+    // The credit limit's ceiling: 2,147,483,647 cents.
+    for (const budgetUsd of [21_474_837, 3_000_000_000]) {
+      await expect(changeWithoutReview(c.id, owner.id, { budgetUsd }, NOW)).rejects.toBe('TOO_LARGE')
+    }
+    expect((await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).budgetUsd).toBe(300)
+    expect((await changeWithoutReview(c.id, owner.id, { budgetUsd: 21_474_836 }, NOW)).budgetUsd).toBe(21_474_836)
+  })
+
   it('refuses a negative reward', async () => {
     const { owner, ws } = await world()
     const c = await campaign(ws.id)

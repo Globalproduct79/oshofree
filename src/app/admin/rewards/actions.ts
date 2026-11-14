@@ -16,6 +16,7 @@ export async function topUpAction(dollars: unknown): Promise<Result> {
     await topUpAggregator(dollars * 100, admin.id)
   } catch (e) {
     if (e === 'INVALID') return { error: R.invalidAmount }
+    if (e === 'TOO_LARGE') return { error: R.topUpTooLarge }
     throw e
   }
   revalidatePath(PATH)

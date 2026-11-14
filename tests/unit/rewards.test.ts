@@ -277,6 +277,23 @@ describe('the aggregator', () => {
   })
 })
 
+describe('the aggregator balance', () => {
+  const MAX = 2_147_483_647
+
+  it('refuses a top-up that would take the balance past what it holds, and changes nothing', async () => {
+    const w = await world()
+    await topUpAggregator(MAX - 10, w.user.id)
+    await expect(topUpAggregator(11, w.user.id)).rejects.toBe('TOO_LARGE')
+    await expect(topUpAggregator(MAX + 1, w.user.id)).rejects.toBe('TOO_LARGE')
+    await expect(topUpAggregator(Number.POSITIVE_INFINITY, w.user.id)).rejects.toBe('TOO_LARGE')
+    expect(await balance()).toBe(MAX - 10)
+    expect(await db.aggregatorTopup.count()).toBe(1)
+    expect(await db.auditEvent.count({ where: { action: 'aggregator.topup' } })).toBe(1)
+    await topUpAggregator(10, w.user.id)
+    expect(await balance()).toBe(MAX)
+  })
+})
+
 describe("a friend's claim on the landing page", () => {
   const params = (code: string) => ({ params: Promise.resolve({ code }) })
   const claim = (code: string, visitor: string) =>
