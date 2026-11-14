@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test'
 import { COPY } from '@/lib/copy'
+import { ACTIVITY, SHARERS } from '@/lib/copy-activity'
 import { STATUS_LABEL } from '@/lib/copy-components'
 import { HOME } from '@/lib/copy-home'
 import { NOTIFY } from '@/lib/copy-notifications'
 import { CAMPAIGN_COPY } from '@/lib/copy-report'
 import { REVIEW } from '@/lib/copy-review'
+import { REWARDS_LEDGER } from '@/lib/copy-rewards-ledger'
 import { SHELL } from '@/lib/copy-shell'
 import {
   ADMIN, approveCampaign, box, CAMPAIGN_PAGE, expectToast, metricValue, signIn, submitCampaign, type NewCampaign,
@@ -12,7 +14,9 @@ import {
 
 // The loop you can show: a brand signs up, Global approves it and its offer, a Phoenix user shares
 // the offer from the wall, a friend claims it and asks for a link of their own, and the brand's
-// campaign page counts every step. Runs against the seeded oshofree_test database (npm run test:e2e).
+// campaign page counts every step and lists each one in Recent activity; the Sharing page opens the
+// sharer's row to the chain, and Global's held reward links to its line. Runs against the seeded
+// oshofree_test database (npm run test:e2e).
 
 const BRAND = { name: 'Nkem Brand', email: 'new@brand.demo', password: 'password123' }
 const WORKSPACE = 'Brand Demo'
@@ -126,6 +130,53 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
     await expect(metricValue(brand, S.shares, sharing)).toHaveText('2')
     await expect(metricValue(brand, S.friendsOpened, sharing)).toHaveText('1')
     await expect(metricValue(brand, S.friendsClaimed, sharing)).toHaveText('1')
+  })
+
+  // The wall's session is a UUID: its sharer reads "Phoenix user ••" and the session's last four characters.
+  const SHARER = 'Phoenix user ••[0-9a-f]{4}'
+  const WHEN = ' · \\d{1,2} \\w{3}, \\d\\d:\\d\\d'
+  const line = (what: string) => new RegExp(`^${what}${WHEN}$`)
+  await test.step("Recent activity lists every step, newest first: the friend's claim attributed to the sharer, the held reward and why", async () => {
+    const activity = box(brand, ACTIVITY.title)
+    const lines = activity.getByRole('listitem')
+    const expected = [
+      line(`\\+234 80• ••• 4567 shared via WhatsApp \\(friend of ${SHARER}\\)`),
+      line(`\\d+ points for ${SHARER}`),
+      line(`₦[\\d,]+ airtime for ${SHARER} held — ${REWARDS_LEDGER.reasons.no_phone}`),
+      line(`A friend of ${SHARER} took claim code PHX-••••`),
+      line(`A friend of ${SHARER} opened the offer`),
+      line(`${SHARER} shared via WhatsApp`),
+      line('A Phoenix user opened the offer'),
+      new RegExp(`^1 impression from Phoenix · \\d{1,2} \\w{3}, \\d\\d:00–\\d\\d:00$`),
+    ]
+    await expect(lines).toHaveCount(expected.length)
+    const texts = await lines.allTextContents()
+    expected.forEach((re, i) => expect(texts[i]).toMatch(re))
+    // The ids behind a line are its tooltip only: the claim's event, the payout it is keyed by and the friend's code.
+    expect(await lines.nth(3).getAttribute('title')).toMatch(/^\w+ · \w+ · \w+$/)
+    expect(texts.join(' ')).not.toContain('8031234567')
+  })
+
+  await test.step("the Sharing page opens the sharer's row to the chain: the friend's open, their claim and its reward", async () => {
+    await brand.goto('/app/sharing')
+    const sharers = box(brand, SHARERS.title)
+    // The wall's sharer, not the friend whose row says "friend of" them.
+    const row = sharers.locator('details').filter({ has: brand.locator('summary .ph', { hasText: new RegExp(`^${SHARER}$`) }) })
+    await expect(row.locator('summary')).toContainText(SHARERS.counts(1, 1))
+    await row.locator('summary').click()
+    await expect(row.getByRole('listitem').filter({ hasText: `${SHARERS.friendClaim.code}, ` })).toContainText(REWARDS_LEDGER.reasons.no_phone)
+    await expect(row.getByRole('listitem').filter({ hasText: SHARERS.friendOpen })).toBeVisible()
+    await expect(row.getByRole('listitem').filter({ hasText: '+234 80• ••• 4567, a friend, got a link of their own and shared it via WhatsApp' })).toBeVisible()
+  })
+
+  await test.step("Global's held reward links into the brand's workspace, to its line in Recent activity", async () => {
+    await admin.goto('/admin/rewards')
+    const held = box(admin, REWARDS_LEDGER.heldTitle)
+    await held.getByRole('link', { name: OFFER.name }).click()
+    await admin.waitForURL(/\/app\/campaigns\/[^/?]+\?line=reward-\w+$/)
+    const lit = box(admin, ACTIVITY.title).locator('li[aria-current="true"]')
+    await expect(lit).toHaveText(line(`₦[\\d,]+ airtime for ${SHARER} held — ${REWARDS_LEDGER.reasons.no_phone}`))
+    await expect(lit).toBeInViewport()
   })
 
   await test.step('an unknown link answers 410 Gone', async () => {
