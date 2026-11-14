@@ -1,37 +1,40 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useFormStatus } from 'react-dom'
 import { pause, resume } from '@/app/app/(console)/campaigns/actions'
-import { Button } from '@/components/ui/button'
-import { COPY } from '@/lib/copy'
-import { tokens } from '@/lib/tokens'
+import { Button, type ButtonSize } from '@/components/og/Button'
+import { toast } from '@/components/shell/toast-store'
+import { CAMPAIGN } from '@/lib/copy-campaign'
+import { HOME } from '@/lib/copy-home'
 
-// Pause a live campaign or resume a paused one, then redraw the page from the server.
-export function PauseResume({ id, status }: { id: string; status: 'live' | 'paused' }) {
-  const router = useRouter()
-  const [pending, start] = useTransition()
-  const [error, setError] = useState<string | null>(null)
+type Running = 'live' | 'paused'
 
-  function run() {
-    start(async () => {
-      const res = await (status === 'live' ? pause : resume)(id)
-      if ('error' in res) return setError(res.error)
-      setError(null)
-      router.refresh()
-    })
-  }
+// Pause a live campaign or resume a paused one, then say what happened (ADV §1 "Interactions", §2). A
+// refusal, such as resuming over the credit limit, is the toast and nothing changes. The action
+// revalidates /app and the campaign page, so the page redraws with the other button and the new note.
+export async function pauseOrResume(id: string, status: Running): Promise<void> {
+  const res = status === 'live' ? await pause(id) : await resume(id)
+  toast('error' in res ? res.error : status === 'live' ? CAMPAIGN.paused : CAMPAIGN.resumed)
+}
 
+function Submit({ status, size }: { status: Running; size?: ButtonSize }) {
+  const { pending } = useFormStatus()
+  return status === 'live' ? (
+    <Button type="submit" variant="ghost" size={size} disabled={pending}>
+      {HOME.pause}
+    </Button>
+  ) : (
+    <Button type="submit" variant="primary" size={size} disabled={pending}>
+      {HOME.resume}
+    </Button>
+  )
+}
+
+// Pause (white) or Resume (orange): large on the home hero, regular in the campaign page's head.
+export function PauseResume({ id, status, size }: { id: string; status: Running; size?: ButtonSize }) {
   return (
-    <span className="inline-flex flex-col items-start gap-1">
-      <Button type="button" variant="outline" size="lg" className="px-4" disabled={pending} onClick={run}>
-        {status === 'live' ? COPY.campaign.pause : COPY.campaign.resume}
-      </Button>
-      {error && (
-        <span role="alert" className="text-xs" style={{ color: tokens.red }}>
-          {error}
-        </span>
-      )}
-    </span>
+    <form action={() => pauseOrResume(id, status)}>
+      <Submit status={status} size={size} />
+    </form>
   )
 }

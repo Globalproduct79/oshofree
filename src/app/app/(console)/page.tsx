@@ -1,5 +1,5 @@
-import { HeroPauseResume } from '@/components/campaign/HeroPauseResume'
 import { HomeFilterPills } from '@/components/campaign/HomeFilterPills'
+import { PauseResume } from '@/components/campaign/PauseResume'
 import { CampaignCard, EmptyState, HeroCampaignCard, LinkButton, NewCampaignTile } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { homePills, parseHomeFilter, pillShown, sectionTitle } from '@/lib/campaign-filters'
@@ -46,7 +46,7 @@ export default async function CampaignsHome({ searchParams }: { searchParams: Pr
       {hero && (
         <HeroCampaignCard model={hero.model}>
           {canAct && (hero.status === 'live' || hero.status === 'paused') && (
-            <HeroPauseResume id={hero.id} status={hero.status} />
+            <PauseResume id={hero.id} status={hero.status} size="lg" />
           )}
           <LinkButton variant="dark" size="lg" href={campaignHref(hero.id)}>
             {HOME.open}

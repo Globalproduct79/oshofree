@@ -6,16 +6,18 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 // The prototype's `.modal` with what it lacked (D12): Escape closes, focus stays inside while open
-// and goes back to whatever opened it. A click on the backdrop closes it.
+// and goes back to whatever opened it. A click on the backdrop closes it. `narrow` is for a confirm.
 export function Modal({
   open,
   onClose,
   title,
+  narrow,
   children,
 }: {
   open: boolean
   onClose: () => void
   title: string
+  narrow?: boolean
   children: React.ReactNode
 }) {
   const panel = useRef<HTMLDivElement>(null)
@@ -70,7 +72,7 @@ export function Modal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="in" ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+      <div className={narrow ? 'in narrow' : 'in'} ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <h3 id={titleId}>{title}</h3>
         {children}
       </div>

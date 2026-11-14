@@ -4,15 +4,17 @@ import type { Campaign, Workspace } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import { audit } from '@/lib/audit'
 import {
-  ageGated, campaignDates, checkCampaign, REVISION_TERMS, ruleContext, type CampaignInput, type FormEdit,
+  ageGated, campaignDates, checkCampaign, isRealDay, localMidnight, REVISION_TERMS, ruleContext, type CampaignInput,
+  type FormEdit,
 } from '@/lib/campaign-schema'
 import {
-  createCampaign, editOffer, isCreditLimit, pauseCampaign, resumeCampaign, RUNNING, submitCampaign,
-  type CampaignEdit, type OfferFields,
+  changeWithoutReview, createCampaign, editOffer, endCampaign, isCreditLimit, pauseCampaign, resumeCampaign, RUNNING,
+  submitCampaign, type CampaignEdit, type ChangeWithoutReview, type OfferFields,
 } from '@/lib/campaigns'
 import { CAMPAIGN } from '@/lib/copy-campaign'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { MONEY } from '@/lib/copy-money'
+import { CAMPAIGN_COPY } from '@/lib/copy-report'
 import { db } from '@/lib/db'
 import { isCountry, MARKETS, type Country } from '@/lib/markets'
 import { campaignSpendCents, COMMITTED, creditSummary } from '@/lib/money'
@@ -21,14 +23,21 @@ import { requireMember, type Member } from '@/lib/permissions'
 import type { PreviewOffer } from '@/lib/preview-merge'
 
 type Failure = { error: string }
+type Done = { ok: true; toast: string }
 
 const campaignPath = (id: string) => `/app/campaigns/${id}`
 const target = (c: Pick<Campaign, 'id' | 'workspaceId'>) => ({ type: 'Campaign', id: c.id, workspaceId: c.workspaceId })
 
 // Global acting inside a workspace leaves a trail; members' own changes are their workspace's business.
-async function auditGlobal(m: Member, action: string, c: Pick<Campaign, 'id' | 'workspaceId'>, after?: Record<string, string | boolean>) {
+async function auditGlobal(
+  m: Member, action: string, c: Pick<Campaign, 'id' | 'workspaceId'>, after?: Record<string, string | number | boolean>,
+) {
   if (m.role === 'Global') await audit(m.user.id, action, target(c), undefined, after)
 }
+
+// A campaign of the session's workspace; the client never names a workspace.
+const ownCampaign = (m: Member, id: unknown) =>
+  typeof id === 'string' ? db.campaign.findFirst({ where: { id, workspaceId: m.workspace.id } }) : null
 
 // The lifecycle's refusals as the form says them; anything else is a bug and stays a server error.
 function refusal(e: unknown, country: Country): string {
@@ -99,7 +108,7 @@ function offerOf(i: CampaignInput, c: Campaign): OfferFields {
 export async function editOfferAction(id: unknown, input: unknown): Promise<{ revision: boolean } | Failure> {
   const m = await requireMember('campaigns')
   const { user, workspace: ws } = m
-  const c = typeof id === 'string' ? await db.campaign.findFirst({ where: { id, workspaceId: ws.id } }) : null
+  const c = await ownCampaign(m, id)
   if (!c) return { error: F.errors.notFound }
   if (ws.status === 'declined') return { error: F.errors.workspaceDeclined }
   const running = RUNNING.includes(c.status)
@@ -143,7 +152,7 @@ async function change(
   overCredit?: string,
 ): Promise<{ ok: true } | Failure> {
   const m = await requireMember('campaigns')
-  const row = typeof id === 'string' ? await db.campaign.findFirst({ where: { id, workspaceId: m.workspace.id } }) : null
+  const row = await ownCampaign(m, id)
   if (!row) return { error: F.errors.notFound }
   try {
     await apply(row.id, m.user.id)
@@ -171,4 +180,72 @@ export async function resume(id: string) {
 export async function previewOffers(country: unknown): Promise<PreviewOffer[]> {
   await requireMember('view')
   return isCountry(country) ? previewOffersFor(country, new Date()) : []
+}
+
+// ---- Change without review and End campaign now (ADV §2) ----
+
+const C = CAMPAIGN_COPY.change
+
+// The form sends strings; a blank field is not a number.
+const numberOf = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : Number.NaN)
+
+function changeRefusal(e: unknown): string {
+  if (e === 'BUDGET_BELOW_SPEND') return CAMPAIGN.budgetBelowSpend
+  if (isCreditLimit(e)) return CAMPAIGN.overCredit(e.limitCents)
+  if (e === 'END_BEFORE_START') return C.endBeforeStart
+  if (e === 'INVALID') return C.invalid
+  if (e === 'INVALID_TRANSITION') return F.errors.invalidTransition
+  if (e === 'NOT_FOUND') return F.errors.notFound
+  throw e
+}
+
+// Budget (whole USD), end date (the market-local 'YYYY-MM-DD' the campaign stops at, as the form
+// shows it) and share reward (whole local units), applied at once without review. Only the fields
+// that differ from the campaign are sent, so an untouched one is never judged again (a budget that
+// spend has since reached, an end date that has since passed).
+export async function changeWithoutReviewAction(id: unknown, input: unknown): Promise<Done | Failure> {
+  const m = await requireMember('campaigns')
+  const c = await ownCampaign(m, id)
+  if (!c) return { error: F.errors.notFound }
+  const sent = record(input)
+  if (typeof sent.endsAt !== 'string' || !isRealDay(sent.endsAt)) return { error: C.invalid }
+  const budgetUsd = numberOf(sent.budgetUsd)
+  const rewardLocal = numberOf(sent.rewardLocal)
+  const endsAt = localMidnight(sent.endsAt, c.country)
+  const change: ChangeWithoutReview = {
+    ...(budgetUsd !== c.budgetUsd && { budgetUsd }),
+    ...(endsAt.getTime() !== c.endsAt.getTime() && { endsAt }),
+    ...(rewardLocal !== c.rewardLocal && { rewardLocal }),
+  }
+  try {
+    await changeWithoutReview(c.id, m.user.id, change, new Date())
+  } catch (e) {
+    return { error: changeRefusal(e) }
+  }
+  await auditGlobal(m, 'campaign.change', c, {
+    ...(change.budgetUsd !== undefined && { budgetUsd: change.budgetUsd }),
+    ...(change.endsAt !== undefined && { endsAt: change.endsAt.toISOString() }),
+    ...(change.rewardLocal !== undefined && { rewardLocal: change.rewardLocal }),
+  })
+  revalidatePath('/app')
+  revalidatePath(campaignPath(c.id))
+  return { ok: true, toast: CAMPAIGN.saved }
+}
+
+// A live or paused campaign ends now; what it had not spent stops counting as credit in use.
+export async function endCampaignAction(id: unknown): Promise<Done | Failure> {
+  const m = await requireMember('campaigns')
+  const c = await ownCampaign(m, id)
+  if (!c) return { error: F.errors.notFound }
+  let releasedCents: number
+  try {
+    ;({ releasedCents } = await endCampaign(c.id, m.user.id, new Date()))
+  } catch (e) {
+    if (e === 'INVALID_TRANSITION') return { error: F.errors.invalidTransition }
+    throw e
+  }
+  await auditGlobal(m, 'campaign.end', c, { status: 'ended', releasedCents })
+  revalidatePath('/app')
+  revalidatePath(campaignPath(c.id))
+  return { ok: true, toast: CAMPAIGN.ended(releasedCents) }
 }

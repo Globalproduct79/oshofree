@@ -128,7 +128,7 @@ function offsetMs(timeZone: string, at: number): number {
 }
 
 // The UTC instant of local midnight on `ymd` in the market.
-function localMidnight(ymd: string, country: Country): Date {
+export function localMidnight(ymd: string, country: Country): Date {
   const guess = Date.parse(`${ymd}T00:00:00.000Z`)
   return new Date(guess - offsetMs(MARKETS[country].timezone, guess))
 }

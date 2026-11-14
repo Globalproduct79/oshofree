@@ -1,33 +1,111 @@
+import type { RedeemMethod } from '@prisma/client'
+
 // The campaign page and the Phoenix preview, split out of copy.ts. Reached through COPY.campaign/preview.
 
 // Channel facts carry the channel's short name: "Saw on Phoenix", not "Saw on Phoenix Browser".
 const CHANNELS: Record<string, string> = { phoenix: 'Phoenix', boomplay: 'Boomplay' }
 
+// The campaign page (ADV §2), verbatim. Ours, and marked so: the rejected chart sub-line (spec §6.8),
+// the revision status lines (spec §6.14.3), the End now confirm's buttons, the refusals the prototype
+// never had, and the History box.
 export const CAMPAIGN_COPY = {
-  pause: 'Pause',
-  resume: 'Resume',
-  editAndResubmit: 'Edit and resubmit',
-  editDraft: 'Edit draft',
-  rejected: (reason: string) => `Global sent this back: ${reason.trim().replace(/[.!?]+$/, '')}.`,
+  crumb: 'Campaigns',
+  // "Kola Bright · Nigeria · Featured tile · 7 Nov – 21 Nov"
+  lead: (brand: string, country: string, placement: string, start: string, end: string) =>
+    `${brand} · ${country} · ${placement} · ${start} – ${end}`,
+  seeOnPhoenix: 'See it on Phoenix',
+  back: '← Campaigns',
+  status: {
+    review: 'Global usually decides within one working day',
+    // After the badge, which says the status word: "Live · a revised offer is in review".
+    revisionInReview: '· a revised offer is in review',
+    revisionRejected: (reason: string) => (reason ? `· revised offer not approved: ${reason}` : '· revised offer not approved'),
+  },
+  kpi: {
+    impressions: 'Impressions',
+    today: (n: string) => `${n} today`,
+    openRate: 'Open rate',
+    opened: (n: string) => `${n} opened`,
+    claims: { code: 'Claim codes', link: 'Clicks to you' } satisfies Record<RedeemMethod, string>,
+    // Spend (rewards included) ÷ claims, in dollars and cents.
+    each: (dollars: string) => `$${dollars} each`,
+    none: '—',
+    spent: 'Spent',
+    spentOf: (budget: string, rewards: string) => `of ${budget} · ${rewards} in rewards`,
+  },
   daily: {
-    title: 'Last 14 days',
-    saw: 'Saw on Phoenix',
-    opened: 'Opened via link',
-    claimedOnChannel: 'Claimed on Phoenix',
-    claimedViaLink: 'Claimed via link',
+    title: 'Impressions per day',
+    left: (left: string, days: number) => `${left} left over ${days} days.`,
+    paused: 'Paused — not delivering.',
+    review: 'Starts once approved.',
+    scheduled: 'Scheduled.',
+    ended: 'Finished.',
+    // The prototype fell through to "Scheduled." here (D6).
+    rejected: 'Not approved.',
   },
   funnel: {
-    title: 'Funnel',
-    subtitle: 'Facts from the channel say “on Phoenix”. Facts OshoFree counted itself say “via link”.',
-    empty: 'The funnel starts once Global approves the campaign and it goes live on Phoenix.',
-    saw: (ch: string) => `Saw on ${ch}`,
-    opened: (ch: string) => `Opened on ${ch}`,
-    claimed: 'Claimed',
-    claimedParts: (ch: string, onChannel: string, viaLink: string) => `${onChannel} on ${ch} · ${viaLink} via link`,
-    shared: 'Shared',
-    friendOpened: 'Friend opened via link',
-    friendClaimed: 'Friend claimed via link',
+    title: 'What consumers did',
+    saw: 'Saw the card',
+    opened: 'Opened it',
+    claimed: { code: 'Took a claim code', link: 'Clicked to your site' } satisfies Record<RedeemMethod, string>,
+    shared: 'Shared it',
+    friendClaimed: 'Friend claimed',
   },
+  sharingBox: {
+    title: 'Sharing',
+    // "A sharer earns ₦50 airtime and 10 points …"
+    sub: (reward: string, points: number, capPct: number) =>
+      `A sharer earns ${reward} airtime and ${points} points when a friend opens their link and claims. Capped at ${capPct}% of budget.`,
+    shares: 'Shares',
+    fromOpens: (n: string) => `from ${n} opens`,
+    friendsOpened: 'Friends opened',
+    viral: (v: string) => `viral coefficient ${v}`,
+    friendsClaimed: 'Friends claimed',
+    ofOpens: (p: string) => `${p} of opens`,
+    rewardsPaid: 'Rewards paid',
+    airtime: (local: string) => `${local} airtime`,
+    where: 'Where it was shared',
+    top: 'Top sharers (anonymised)',
+  },
+  change: {
+    title: 'Change without review',
+    sub: 'Money and timing. Applied within 15 minutes.',
+    budget: 'Budget (USD)',
+    endDate: 'End date',
+    reward: (currency: string) => `Share reward (${currency} airtime per successful share)`,
+    save: 'Save changes',
+    end: 'End campaign now',
+    // The styled confirm (spec §6.3) asks CAMPAIGN.endConfirm; its buttons are ours.
+    endConfirm: 'End now',
+    cancel: 'Cancel',
+    // Refusals the prototype never reached: it checked neither the dates nor the numbers.
+    endBeforeStart: 'The end date must be after the start and after today.',
+    invalid: 'Use whole numbers for the budget and reward, and a real end date.',
+  },
+  offer: {
+    title: 'The offer',
+    sub: 'Changing any of this sends the campaign back to review. The current version keeps running until the new one is approved.',
+    headline: 'Headline',
+    redeem: 'Redeem',
+    redeemAs: { code: 'Code in store', link: 'Link' } satisfies Record<RedeemMethod, string>,
+    category: 'Category',
+    placement: 'Placement',
+    // "Featured tile · $2.20": the CPM in dollars.
+    placementAt: (placement: string, cpmDollars: string) => `${placement} · $${cpmDollars}`,
+    edit: 'Edit offer and resubmit',
+  },
+  // Ours (spec §6.8): Global's decisions on the campaign and its revised offers, newest first.
+  history: {
+    title: 'History',
+    empty: 'No decisions yet.',
+    line: (date: string, what: string) => `${date} · ${what}`,
+    submitted: 'Submitted',
+    approved: 'Approved by Global',
+    rejected: (reason: string) => (reason ? `Rejected: ${reason}` : 'Rejected'),
+    revisionApproved: 'Revised offer approved',
+    revisionRejected: (reason: string) => (reason ? `Revised offer not approved: ${reason}` : 'Revised offer not approved'),
+  },
+  // The slice-1 Sharing page's words, until the Sharing page task rewrites it.
   sharing: {
     title: 'Sharing',
     shares: 'Shares',

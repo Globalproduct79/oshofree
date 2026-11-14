@@ -5,9 +5,6 @@ const days = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', 
 
 export const num = (n: number) => numbers.format(n)
 
-// 'YYYY-MM-DD' → '13 Nov'
-export const dayLabel = (ymd: string) => days.format(new Date(`${ymd}T00:00:00Z`))
-
 export const shortDate = (d: Date) => days.format(d)
 
 // ---- Prototype formatting: counts, money (integer USD cents), dates, initials, phones. ----
@@ -37,10 +34,13 @@ export const usdFromDollars = (n: number): string => {
 
 export const usd = (cents: number): string => usdFromDollars(cents / 100)
 
-export const loc = (cents: number, country: Country, fxPerUsd: number): string => {
-  const whole = Math.round((cents / 100) * fxPerUsd)
-  return money(MARKETS[country].symbol, whole === 0 ? 0 : whole)
+// An amount already in the market's currency, whole units: 50 → '₦50', 1000 → '₦1,000', 'KSh10'.
+export const localAmount = (whole: number, country: Country): string => {
+  const n = Math.round(whole)
+  return money(MARKETS[country].symbol, n === 0 ? 0 : n)
 }
+
+export const loc = (cents: number, country: Country, fxPerUsd: number): string => localAmount((cents / 100) * fxPerUsd, country)
 
 export const pct = (a: number, b: number): string => (b === 0 ? '0%' : ((a / b) * 100).toFixed(1) + '%')
 
