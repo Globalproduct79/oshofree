@@ -286,6 +286,28 @@ describe('reviewQueue — Campaigns waiting', () => {
     })
   })
 
+  it('names who created the campaign; one from before creators were recorded names no one', async () => {
+    const ws = await mkWs('Kola Bright')
+    const tunde = await db.user.create({ data: { email: 'tunde@x.test', name: 'Tunde Okafor', passwordHash: 'x' } })
+    await mkCampaign(ws.id, { createdById: tunde.id })
+    await mkCampaign(ws.id, { headline: 'Older offer', submittedAt: new Date(NOW.getTime() - 1000) })
+    const { rows } = await reviewQueue(NOW, okLinks)
+    expect(rows.map((r) => [r.title, r.createdBy])).toEqual([['Win a year of Kola Bright', 'Tunde Okafor'], ['Older offer', null]])
+  })
+
+  it('covers the row with the creative the campaign runs: the image, or a video at its first frame', async () => {
+    const ws = await mkWs('Kola Bright')
+    const image = '0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.jpg'
+    const video = '0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.mp4'
+    await mkCampaign(ws.id, { headline: 'Image offer', placement: 'card', creativeImageKey: image })
+    await mkCampaign(ws.id, { headline: 'Video offer', creativeVideoKey: video, submittedAt: new Date(NOW.getTime() - 1000) })
+    const { rows } = await reviewQueue(NOW, okLinks)
+    expect(rows.map((r) => r.cover)).toEqual([
+      { imageUrl: `/uploads/${image}`, videoUrl: null, color: tokens.tileColors[0], initials: 'KB' },
+      { imageUrl: null, videoUrl: `/uploads/${video}`, color: tokens.tileColors[0], initials: 'KB' },
+    ])
+  })
+
   it('checks each link offer once and reports whether it answered', async () => {
     const ws = await mkWs('Kola Bright')
     await mkCampaign(ws.id)
@@ -378,6 +400,14 @@ describe('reviewQueue — a revised offer (spec §6.14.3)', () => {
     const { revision } = await editOffer(c.id, admin.id, { ...offerOf(c), headline: 'Buy 3 bottles, get 2 free' }, later)
     return { admin, ws, c, revision: revision! }
   }
+
+  it('names the campaign\'s creator on its revised offer', async () => {
+    const { c } = await liveWithRevision()
+    const ada = await db.user.create({ data: { email: 'ada@x.test', name: 'Ada Eze', passwordHash: 'x' } })
+    await db.campaign.update({ where: { id: c.id }, data: { createdById: ada.id } })
+    const [row] = (await reviewQueue(NOW, okLinks)).rows
+    expect([row.kind, row.createdBy]).toEqual(['revision', 'Ada Eze'])
+  })
 
   it('is a row titled "Revised offer · {headline}" with its chips from the revision', async () => {
     const { ws, c, revision } = await liveWithRevision()
@@ -512,6 +542,18 @@ describe('Review page', () => {
     expect(kola).toMatch(/<button[^>]*>Approve<\/button>/)
     expect(kola).not.toMatch(/<button[^>]*disabled=""[^>]*>Approve<\/button>/)
     for (const label of ['Reject', 'Preview']) expect(kola).toContain(`>${label}</button>`)
+  })
+
+  it('says who created each waiting campaign, and shows its video at the first frame', async () => {
+    await signInAdmin()
+    const ws = await mkWs('Kola Bright')
+    const tunde = await db.user.create({ data: { email: 'tunde@x.test', name: 'Tunde Okafor', passwordHash: 'x' } })
+    const video = '0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.mp4'
+    await mkCampaign(ws.id, { createdById: tunde.id, creativeVideoKey: video })
+    const markup = await render()
+    const [row] = queueRows(markup.slice(markup.indexOf('Campaigns waiting')))
+    expect(text(row)).toContain('Win a year of Kola Bright · Kola Bright via Kola Bright · created by Tunde Okafor')
+    expect(row).toContain(`<video src="/uploads/${video}#t=0.1" aria-label="The campaign&#x27;s video" muted="" playsInline="" preload="metadata"></video>`)
   })
 
   it('toasts each decision, or why nothing happened', () => {

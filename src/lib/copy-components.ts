@@ -39,6 +39,8 @@ export const COMPONENTS = {
       daysLeft === undefined ? `${brand} · ${country}` : `${brand} · ${country} · ${daysLeft}d left`,
     // The form preview's sub-line: the flight's length (ADV §3 "Card preview box").
     subFlight: (brand: string, country: string, days: number) => `${brand} · ${country} · ${days}d`,
+    // Ours (Prompt 6): who created the campaign, on Global's cards of a workspace.
+    createdBy: (name: string) => `Created by ${name}`,
   },
   hero: {
     eyebrow: (country: string, placement: PlacementKey, when: string) =>

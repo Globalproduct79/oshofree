@@ -195,6 +195,24 @@ describe('Platform › Advertisers', () => {
 })
 
 describe('Platform › Advertisers › workspace', () => {
+  it('names who created each campaign on its card; one from before creators were recorded names no one', async () => {
+    await global()
+    const { ws, owner, live } = await kola()
+    const ada = await makeUser('Ada Eze')
+    await db.workspaceMember.create({ data: { userId: ada.id, workspaceId: ws.id, role: 'Manager' } })
+    await db.campaign.update({ where: { id: live.id }, data: { createdById: owner.id } })
+    const byAda = await makeCampaign(ws.id, 'Ada offer', 'review', 100)
+    await db.campaign.update({ where: { id: byAda.id }, data: { createdById: ada.id } })
+    const d = await advertiserDetail(ws.id, NOW)
+    expect(Object.fromEntries(d!.cards.map((c) => [c.headline, c.createdBy]))).toEqual({
+      'Buy 2 get 1': 'Tunde Okafor', 'Ada offer': 'Ada Eze', 'Old offer': undefined, 'Next offer': undefined,
+    })
+    const cards = (await renderDetail(ws.id)).split('class="cc"').slice(1).map(text)
+    expect(cards.find((c) => c.includes('Buy 2 get 1'))).toContain('Kola · Nigeria · 17d left Created by Tunde Okafor')
+    expect(cards.find((c) => c.includes('Ada offer'))).toContain('Kola · Nigeria Created by Ada Eze')
+    expect(cards.find((c) => c.includes('Next offer'))).not.toContain('Created by')
+  })
+
   it('heads with the name and the facts line, and shows facts, campaigns, invoices, requests and history', async () => {
     await global()
     const { ws, live } = await kola()

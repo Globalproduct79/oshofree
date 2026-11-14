@@ -356,12 +356,16 @@ export async function homeCards(workspaceId: string, filter: HomeFilter, now: Da
   }
 }
 
-async function cardsWhere(where: Prisma.CampaignWhereInput, now: Date): Promise<(CardData & { workspaceId: string })[]> {
-  const campaigns = await db.campaign.findMany({ where, orderBy: LIST_ORDER })
+// `creators` adds who created each campaign, where one was recorded.
+async function cardsWhere(
+  where: Prisma.CampaignWhereInput, now: Date, creators = false,
+): Promise<(CardData & { workspaceId: string })[]> {
+  const campaigns = await db.campaign.findMany({ where, orderBy: LIST_ORDER, include: { createdBy: { select: { name: true } } } })
   const ids = campaigns.map((c) => c.id)
   const [event, spend] = await Promise.all([channelEventsBy(ids, ['Impression', 'Open']), chargedBy(ids, CHARGES)])
-  return campaigns.map((c) => ({
+  return campaigns.map(({ createdBy, ...c }) => ({
     ...cardOf(c, { imp: event(c.id, 'Impression'), opens: event(c.id, 'Open'), spendCents: spend.get(c.id) ?? 0 }, now),
+    ...(creators && createdBy ? { createdBy: createdBy.name } : {}),
     workspaceId: c.workspaceId,
   }))
 }
@@ -370,8 +374,8 @@ async function cardsWhere(where: Prisma.CampaignWhereInput, now: Date): Promise<
 // it belongs to.
 export const liveCards = (now: Date) => cardsWhere({ status: 'live' }, now)
 
-// Every campaign of one workspace as its card, in list order (Advertisers › workspace › Campaigns).
-export const workspaceCards = (workspaceId: string, now: Date) => cardsWhere({ workspaceId }, now)
+// Every campaign of one workspace as its card, in list order, with who created it (Advertisers › workspace › Campaigns).
+export const workspaceCards = (workspaceId: string, now: Date) => cardsWhere({ workspaceId }, now, true)
 
 // ---- Platform (GLB §2.1 block 1, §2.4, §2.5) ----
 

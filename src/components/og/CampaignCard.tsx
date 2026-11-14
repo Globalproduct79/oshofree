@@ -26,6 +26,8 @@ export type CardModel = {
   mainRight?: string
   // The orange spend bar (live, paused and ended campaigns), as spend ÷ budget × 100.
   spendPct?: number
+  // A line under the sub-line naming who created the campaign (Platform › Advertisers › workspace).
+  createdBy?: string
 }
 
 const clampPct = (n: number) => (Number.isNaN(n) ? 0 : Math.min(100, Math.max(0, n)))
@@ -57,6 +59,7 @@ export function CampaignCard({
           {c.flightDays === undefined
             ? COMPONENTS.card.sub(c.brand, c.country, c.daysLeft)
             : COMPONENTS.card.subFlight(c.brand, c.country, c.flightDays)}
+          {c.createdBy && <span className="by">{COMPONENTS.card.createdBy(c.createdBy)}</span>}
         </div>
         <div className="row">
           {c.mainLeft && <b>{c.mainLeft}</b>}

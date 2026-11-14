@@ -32,7 +32,12 @@ export function QueueRow({ row }: { row: Row }) {
     <Fragment>
       <div className="q">
         <div className="cv" style={coverStyle(row.cover.imageUrl, row.cover.color)}>
-          {!row.cover.imageUrl && row.cover.initials}
+          {row.cover.videoUrl ? (
+            // The first frame (#t=0.1 makes Safari draw it); Preview plays it on the phone.
+            <video src={`${row.cover.videoUrl}#t=0.1`} aria-label={Q.video} muted playsInline preload="metadata" />
+          ) : (
+            !row.cover.imageUrl && row.cover.initials
+          )}
         </div>
         <div>
           <div>
@@ -40,6 +45,12 @@ export function QueueRow({ row }: { row: Row }) {
             <span style={{ color: tokens.ink3 }}>
               {Q.sep}
               {row.byline}
+              {row.createdBy && (
+                <>
+                  {Q.sep}
+                  {Q.createdBy(row.createdBy)}
+                </>
+              )}
             </span>
           </div>
           <p>{row.description}</p>

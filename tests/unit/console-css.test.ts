@@ -27,3 +27,8 @@ it("puts a placement tile's inventory badge on the tile's top edge, clear of the
   // After the prototype's rule (which placed it inside the tile, over a long title), so this one wins.
   expect(css.indexOf('.opt .soon{top:-9px')).toBeGreaterThan(css.indexOf('.opt .soon{position:absolute;top:8px'))
 })
+it("draws an offer's creative inside its box, a creator's line under a card's sub-line, and a Review row's video cover", () => {
+  expect(css).toContain('.box .cr{display:block;max-width:100%;max-height:220px')
+  expect(css).toContain('.cc .b .by{display:block}')
+  expect(css).toContain('.q .cv video{width:100%;height:100%;object-fit:cover')
+})

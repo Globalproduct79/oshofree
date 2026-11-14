@@ -39,8 +39,11 @@ export type QueueRow = {
   // The bold headline ("Revised offer · {headline}" for a revision) and the grey "{brand} via {workspace}".
   title: string
   byline: string
+  // Who created the campaign (a revised offer's campaign too); null when no one was recorded.
+  createdBy: string | null
   description: string
-  cover: { imageUrl: string | null; color: string; initials: string }
+  // The creative the offer runs: an image as the cover, or a video drawn at its first frame; else colour and initials.
+  cover: { imageUrl: string | null; videoUrl: string | null; color: string; initials: string }
   // GLB §2.1 order: country · category · placement · budget · dates · redeem · reward.
   chips: string[]
   // The link check for a link offer; null for a code offer.
@@ -59,7 +62,7 @@ export type ReviewQueue = { pendingWorkspaces: PendingWorkspace[]; rows: QueueRo
 
 // The campaign's offer as the row shows it: the campaign's own, or with a revision's offer fields over it.
 type Offer = Pick<Campaign, keyof OfferFields>
-type Waiting = { kind: QueueRow['kind']; id: string; submittedAt: Date; campaign: Campaign; offer: Offer }
+type Waiting = { kind: QueueRow['kind']; id: string; submittedAt: Date; campaign: Campaign; offer: Offer; createdBy: string | null }
 type WorkspaceOf = { name: string; status: WorkspaceStatus }
 
 const campaignHref = (id: string) => `/app/campaigns/${id}`
@@ -112,9 +115,11 @@ function row(w: Waiting, ws: WorkspaceOf, link: LinkState | null): QueueRow {
     workspaceId: c.workspaceId,
     title: w.kind === 'revision' ? R.revised(o.headline) : o.headline,
     byline: R.via(o.brand, ws.name),
+    createdBy: w.createdBy,
     description: o.description,
     cover: {
       imageUrl: o.creativeImageKey ? imageUrl(o.creativeImageKey) : null,
+      videoUrl: o.creativeVideoKey ? imageUrl(o.creativeVideoKey) : null,
       color: o.tileColor || tokens.tileColors[0],
       initials: initials(o.brand),
     },
@@ -166,18 +171,22 @@ async function pendingWorkspaces(): Promise<PendingWorkspace[]> {
 // Campaigns in review and the revised offers of running campaigns, newest submission first. Each link offer's
 // link is checked once, all at the same time.
 async function waiting(check: (url: string) => Promise<LinkState>): Promise<QueueRow[]> {
-  const ws = { workspace: { select: { name: true, status: true } } } as const
+  const ws = { workspace: { select: { name: true, status: true } }, createdBy: { select: { name: true } } } as const
   const [campaigns, revisions] = await Promise.all([
     db.campaign.findMany({ where: { status: 'review' }, include: ws }),
     db.campaignRevision.findMany({ where: { status: 'review' }, include: { campaign: { include: ws } } }),
   ])
   const items: (Waiting & { ws: WorkspaceOf })[] = [
-    ...campaigns.map(({ workspace, ...c }) => ({
+    ...campaigns.map(({ workspace, createdBy, ...c }) => ({
       kind: 'campaign' as const, id: c.id, submittedAt: c.submittedAt ?? c.createdAt, campaign: c, offer: c, ws: workspace,
+      createdBy: createdBy?.name ?? null,
     })),
     ...revisions.map((r) => {
-      const { workspace, ...c } = r.campaign
-      return { kind: 'revision' as const, id: r.id, submittedAt: r.submittedAt, campaign: c, offer: revisedOffer(c, r), ws: workspace }
+      const { workspace, createdBy, ...c } = r.campaign
+      return {
+        kind: 'revision' as const, id: r.id, submittedAt: r.submittedAt, campaign: c, offer: revisedOffer(c, r), ws: workspace,
+        createdBy: createdBy?.name ?? null,
+      }
     }),
   ].sort((a, b) => b.submittedAt.getTime() - a.submittedAt.getTime() || (a.id < b.id ? 1 : -1))
   const urls = [...new Set(items.map((i) => linkOf(i.offer)).filter((u): u is string => u !== null))]
