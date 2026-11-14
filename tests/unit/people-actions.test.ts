@@ -99,5 +99,8 @@ describe('people actions', () => {
     expect(html).not.toContain('<select')
     expect(html).toContain('Invited · Owner')
     expect(html).not.toContain('Copy invite link')
+    expect(html).not.toContain('Revoke')
+    expect(html).not.toContain('>Remove<')
+    expect(html).not.toContain('Send invite')
   })
 })

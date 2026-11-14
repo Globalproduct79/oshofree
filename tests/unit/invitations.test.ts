@@ -97,13 +97,15 @@ describe('invitations', () => {
 })
 
 describe('invitations: concurrency and audit', () => {
-  it('two concurrent accepts of one token give exactly one success', async () => {
+  it('two concurrent accepts of one token, by different users, give one success and one membership', async () => {
     const { owner, ws } = await setup()
     const inv = await invite(ws.id, owner.id, 'n@x.test', 'Manager')
-    const u = await mkUser('n@x.test', 'Newbie')
-    const r = await Promise.allSettled([acceptInvite(inv.token, u), acceptInvite(inv.token, u)])
+    const u1 = await mkUser('u1@x.test', 'U1')
+    const u2 = await mkUser('u2@x.test', 'U2')
+    const r = await Promise.allSettled([acceptInvite(inv.token, u1), acceptInvite(inv.token, u2)])
     expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1)
-    expect(await db.workspaceMember.count({ where: { userId: u.id } })).toBe(1)
+    expect(r.find((x) => x.status === 'rejected')).toMatchObject({ reason: 'INVALID' })
+    expect(await db.workspaceMember.count({ where: { workspaceId: ws.id, userId: { in: [u1.id, u2.id] } } })).toBe(1)
   })
 
   it('two Owners demoting each other concurrently leave one Owner', async () => {
