@@ -134,4 +134,32 @@ describe('/admin/rewards', () => {
     expect(await releasePayoutAction(a.id)).toEqual({ error: "Over the campaign's reward cap — raise the cap or reject." })
     expect((await db.rewardPayout.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('held')
   })
+
+  it('releasing a rejected payout, or rejecting a released one, says it was already handled and changes nothing', async () => {
+    await signIn(true)
+    const { payout } = await world()
+    const a = await payout('held', 500, 'no_phone')
+    expect(await rejectPayoutAction(a.id)).toEqual({ toast: 'Reward rejected' })
+    expect(await releasePayoutAction(a.id)).toEqual({ error: 'That reward was already handled.' })
+    expect(await rejectPayoutAction(a.id)).toEqual({ error: 'That reward was already handled.' })
+    expect((await db.rewardPayout.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('rejected')
+    const b = await payout('held', 500, 'no_phone')
+    expect(await releasePayoutAction(b.id)).toEqual({ toast: 'Reward released' })
+    expect(await rejectPayoutAction(b.id)).toEqual({ error: 'That reward was already handled.' })
+    expect(await releasePayoutAction(b.id)).toEqual({ error: 'That reward was already handled.' })
+    expect((await db.rewardPayout.findUniqueOrThrow({ where: { id: b.id } })).status).toBe('queued')
+  })
+
+  it('shows Paid when every reward line of a campaign is on a paid invoice', async () => {
+    await signIn(true)
+    const { ws, c, payout } = await world()
+    await payout('sent', 1000)
+    const invoice = await db.invoice.create({
+      data: { workspaceId: ws.id, number: 'INV-1', period: new Date('2026-11-15T12:00:00Z'), amountCents: 1000, fxPerUsd: 1500, country: 'NG', status: 'paid', issuedAt: new Date(), dueAt: new Date(), paidAt: new Date() },
+    })
+    await db.ledgerEntry.create({ data: { workspaceId: ws.id, campaignId: c.id, kind: 'reward', amountCents: -1000, description: 'x', invoiceId: invoice.id } })
+    const html = await render()
+    expect(html).toContain('Paid')
+    expect(html).not.toContain('>Open<')
+  })
 })

@@ -36,6 +36,9 @@ export const REWARDS_LEDGER = {
   released: 'Reward released',
   rejected: 'Reward rejected',
   overCap: "Over the campaign's reward cap — raise the cap or reject.",
+  alreadyHandled: 'That reward was already handled.',
+  ruleOn: 'Check turned on',
+  ruleOff: 'Check turned off',
   notFound: 'Reward not found.',
   reasons: {
     no_phone: 'No phone number',

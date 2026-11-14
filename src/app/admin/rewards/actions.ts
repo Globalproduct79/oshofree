@@ -32,16 +32,17 @@ export async function setFraudRuleAction(key: unknown, enabled: unknown): Promis
     throw e
   }
   revalidatePath(PATH)
-  return { toast: enabled ? 'Check turned on' : 'Check turned off' }
+  return { toast: enabled ? R.ruleOn : R.ruleOff }
 }
 
 export async function releasePayoutAction(id: unknown): Promise<Result> {
   const admin = await requireAdmin()
   if (typeof id !== 'string') return { error: R.notFound }
   try {
-    await releasePayout(id, admin.id)
+    await releasePayout(id, admin.id, new Date(), { strict: true })
   } catch (e) {
     if (e === 'CAP') return { error: R.overCap }
+    if (e === 'NOT_HELD') return { error: R.alreadyHandled }
     if (e === 'NOT_FOUND') return { error: R.notFound }
     throw e
   }
@@ -53,8 +54,9 @@ export async function rejectPayoutAction(id: unknown): Promise<Result> {
   const admin = await requireAdmin()
   if (typeof id !== 'string') return { error: R.notFound }
   try {
-    await rejectPayout(id, admin.id)
+    await rejectPayout(id, admin.id, { strict: true })
   } catch (e) {
+    if (e === 'NOT_HELD') return { error: R.alreadyHandled }
     if (e === 'NOT_FOUND') return { error: R.notFound }
     throw e
   }

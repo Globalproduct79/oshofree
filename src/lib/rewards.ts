@@ -111,10 +111,13 @@ export async function onSuccessfulShare(input: ShareInput, tx?: Tx): Promise<Rew
 // Global releases a held payout to the queue and the campaign is charged for it — unless that would take
 // the campaign's charged rewards past its cap ('CAP'; the payout stays held). A held payout took none of
 // the cap, so this is its cap check. Releasing a payout that is not held changes nothing.
-export async function releasePayout(id: string, byUserId: string, now = new Date()): Promise<RewardPayout> {
+export async function releasePayout(id: string, byUserId: string, now = new Date(), opts: { strict?: boolean } = {}): Promise<RewardPayout> {
   const payout = await db.rewardPayout.findUnique({ where: { id } })
   if (!payout) throw 'NOT_FOUND'
-  if (payout.status !== 'held') return payout
+  if (payout.status !== 'held') {
+    if (opts.strict) throw 'NOT_HELD'
+    return payout
+  }
   const released = await db.$transaction(async (tx) => {
     await campaignLock(tx, payout.campaignId)
     const current = await tx.rewardPayout.findUniqueOrThrow({ where: { id } })
@@ -130,6 +133,7 @@ export async function releasePayout(id: string, byUserId: string, now = new Date
     await chargeFor(tx, current, campaign.name, now)
     return true
   })
+  if (!released && opts.strict) throw 'NOT_HELD'
   if (released) {
     await audit(byUserId, 'reward.release', { type: 'RewardPayout', id, workspaceId: payout.workspaceId },
       { status: 'held', reason: payout.reason }, { status: 'queued' })
@@ -139,10 +143,13 @@ export async function releasePayout(id: string, byUserId: string, now = new Date
 
 // Global rejects a held payout: nothing is charged and the share's points are taken back. Rejecting a
 // payout that is not held changes nothing.
-export async function rejectPayout(id: string, byUserId: string): Promise<RewardPayout> {
+export async function rejectPayout(id: string, byUserId: string, opts: { strict?: boolean } = {}): Promise<RewardPayout> {
   const payout = await db.rewardPayout.findUnique({ where: { id } })
   if (!payout) throw 'NOT_FOUND'
-  if (payout.status !== 'held') return payout
+  if (payout.status !== 'held') {
+    if (opts.strict) throw 'NOT_HELD'
+    return payout
+  }
   const rejected = await db.$transaction(async (tx) => {
     const { count } = await tx.rewardPayout.updateMany({ where: { id, status: 'held' }, data: { status: 'rejected', reason: 'manual' } })
     if (!count) return false
@@ -157,6 +164,7 @@ export async function rejectPayout(id: string, byUserId: string): Promise<Reward
     }
     return true
   })
+  if (!rejected && opts.strict) throw 'NOT_HELD'
   if (rejected) {
     await audit(byUserId, 'reward.reject', { type: 'RewardPayout', id, workspaceId: payout.workspaceId },
       { status: 'held', reason: payout.reason }, { status: 'rejected', reason: 'manual' })
