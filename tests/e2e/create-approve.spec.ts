@@ -1,18 +1,25 @@
 import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
+import { ADVERTISERS } from '@/lib/copy-advertisers'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { COMPONENTS, STATUS_LABEL } from '@/lib/copy-components'
 import { HOME } from '@/lib/copy-home'
 import { NOTIFY } from '@/lib/copy-notifications'
 import { CAMPAIGN_COPY, PREVIEW_COPY } from '@/lib/copy-report'
+import { REVIEW } from '@/lib/copy-review'
 import { SHELL } from '@/lib/copy-shell'
+import { fd } from '@/lib/format'
 import {
-  ADMIN, approveCampaign, box, homeCard, metricValue, signIn, submitCampaign, TUNDE, type NewCampaign,
+  ADMIN, approveCampaign, box, expectToast, homeCard, KOLA, metricValue, openReview, queueRow, signIn, submitCampaign, TUNDE,
+  type NewCampaign,
 } from './helpers'
 
 // F1: Tunde creates "Harmattan sale" as a Wall card with the seed's JPG (attached, replaced, removed, attached again,
-// cleared by a switch to Video, and attached once more after a failed upload and Retry) and submits it; it waits in review; Global approves it from the queue; Tunde's home shows it Live, with
-// that image, and the bell says so.
+// cleared by a switch to Video, and attached once more after a failed upload and Retry), saves it as a draft and
+// reopens it from home, reviews it (going back once) and submits it. The campaign is one connected record: his page
+// shows that image and that he created it, home lists it in review with the image, Global's queue shows the same
+// image and his name; Global approves it, Phoenix's offers API serves that file, Tunde's home shows it Live with it,
+// the bell says so, and Global's page of the workspace names him on its card.
 
 const HARMATTAN: NewCampaign = {
   name: 'Harmattan sale',
@@ -20,6 +27,10 @@ const HARMATTAN: NewCampaign = {
   description: 'Show your claim code at any participating store for 20% off a 1L Kola Bright.',
   budgetUsd: 120,
 }
+
+// Who Tunde is (prisma/seed/users.ts), as the pages name the campaign's creator.
+const TUNDE_NAME = 'Tunde Okafor'
+const LAGOS = 'Africa/Lagos'
 
 // The seed's creatives (prisma/seed/creatives): JPGs well under the 2 MB a Wall card takes.
 const METRO = path.join('prisma', 'seed', 'creatives', 'metro.jpg')
@@ -89,6 +100,32 @@ async function attachReplaceRemoveReattach(page: Page): Promise<string> {
   return final
 }
 
+// Save draft keeps the half-filled form and goes home, where it waits as a Draft card with its image; the card opens
+// the form again with everything restored.
+async function saveDraftAndReopen(page: Page, image: string) {
+  await page.getByRole('button', { name: F.buttons.saveDraft }).click()
+  await page.waitForURL((url) => url.pathname === '/app')
+  await expectToast(page, F.toasts.draftSaved)
+  const draft = homeCard(page, HARMATTAN.headline)
+  await expect(draft.getByText(STATUS_LABEL.draft, { exact: true })).toBeVisible()
+  await expect(draft.getByText(HOME.draft.notSent, { exact: true })).toBeVisible()
+  await expect(draft.locator('.cv')).toHaveAttribute('style', coverOf(image))
+  await draft.click()
+  await page.waitForURL((url) => url.pathname === '/app/campaigns/new')
+  await expect(page.getByLabel(F.fields.headline.label)).toHaveValue(HARMATTAN.headline)
+  await expect(page.getByRole('img', { name: COMPONENTS.drop.chosen.image })).toHaveAttribute('src', image)
+}
+
+// The Review step summarises the creative that will run; Back to edit returns to the form (focus on the button that
+// opened the step) and the step opens again.
+async function reviewTheCreative(page: Page, image: string) {
+  await expect(page.getByRole('img', { name: F.review.image })).toHaveAttribute('src', image)
+  await page.getByRole('button', { name: F.buttons.back }).click()
+  await expect(page.getByRole('button', { name: F.buttons.review })).toBeFocused()
+  await expect(page.getByLabel(F.fields.headline.label)).toHaveValue(HARMATTAN.headline)
+  await openReview(page, HARMATTAN)
+}
+
 test('F1: a brand previews and submits a Wall card, Global approves it, and it is live on Phoenix', async ({ browser }) => {
   const tunde = await (await browser.newContext()).newPage()
   const admin = await (await browser.newContext()).newPage()
@@ -110,19 +147,56 @@ test('F1: a brand previews and submits a Wall card, Global approves it, and it i
 
   let campaignPath = ''
   let image = ''
-  await test.step('Tunde attaches the JPG, replaces it, removes it, attaches it again, retries a failed upload, submits, and it waits for Global', async () => {
-    campaignPath = await submitCampaign(tunde, HARMATTAN, async (page) => {
-      image = await attachReplaceRemoveReattach(page)
-    })
+  await test.step('Tunde attaches the JPG, replaces it, removes it, attaches it again, retries a failed upload, saves a draft, reopens it from home, reviews, submits, and it waits for Global', async () => {
+    campaignPath = await submitCampaign(
+      tunde,
+      HARMATTAN,
+      async (page) => {
+        image = await attachReplaceRemoveReattach(page)
+        await saveDraftAndReopen(page, image)
+      },
+      (page) => reviewTheCreative(page, image),
+    )
     await expect(tunde.getByRole('heading', { name: HARMATTAN.headline })).toBeVisible()
     await expect(tunde.getByText(STATUS_LABEL.review, { exact: true })).toBeVisible()
     await expect(tunde.getByText(CAMPAIGN_COPY.status.review)).toBeVisible()
     await expect(tunde.getByText(CAMPAIGN_COPY.daily.review)).toBeVisible()
   })
 
-  await test.step('Global approves it from the queue', async () => {
+  await test.step('his page shows the image he uploaded and that he created it today; home lists it in review with that image', async () => {
+    const shown = tunde.getByRole('img', { name: CAMPAIGN_COPY.offer.creative.image })
+    await expect(shown).toHaveAttribute('src', image)
+    expect(new URL((await shown.getAttribute('src'))!, tunde.url()).pathname.endsWith(path.basename(image))).toBe(true)
+    await expect(box(tunde, CAMPAIGN_COPY.history.title).getByText(CAMPAIGN_COPY.history.created(TUNDE_NAME, fd(new Date(), LAGOS)), { exact: true })).toBeVisible()
+    // The draft went with the submission.
+    expect(await tunde.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('of-draft:')))).toEqual([])
+    await tunde.goto('/app?filter=review')
+    const card = homeCard(tunde, HARMATTAN.headline)
+    await expect(card.getByText(STATUS_LABEL.review, { exact: true })).toBeVisible()
+    await expect(card.locator('.cv')).toHaveAttribute('style', coverOf(image))
+  })
+
+  await test.step("Global's queue shows the same image and who created it, and Global approves it", async () => {
     await signIn(admin, ADMIN)
+    await admin.goto('/admin/review')
+    const row = queueRow(admin, HARMATTAN.headline)
+    await expect(row.getByText(REVIEW.queue.createdBy(TUNDE_NAME))).toBeVisible()
+    await expect(row.locator('.cv')).toHaveAttribute('style', coverOf(image))
     await approveCampaign(admin, HARMATTAN.headline)
+  })
+
+  await test.step("Phoenix's offers API serves that file for the live offer", async () => {
+    const id = campaignPath.split('/').pop()!
+    const res = await admin.request.get('/api/v1/offers?country=NG', {
+      headers: { Authorization: `Bearer ${process.env.DEMO_CHANNEL_KEY ?? 'phx_dev_oshofree'}` },
+    })
+    expect(res.status()).toBe(200)
+    const offer = (await res.json()).offers.find((o: { id: string }) => o.id === id)
+    expect(offer).toMatchObject({ placement: 'card', headline: HARMATTAN.headline, creative: { video: null } })
+    expect(new URL(offer.creative.image).pathname).toBe(image)
+    const file = await admin.request.get(offer.creative.image)
+    expect(file.status()).toBe(200)
+    expect(file.headers()['content-type']).toBe('image/jpeg')
   })
 
   await test.step("Tunde's home shows it Live, and the bell says it is live on Phoenix", async () => {
@@ -144,6 +218,15 @@ test('F1: a brand previews and submits a Wall card, Global approves it, and it i
     await expect(tunde.getByText(STATUS_LABEL.live, { exact: true })).toBeVisible()
     await expect(tunde.getByRole('button', { name: HOME.pause, exact: true })).toBeVisible()
     await expect(metricValue(tunde, CAMPAIGN_COPY.kpi.impressions)).toHaveText('0')
+    await expect(tunde.getByRole('img', { name: CAMPAIGN_COPY.offer.creative.image })).toHaveAttribute('src', image)
+  })
+
+  await test.step("Global's page of the workspace names Tunde on the campaign's card", async () => {
+    await admin.goto('/admin/advertisers')
+    await admin.locator('table').getByRole('link', { name: KOLA, exact: true }).click()
+    await admin.waitForURL(/\/admin\/advertisers\/[^/]+$/)
+    const card = box(admin, ADVERTISERS.detail.campaigns).getByRole('link').filter({ hasText: HARMATTAN.headline })
+    await expect(card.getByText(COMPONENTS.card.createdBy(TUNDE_NAME), { exact: true })).toBeVisible()
   })
 
   await tunde.context().close()

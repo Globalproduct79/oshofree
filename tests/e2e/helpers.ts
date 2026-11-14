@@ -69,15 +69,19 @@ export const todayInLagos = () => new Intl.DateTimeFormat('en-CA', { timeZone: '
 export type NewCampaign = { name: string; headline: string; description: string; budgetUsd: number }
 
 // Fills the New campaign form for a brand workspace (the brand is the workspace's): a Wall card, redeemed
-// with a claim code, starting today, then submits it. `creative` runs once the placement is chosen (F1 attaches
-// an image there). Returns the campaign page's path.
-export async function submitCampaign(page: Page, c: NewCampaign, creative?: (page: Page) => Promise<void>): Promise<string> {
+// with a claim code, starting today, then reviews and submits it. `creative` runs once the placement is chosen (F1
+// attaches an image there); `review` runs on the Review step before the confirmation (F1 checks the summary there).
+// Returns the campaign page's path.
+export async function submitCampaign(
+  page: Page, c: NewCampaign, creative?: (page: Page) => Promise<void>, review?: (page: Page) => Promise<void>,
+): Promise<string> {
   const L = F.fields
   await page.goto('/app/campaigns/new')
   await expect(page.getByRole('heading', { name: F.head.new.title })).toBeVisible()
-  // The hint names the first rule that fails; Submit waits for none.
+  await expect(page.getByText(F.oneOffer, { exact: true })).toBeVisible()
+  // The hint names the first rule that fails; the way to the Review step waits for none.
   await expect(page.getByText(F.validation.name)).toBeVisible()
-  await expect(page.getByRole('button', { name: F.buttons.submit })).toBeDisabled()
+  await expect(page.getByRole('button', { name: F.buttons.review })).toBeDisabled()
   await page.getByLabel(L.name.label).fill(c.name)
   await page.getByLabel(L.headline.label).fill(c.headline)
   await page.getByLabel(L.description.label).fill(c.description)
@@ -86,14 +90,30 @@ export async function submitCampaign(page: Page, c: NewCampaign, creative?: (pag
   await page.getByLabel(L.redeem.label).selectOption('code')
   await page.getByLabel(L.budget.label).fill(String(c.budgetUsd))
   await page.getByLabel(L.startsAt.label).fill(todayInLagos())
-  await page.getByRole('checkbox', { name: L.terms }).check()
+  // The confirmation is given on the Review step, not here.
+  await expect(page.getByRole('checkbox', { name: L.terms })).toHaveCount(0)
+  await openReview(page, c)
+  await review?.(page)
+  // Submit waits for the confirmation, and says so.
   const submit = page.getByRole('button', { name: F.buttons.submit })
+  await expect(submit).toBeDisabled()
+  await expect(page.getByText(F.validation.terms, { exact: true })).toBeVisible()
+  await page.getByRole('checkbox', { name: L.terms }).check()
   await expect(submit).toBeEnabled()
   await submit.click()
   // The form lands on the new campaign's page.
   await page.waitForURL(CAMPAIGN_PAGE)
   await expectToast(page, F.toasts.submitted)
   return new URL(page.url()).pathname
+}
+
+// "Review before submitting": the Review step opens with the focus on its heading, summarising what was filled in.
+export async function openReview(page: Page, c: Pick<NewCampaign, 'headline'>) {
+  const review = page.getByRole('button', { name: F.buttons.review })
+  await expect(review).toBeEnabled()
+  await review.click()
+  await expect(page.getByRole('heading', { name: F.review.title })).toBeFocused()
+  await expect(box(page, F.review.title).getByText(c.headline, { exact: true })).toBeVisible()
 }
 
 // Global approves a campaign from Review's queue; the row leaves it.
