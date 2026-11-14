@@ -46,4 +46,17 @@ describe('PhoneScreen', () => {
     expect(out).toContain('▶')
     expect(out).toContain('class="feat mine"')
   })
+
+  it('draws every creative from the offer: an image or a first frame in a grid tile, else its tile colour and initials', () => {
+    const live = [
+      offer('img', 'card', { creative: { image: '/uploads/a.jpg', video: null, color: '#0F766E' } }),
+      offer('vid', 'card', { creative: { image: null, video: '/uploads/v.mp4', color: '#111827' } }),
+      offer('none', 'card', { creative: { image: null, video: null, color: null } }),
+    ]
+    const out = html(offer('m'), live)
+    expect(out).toContain('<div class="tl" style="background-image:url(&quot;/uploads/a.jpg&quot;)"></div>')
+    expect(out).toContain('<div class="tl" style="background:#111827"><video src="/uploads/v.mp4#t=0.1" aria-label="" muted=""')
+    // An offer with no colour of its own takes the wall's first tile colour, as the landing page does.
+    expect(out).toContain('<div class="tl" style="background:#FF5A1F">BN</div>')
+  })
 })

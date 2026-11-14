@@ -11,8 +11,8 @@ import { GET as previewShare } from '@/app/o/preview/share/route'
 import { offerPreview } from '@/lib/campaign-card'
 import { COPY } from '@/lib/copy'
 import { db } from '@/lib/db'
-import { type LandingView, renderLanding } from '@/lib/landing/render'
-import { PREVIEW_CODE, previewLanding, previewLandingView, shareMessage } from '@/lib/landing/preview'
+import { type LandingView, renderLanding, renderShareSheet } from '@/lib/landing/render'
+import { PREVIEW_CODE, previewLanding, previewLandingView, previewShareSheet, shareMessage } from '@/lib/landing/preview'
 import { viewFor } from '@/lib/landing/view'
 import { linkUrl, mintRootLink } from '@/lib/links'
 import { previewOffersFor } from '@/lib/offers'
@@ -107,6 +107,19 @@ describe('renderLanding with the preview flag', () => {
     expect(html).toContain(`<input id="mylink" readonly value="${ORIGIN}/o/preview">`)
   })
 
+  it("draws the sharer's part of the page on its own: the real Share and earn section, under the preview line", () => {
+    const shared = view({
+      state: 'shared', preview: true, myUrl: `${ORIGIN}/o/preview`,
+      shareTargets: { whatsapp: '/o/preview/share?via=whatsapp', sms: '/o/preview/share?via=sms', x: '/o/preview/share?via=x' },
+    })
+    const sheet = renderShareSheet(shared)
+    const section = /<section>.*<\/section>/.exec(renderLanding(shared))![0]
+    expect(sheet).toContain(`<main><p class="pv" role="note">${L.preview}</p>${section}</main>`)
+    expect(sheet.startsWith('<!DOCTYPE html>')).toBe(true)
+    expect(sheet).not.toContain('<h1>')
+    expect(sheet).not.toContain('<form')
+  })
+
   it('answers a preview link with a page that says so', () => {
     const html = renderLanding({ ...view({ state: 'preview', brand: '', headline: '' }), preview: true })
     expect(html).toContain(L.preview)
@@ -168,10 +181,10 @@ describe('the preview records nothing', () => {
     // Opening the preview: the live offers it draws around the campaign are read, never minted.
     await previewOffersFor('NG', new Date())
     const offer = previewLanding(model, 'offer')
-    const shared = previewLanding(model, 'shared')
+    const sheet = previewShareSheet(model)
     expect(formActions(offer)).toEqual(['/o/preview/claim', '/o/preview/details'])
-    expect(formActions(shared)).toEqual(['/o/preview/claim'])
-    expect(`${offer}${shared}`).not.toContain('href=')
+    expect(formActions(sheet)).toEqual([])
+    expect(`${offer}${sheet}`).not.toContain('href=')
 
     // What each form would send, to the route Next serves for it: each refuses and says why.
     const answers = [

@@ -385,6 +385,11 @@ describe('reviewQueue — Campaigns waiting', () => {
     const [row] = (await reviewQueue(NOW, okLinks)).rows
     expect(row.country).toBe('NG')
     expect(row.preview).toMatchObject({ id: c.id, headline: c.headline, placement: 'video', brand: 'Kola Bright' })
+    // Every tab of the preview, its landing page and share sheet too, draws the campaign's own words.
+    expect(row.preview).toMatchObject({
+      description: c.description, rewardLabel: c.shareRewardLabel, redeemMethod: c.redeemMethod,
+      endsAt: c.endsAt.toISOString(), country: 'NG', sampleLink: `${process.env.APP_URL}/o/preview`,
+    })
   })
 })
 
@@ -423,7 +428,9 @@ describe('reviewQueue — a revised offer (spec §6.14.3)', () => {
       approveEnabled: true,
       chips: ['Nigeria', 'Food & drink', 'Wall card', '$400', '16 Nov – 30 Nov', 'claim code', 'reward ₦100'],
     })
-    expect(rows[0].preview).toMatchObject({ id: c.id, headline: 'Buy 3 bottles, get 2 free' })
+    expect(rows[0].preview).toMatchObject({
+      id: c.id, headline: 'Buy 3 bottles, get 2 free', description: 'At any Shoprite.', rewardLabel: c.shareRewardLabel,
+    })
   })
 
   it('leaves the queue once approved, with the revision applied to the live campaign', async () => {

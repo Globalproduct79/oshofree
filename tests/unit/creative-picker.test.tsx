@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { PlacementFields } from '@/components/campaign/form/PlacementFields'
 import { newCampaignDefaults, type FormValues } from '@/components/campaign/form/values'
 import { CreativePicker } from '@/components/og'
-import type { PreviewOffer } from '@/lib/preview-merge'
+import type { PreviewCampaign } from '@/lib/preview-merge'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 
@@ -128,11 +128,13 @@ describe('PlacementFields: the picker each placement asks for', () => {
     ...newCampaignDefaults({ name: 'Kola Bright', type: 'Brand', country: 'NG' }),
     ...patch,
   })
-  const mine: PreviewOffer = {
+  const mine: PreviewCampaign = {
     id: '__draft', brand: 'Kola Bright', headline: 'h', category: 'Retail', placement: 'splash', ageGated: false,
     creative: { image: '/uploads/s.png', video: null, color: '#FF5A1F' },
+    description: 'd', rewardLabel: 'Earn ₦50 airtime', redeemMethod: 'code', endsAt: '2026-12-01T23:00:00.000Z', country: 'NG',
+    sampleLink: 'http://localhost:3101/o/preview',
   }
-  const draw = (patch: Partial<FormValues>, offer: PreviewOffer = mine) =>
+  const draw = (patch: Partial<FormValues>, offer: PreviewCampaign = mine) =>
     renderToStaticMarkup(
       <PlacementFields
         values={values(patch)}

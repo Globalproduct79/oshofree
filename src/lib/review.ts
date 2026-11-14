@@ -8,7 +8,8 @@ import { db } from '@/lib/db'
 import { fd, initials, localAmount, usd } from '@/lib/format'
 import { checkLink, type LinkState } from '@/lib/link-check'
 import { MARKETS, type Country } from '@/lib/markets'
-import type { PreviewOffer } from '@/lib/preview-merge'
+import { sampleShareLink } from '@/lib/campaign-card'
+import type { PreviewCampaign } from '@/lib/preview-merge'
 import { liveCards, type CardData } from '@/lib/reports'
 import { imageUrl } from '@/lib/storage'
 import { tokens } from '@/lib/tokens'
@@ -52,8 +53,8 @@ export type QueueRow = {
   // Approve waits for the workspace's approval (spec §6.4; a declined workspace stays refused, D4).
   approveEnabled: boolean
   country: Country
-  // The offer as the Phoenix preview draws it.
-  preview: PreviewOffer
+  // The offer as the preview draws it (a revision's offer over its campaign's reward and flight).
+  preview: PreviewCampaign
 }
 
 export type LiveCard = CardData & { workspaceId: string; href: string }
@@ -88,7 +89,7 @@ function warnings(o: Offer, ws: WorkspaceOf): string[] {
   return out
 }
 
-function preview(c: Campaign, o: Offer): PreviewOffer {
+function preview(c: Campaign, o: Offer): PreviewCampaign {
   return {
     id: c.id,
     brand: o.brand,
@@ -101,6 +102,12 @@ function preview(c: Campaign, o: Offer): PreviewOffer {
       video: o.creativeVideoKey ? imageUrl(o.creativeVideoKey) : null,
       color: o.tileColor,
     },
+    description: o.description,
+    rewardLabel: c.shareRewardLabel,
+    redeemMethod: o.redeemMethod,
+    endsAt: c.endsAt.toISOString(),
+    country: c.country,
+    sampleLink: sampleShareLink(),
   }
 }
 

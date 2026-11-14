@@ -81,8 +81,7 @@ export function QueueRow({ row }: { row: Row }) {
             {Q.reject}
           </Button>
           <PreviewButton
-            mine={row.preview}
-            country={row.country}
+            campaign={row.preview}
             load={() => previewOffersAction(row.country)}
             label={Q.preview}
             variant="ghost"

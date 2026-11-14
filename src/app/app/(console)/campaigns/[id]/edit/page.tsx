@@ -4,6 +4,7 @@ import { CampaignForm } from '@/components/campaign/CampaignForm'
 import { campaignDefaults } from '@/components/campaign/form/values'
 import { LinkButton } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
+import { sampleShareLink } from '@/lib/campaign-card'
 import { pendingRevision, RUNNING } from '@/lib/campaigns'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { SHELL } from '@/lib/copy-shell'
@@ -51,6 +52,7 @@ export default async function EditOfferPage({ params }: { params: Promise<{ id: 
         credit={{ limitCents: credit.limitCents, inUseCents: credit.inUseCents }}
         defaults={campaignDefaults(current, creativeUrl)}
         mode={{ kind: 'edit', id: campaign.id, running, heldCents }}
+        sampleLink={sampleShareLink()}
       />
     </>
   )

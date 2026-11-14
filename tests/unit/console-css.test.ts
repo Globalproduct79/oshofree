@@ -37,3 +37,21 @@ it("draws an offer's creative inside its box, a creator's line under a card's su
 it("spaces the New form's Review step into titled sections", () => {
   expect(css).toContain('.summary{display:grid;gap:18px}.summary .subt{display:block;margin-bottom:8px}')
 })
+it("draws the preview's format tabs, an off tab saying why, and the real landing page in the phone at its scale", () => {
+  for (const sel of ['.tabs{display:flex', '.tab[aria-selected=true]{background:var(--phx2);border-color:var(--phx);color:var(--phx)}',
+    '.tab:disabled{', '.tab i{display:block', '.pv-page{position:absolute;top:20px', '.pv-page iframe{display:block;border:0;width:375px;height:680px;transform:scale(.656);transform-origin:0 0}',
+    '.pv-side .msg{', '.modal .in > .sub{'])
+    expect(css).toContain(sel)
+  // A video creative fills the phone's featured slot and grid tile like an image.
+  expect(css).toContain('.feat video{width:100%;display:block;height:100px;object-fit:cover}')
+  expect(css).toContain('.pc .tl video{width:100%;height:100%;object-fit:cover}')
+})
+it('makes the preview a full-screen sheet under 720 px, every tab in view, Close above the phone, and the phone shrunk to the width it has', () => {
+  expect(css).toMatch(/@media\(max-width:720px\)\{\.modal \.in\.sheet\{width:100%;height:100%;max-height:none;border-radius:0;[^}]*\}/)
+  // Every tab stays in view: three to a row. The line about the tab and Close come before the phone, the prototype's
+  // long explainer stays on the desktop.
+  expect(css).toMatch(/@media\(max-width:720px\)\{[^@]*\.tabs\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/)
+  expect(css).toMatch(/@media\(max-width:720px\)\{[^@]*\.pv-side\{order:-1\}\.pv-side \.ex\{display:none\}/)
+  expect(css).toContain('.pv-stage{container-type:inline-size;min-width:0}')
+  expect(css).toMatch(/@container \(max-width:259px\)\{\.pv-stage \.phone\{zoom:\.85\}\}/)
+})

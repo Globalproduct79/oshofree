@@ -115,7 +115,8 @@ export const CAMPAIGN_COPY = {
 export const PREVIEW_COPY = {
   button: 'Preview on Phoenix',
   title: 'On Phoenix',
-  subtitle: 'Your card, outlined, among the offers live in this country right now.',
+  // Ours (Prompt 7): the preview has a tab per format, so the prototype's sub-line moved to the Wall card tab.
+  subtitle: 'Every format this offer can run in, its page and its share sheet, drawn from the campaign as it stands.',
   explainer:
     'The Phoenix user opens Offers, taps your card and either takes a claim code or is sent to your link. If they share it, the friend lands on the same offer with a token; when the friend claims, the sharer earns airtime and points. Each step shows up in your report within the hour.',
   offers: 'Offers',
@@ -131,6 +132,25 @@ export const PREVIEW_COPY = {
   loading: 'Loading the offers live now…',
   failed: "The live offers didn't load, so your card is shown on its own.",
   close: 'Close',
+  // Ours (Prompt 7): the format tabs. A placement other than the campaign's is shown, off, saying why.
+  tabsLabel: 'Formats',
+  tabs: { landing: 'Landing page', share: 'Share' },
+  notThisPlacement: 'Not this placement',
+  // One line per tab, beside the phone. The Wall card's is the prototype's sub-line, verbatim.
+  lines: {
+    card: 'Your card, outlined, among the offers live in this country right now.',
+    featured: 'Your tile, outlined, across the top of the Offers wall, above the offers live in this country right now.',
+    video: 'Your clip in the featured slot, outlined, at its first frame. Play it here as it will run.',
+    splash: 'Your splash fills the screen when Phoenix opens, once a day, with Skip in the corner.',
+    landing: 'The page a friend opens from a shared link: your offer, its reward and the claim button, then Share and earn.',
+    share: 'What a sharer sees once they leave their number: a link of their own for WhatsApp, SMS or X, or to copy.',
+  },
+  clip: 'Your clip, as it will play',
+  inert: 'Nothing you press here is recorded: no visit, claim, code or link is made.',
+  landingFrame: 'The landing page',
+  shareFrame: 'The share sheet',
+  message: 'The message their buttons send',
+  sample: 'Each sharer gets a link of their own. This one is a sample and opens nothing.',
 } as const
 
 // The words lib/reports.ts builds into its data: the campaign card's main row (ADV §1 "CampaignCard

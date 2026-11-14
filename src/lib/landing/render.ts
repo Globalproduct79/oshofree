@@ -120,9 +120,7 @@ function title(v: LandingView) {
   return v.brand ? L.title(v.brand, said) : said
 }
 
-export function renderLanding(v: LandingView): string {
-  const said = STATUS[v.state]
-  const body = said === undefined ? offer(v) : status(v, said)
+function page(v: LandingView, body: string): string {
   const note = v.preview ? `<p class="pv" role="note">${esc(L.preview)}</p>` : ''
   return (
     '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
@@ -130,4 +128,15 @@ export function renderLanding(v: LandingView): string {
     `<title>${esc(title(v))}</title><style>${landingCss}${v.preview ? previewCss : ''}</style></head>` +
     `<body><main>${note}${body}</main></body></html>`
   )
+}
+
+export function renderLanding(v: LandingView): string {
+  const said = STATUS[v.state]
+  return page(v, said === undefined ? offer(v) : status(v, said))
+}
+
+// The page's Share and earn section on its own, as the sharer has it once they leave their number: the console
+// preview's Share tab (Prompt 7), which would otherwise open on the offer above it.
+export function renderShareSheet(v: LandingView): string {
+  return page(v, share(v))
 }

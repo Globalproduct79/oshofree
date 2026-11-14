@@ -2,25 +2,27 @@
 
 import { useRef, useState } from 'react'
 import { PhonePreview, type PreviewState } from '@/components/campaign/PhonePreview'
+import type { PreviewTab } from '@/components/campaign/preview-tabs'
 import { Button, type ButtonVariant } from '@/components/og'
 import { COPY } from '@/lib/copy'
-import { MARKETS, type Country } from '@/lib/markets'
-import type { PreviewOffer } from '@/lib/preview-merge'
+import type { PreviewCampaign, PreviewOffer } from '@/lib/preview-merge'
 
 type Props = {
-  mine: PreviewOffer
-  country: Country
-  // A server action answering the live offers for the card's country; fetched each time the dialog opens.
+  campaign: PreviewCampaign
+  // A server action answering the live offers for the campaign's country; fetched each time the dialog opens.
   load: () => Promise<PreviewOffer[]>
   label?: string
   variant?: ButtonVariant
   size?: 's' | 'lg'
   className?: string
+  // The tab to open on; the campaign's placement by default.
+  initialTab?: PreviewTab
   // A button of the caller's own (the campaign form's ghost button), handed the opener.
   trigger?: (show: () => void) => React.ReactNode
 }
 
-export function PreviewButton({ mine, country, load, label = COPY.preview.button, variant, size, className, trigger }: Props) {
+// Opens the one preview (PhonePreview) from the campaign page, the form and Global's Review.
+export function PreviewButton({ campaign, load, label = COPY.preview.button, variant, size, className, initialTab, trigger }: Props) {
   const [open, setOpen] = useState(false)
   const [offers, setOffers] = useState<PreviewOffer[]>([])
   const [state, setState] = useState<PreviewState>('loading')
@@ -51,7 +53,7 @@ export function PreviewButton({ mine, country, load, label = COPY.preview.button
           {label}
         </Button>
       )}
-      <PhonePreview open={open} onOpenChange={setOpen} live={offers} mine={mine} country={MARKETS[country].name} state={state} />
+      <PhonePreview open={open} onOpenChange={setOpen} live={offers} campaign={campaign} state={state} initialTab={initialTab} />
     </>
   )
 }

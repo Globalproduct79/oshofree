@@ -3,6 +3,7 @@ import { CampaignForm } from '@/components/campaign/CampaignForm'
 import { newCampaignDefaults } from '@/components/campaign/form/values'
 import { LinkButton } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
+import { sampleShareLink } from '@/lib/campaign-card'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { SHELL } from '@/lib/copy-shell'
 import { creditSummary } from '@/lib/money'
@@ -40,6 +41,7 @@ export default async function NewCampaignPage({ searchParams }: { searchParams: 
         credit={{ limitCents: credit.limitCents, inUseCents: credit.inUseCents }}
         defaults={prefillBrand === undefined ? defaults : { ...defaults, brand: prefillBrand }}
         mode={{ kind: 'new', prefillBrand, focusBrand: one(sp.focus) === 'brand' }}
+        sampleLink={sampleShareLink()}
       />
     </>
   )

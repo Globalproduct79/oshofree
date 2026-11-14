@@ -1,6 +1,6 @@
 import { lastDay } from '@/lib/campaign-status'
 import { COPY } from '@/lib/copy'
-import { type LandingView, renderLanding } from '@/lib/landing/render'
+import { type LandingView, renderLanding, renderShareSheet } from '@/lib/landing/render'
 import type { ShareTargets } from '@/lib/landing/share-targets'
 import type { PreviewCampaign } from '@/lib/preview-merge'
 import { tokens } from '@/lib/tokens'
@@ -38,6 +38,9 @@ export function previewLandingView(c: PreviewCampaign, state: 'offer' | 'shared'
 }
 
 export const previewLanding = (c: PreviewCampaign, state: 'offer' | 'shared') => renderLanding(previewLandingView(c, state))
+
+// The sharer's Share and earn section alone, holding the sample link.
+export const previewShareSheet = (c: PreviewCampaign) => renderShareSheet(previewLandingView(c, 'shared'))
 
 // What a sharer's WhatsApp, SMS and X buttons send (the share route's text, then the link), with the sample link.
 export const shareMessage = (c: Pick<PreviewCampaign, 'brand' | 'headline' | 'sampleLink'>) =>

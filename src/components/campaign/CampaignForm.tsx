@@ -6,15 +6,15 @@ import { editOfferAction, previewOffers, submitAction } from '@/app/app/(console
 import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { Box, Button, type PickerStatus } from '@/components/og'
 import { toast } from '@/components/shell/toast-store'
-import { ageGated, todayIn, type CreditPosition, type FormEdit } from '@/lib/campaign-schema'
+import { todayIn, type CreditPosition, type FormEdit } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import type { PlacementKey } from '@/lib/copy-components'
 import { clearDraft, loadDraft, saveDraft, startOver } from '@/lib/draft-store'
-import type { PreviewOffer } from '@/lib/preview-merge'
 import type { MarketRates } from '@/lib/rates'
 import { CardPreview } from './form/CardPreview'
 import { CostBox } from './form/CostBox'
 import { OfferFields } from './form/OfferFields'
+import { formPreview } from './form/preview'
 import { PlacementFields } from './form/PlacementFields'
 import { formProblem, type FormStage } from './form/problem'
 import { ReviewStep } from './form/ReviewStep'
@@ -33,6 +33,8 @@ type Props = {
   credit: CreditPosition
   defaults: FormValues
   mode: FormMode
+  // The preview's share sheet holds this sample link (a sharer's link in shape, opening nothing).
+  sampleLink: string
 }
 
 const AUTOSAVE_MS = 400
@@ -44,7 +46,7 @@ const HOME = '/app'
 // on one page, then reviewed (Prompt 6): "Review before submitting" opens a read-only summary with the confirmation,
 // "Submit for review" and "Back to edit". Its draft autosaves to this browser (spec §6.3); "Save draft", at either
 // step, keeps it and goes to Campaigns home, where it waits as a card.
-export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props) {
+export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleLink }: Props) {
   const router = useRouter()
   const [values, setValues] = useState(defaults)
   // The server's refusal, shown until the next change.
@@ -188,20 +190,8 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
     })
   }
 
-  // The draft as the Phoenix preview draws it: a new one has no id yet, so it cannot match a live offer.
-  const mine: PreviewOffer = {
-    id: mode.kind === 'edit' ? mode.id : '__draft',
-    brand: values.brand.trim() || P.brand,
-    headline: values.headline.trim(),
-    category: values.category,
-    placement: values.placement,
-    ageGated: ageGated(values),
-    creative: {
-      image: values.creative?.kind === 'image' ? values.creative.url : null,
-      video: values.creative?.kind === 'video' ? values.creative.url : null,
-      color: values.tileColor,
-    },
-  }
+  // The campaign as the preview draws it, from the values as they stand.
+  const mine = formPreview(values, mode.kind === 'edit' ? mode.id : '__draft', sampleLink)
 
   const buttons = (
     <div className="full" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -214,8 +204,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
         </Button>
       )}
       <PreviewButton
-        mine={mine}
-        country={values.country}
+        campaign={mine}
         load={() => previewOffers(values.country)}
         trigger={(show) => (
           <Button type="button" variant="ghost" onClick={show}>

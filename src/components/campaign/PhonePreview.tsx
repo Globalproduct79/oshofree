@@ -1,44 +1,41 @@
 'use client'
 
-import { PhoneFrame } from '@/components/campaign/PhoneFrame'
-import { Button } from '@/components/og'
+import { useState } from 'react'
+import { PreviewBody, type LiveState } from '@/components/campaign/PreviewBody'
+import { startTab, type PreviewTab } from '@/components/campaign/preview-tabs'
 import { Modal } from '@/components/shell/Modal'
 import { COPY } from '@/lib/copy'
-import type { PreviewOffer } from '@/lib/preview-merge'
+import type { PreviewCampaign, PreviewOffer } from '@/lib/preview-merge'
 
 const P = COPY.preview
 
-export type PreviewState = 'loading' | 'failed' | 'ready'
+export type PreviewState = LiveState
 
 type Props = {
+  campaign: PreviewCampaign
   live: PreviewOffer[]
-  mine: PreviewOffer
-  country: string
   open: boolean
   onOpenChange: (open: boolean) => void
   state?: PreviewState
+  // The tab to open on (View full size asks for Splash); the campaign's placement when it does not apply.
+  initialTab?: PreviewTab
 }
 
-// "On Phoenix": the campaign's card, outlined, among the offers delivering in its country right now.
-export function PhonePreview({ live, mine, country, open, onOpenChange, state = 'ready' }: Props) {
-  const note = state === 'loading' ? P.loading : state === 'failed' ? P.failed : null
+// The one preview (Prompt 7), from the campaign page, the form and Global's Review: "On Phoenix" with a tab per format.
+// The four placements show the campaign on the Phoenix wall among the offers live in its country now; Landing page
+// and Share show the real landing page, inert. Full screen on a phone.
+export function PhonePreview({ campaign, live, open, onOpenChange, state = 'ready', initialTab }: Props) {
+  if (!open) return null
   return (
-    <Modal open={open} onClose={() => onOpenChange(false)} title={P.title}>
-      <div style={{ color: 'var(--ink3)', fontSize: 13, lineHeight: 1.5 }}>{P.subtitle}</div>
-      <div className="prev" style={{ marginTop: 16 }}>
-        <PhoneFrame mine={mine} live={live} country={country} />
-        <div>
-          <p style={{ color: 'var(--ink2)', lineHeight: 1.6, margin: '0 0 16px' }}>{P.explainer}</p>
-          {note && (
-            <p role="status" style={{ color: 'var(--ink3)', fontSize: 13, margin: '0 0 16px' }}>
-              {note}
-            </p>
-          )}
-          <Button type="button" variant="dark" onClick={() => onOpenChange(false)}>
-            {P.close}
-          </Button>
-        </div>
-      </div>
+    <Modal open onClose={() => onOpenChange(false)} title={P.title} sheet>
+      <p className="sub">{P.subtitle}</p>
+      {/* Keyed so each opening starts on the tab asked for. */}
+      <Tabs key={`${campaign.id}:${campaign.placement}:${initialTab ?? ''}`} {...{ campaign, live, state, onOpenChange, initialTab }} />
     </Modal>
   )
+}
+
+function Tabs({ campaign, live, state, onOpenChange, initialTab }: Omit<Props, 'open'> & { state: PreviewState }) {
+  const [tab, setTab] = useState<PreviewTab>(() => startTab(campaign.placement, initialTab))
+  return <PreviewBody campaign={campaign} tab={tab} live={live} state={state} onTab={setTab} onClose={() => onOpenChange(false)} />
 }

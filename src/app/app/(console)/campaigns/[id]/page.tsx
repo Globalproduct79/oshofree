@@ -8,7 +8,7 @@ import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { SharingBox } from '@/components/campaign/SharingBox'
 import { BarChart14d, Box, Funnel, LinkButton, MetricCard, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
-import { previewOffer } from '@/lib/campaign-card'
+import { offerPreview } from '@/lib/campaign-card'
 import { campaignReport } from '@/lib/campaign-report'
 import { CAMPAIGN_COPY as C } from '@/lib/copy-report'
 import { db } from '@/lib/db'
@@ -40,8 +40,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
           <>
             {canAct && running && <PauseResume id={c.id} status={running} />}
             <PreviewButton
-              mine={previewOffer(c)}
-              country={c.country}
+              campaign={offerPreview(c)}
               load={previewOffers.bind(null, c.country)}
               label={C.seeOnPhoenix}
               variant="ghost"

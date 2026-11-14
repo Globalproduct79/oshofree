@@ -6,7 +6,7 @@ import { Button, CreativePicker, OptionTile, type PickerStatus } from '@/compone
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import type { PlacementKey } from '@/lib/copy-components'
 import { MARKETS } from '@/lib/markets'
-import type { PreviewOffer } from '@/lib/preview-merge'
+import type { PreviewCampaign, PreviewOffer } from '@/lib/preview-merge'
 import { ACCEPT, PLACEMENT_ORDER, type FormValues } from './values'
 
 type Props = {
@@ -18,8 +18,8 @@ type Props = {
   status: PickerStatus
   pick: (file: File) => void
   remove: () => void
-  // The draft as Phoenix draws it, and the live offers around it: a splash's View full size opens that preview.
-  mine: PreviewOffer
+  // The draft as the preview draws it, and the live offers around it: a splash's View full size opens the preview on it.
+  mine: PreviewCampaign
   loadLive: () => Promise<PreviewOffer[]>
 }
 
@@ -67,9 +67,9 @@ export function PlacementFields({ values: v, cpmCents, choose, status, pick, rem
           actions={
             splash ? (
               <PreviewButton
-                mine={mine}
-                country={v.country}
+                campaign={mine}
                 load={loadLive}
+                initialTab="splash"
                 trigger={(show) => (
                   <Button variant="ghost" size="s" type="button" onClick={show}>
                     {F.drop.viewFull}
