@@ -32,6 +32,9 @@ export const SHARING = {
   byCampaign: {
     title: 'By campaign',
     head: ['Campaign', 'Shares', 'Friend opens', 'Friend claims', 'Viral', 'Rewards'],
+    // Ours: before any campaign has been live, the table says so and links to New campaign.
+    empty: 'No shares yet. Shares start once a campaign is live on Phoenix.',
+    newCampaign: 'New campaign',
   },
   where: { title: 'Where people share', sub: 'Tagged on the token, so you know which platform works.' },
   points: {

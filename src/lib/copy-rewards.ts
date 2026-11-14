@@ -12,6 +12,8 @@ export const REWARDS = {
     title: 'Per campaign',
     sub: "Airtime per successful share, in your campaign's currency. Deducted from the campaign budget as rewards are earned.",
     head: ['Campaign', 'Country', 'Airtime per share', 'Paid so far', 'Cap'],
+    // Ours: with no campaign to reward, the table says where a reward is set.
+    empty: 'No rewards yet. Set a share reward when you create a campaign.',
     toast: 'Reward updated — applies to new shares',
   },
   caps: {

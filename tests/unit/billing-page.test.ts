@@ -122,7 +122,7 @@ describe('Billing page', () => {
     await setup()
     const { markup, text: t } = await render()
     expect(markup).toContain('/app/billing?month=2026-11')
-    expect(t).toContain('No charges yet.')
+    expect(t).toContain('Nothing charged yet. Delivery and rewards appear here daily once a campaign is live.')
   })
 
   it('explains how you pay with the month rate, terms, next invoice and manager', async () => {

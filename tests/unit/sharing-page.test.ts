@@ -89,7 +89,7 @@ describe('Sharing page', () => {
     expect(t).toContain('Rewards paid $100 airtime via aggregator')
   })
 
-  it('has zero KPIs and a header-only table for a workspace with no campaigns', async () => {
+  it('has zero KPIs and a table that says why it is empty for a workspace with no campaigns', async () => {
     const ws = await setup()
     const { markup, text: t } = await page()
     expect(t).toContain('Shares 0 across 0 campaigns')
@@ -97,7 +97,7 @@ describe('Sharing page', () => {
     expect(t).toContain('0% of friend opens')
     expect(markup).not.toContain('class="row"')
     expect(markup).not.toContain('class="hbar"')
-    expect(t).toContain('Campaign Shares Friend opens Friend claims Viral Rewards')
+    expect(t).toContain('Campaign Shares Friend opens Friend claims Viral Rewards No shares yet. Shares start once a campaign is live on Phoenix. New campaign')
     expect(ws.id).toBeTruthy()
   })
 

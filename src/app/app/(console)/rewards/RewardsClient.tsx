@@ -10,7 +10,7 @@ export type RewardRow = { id: string; name: string; country: string; currency: s
 
 const inputStyle = { width: 90, border: '1px solid var(--line)', borderRadius: 7, padding: '6px 8px' }
 
-export function RewardsTable({ rows, editable }: { rows: RewardRow[]; editable: boolean }) {
+export function RewardsTable({ rows, editable, empty }: { rows: RewardRow[]; editable: boolean; empty: React.ReactNode }) {
   const [, start] = useTransition()
   const commit = (el: HTMLInputElement, id: string) => {
     if (el.value === el.defaultValue) return
@@ -43,7 +43,7 @@ export function RewardsTable({ rows, editable }: { rows: RewardRow[]; editable: 
     r.paid,
     r.cap,
   ])
-  return <DataTable head={REWARDS.perCampaign.head} rows={body} emptyText="" />
+  return <DataTable head={REWARDS.perCampaign.head} rows={body} emptyText={empty} />
 }
 
 export type CapsValues = { maxPerSharerPerDay: number; capPct: number; pointsPerShare: number }

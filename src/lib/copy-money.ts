@@ -40,7 +40,8 @@ export const MONEY = {
     statementTitle: 'Statement',
     statementSub: 'Every charge this month. Delivery and share rewards are separate lines.',
     statementHead: (currency: string) => ['Date', 'Description', 'USD', currency],
-    noCharges: 'No charges yet.',
+    // Ours (the prototype's was "No charges yet."): what the statement will hold, and when.
+    noCharges: 'Nothing charged yet. Delivery and rewards appear here daily once a campaign is live.',
     howYouPayTitle: 'How you pay',
     // e.g. "… in NGN at a rate fixed for the month (1 USD = ₦1,550 in November). Pay by bank transfer within 14 days, …"
     howYouPay: (currency: string, symbol: string, fxPerUsd: number | null, month: string, termsDays: number) =>

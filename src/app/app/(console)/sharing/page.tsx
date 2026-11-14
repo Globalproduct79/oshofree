@@ -1,21 +1,28 @@
+import Link from 'next/link'
 import { SimulateDayButton } from '@/components/demo/SimulateDayButton'
 import { Box, DataTable, EstimatePanel, HBarList, MetricCard, Steps, TokenChip } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { SHARING } from '@/lib/copy-sharing'
+import { db } from '@/lib/db'
 import { demoControlsOn } from '@/lib/demo/controls'
 import { fmt, pct, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
-import { requireMember } from '@/lib/permissions'
+import { can, requireMember } from '@/lib/permissions'
 import { pointsIssued, workspaceSharing } from '@/lib/reports'
 import { simulateDayAction } from '../campaigns/actions'
 
 const S = SHARING
 
 // Sharing (ADV §5): totals over every campaign of the workspace, how a share works, the
-// by-campaign table, where people share and the points issued.
+// by-campaign table, where people share and the points issued. Until a campaign has been live on Phoenix the
+// table holds one line saying so, with New campaign for those who can make one.
 export default async function SharingPage() {
-  const { user, workspace: ws } = await requireMember('view')
-  const [s, points] = await Promise.all([workspaceSharing(ws.id), pointsIssued(ws.id)])
+  const { user, workspace: ws, role } = await requireMember('view')
+  const [s, points, wentLive] = await Promise.all([
+    workspaceSharing(ws.id),
+    pointsIssued(ws.id),
+    db.campaign.count({ where: { workspaceId: ws.id, status: { in: ['live', 'paused', 'ended'] } } }),
+  ])
   const viral = (s.opens === 0 ? 0 : s.sOpens / s.opens).toFixed(2)
   const steps = [
     {
@@ -75,8 +82,18 @@ export default async function SharingPage() {
           <Box title={S.byCampaign.title}>
             <DataTable
               head={S.byCampaign.head}
-              rows={rows}
-              emptyText=""
+              rows={wentLive > 0 ? rows : []}
+              emptyText={
+                <>
+                  {S.byCampaign.empty}
+                  {can(role, 'campaigns') && (
+                    <>
+                      {' '}
+                      <Link href="/app/campaigns/new">{S.byCampaign.newCampaign}</Link>
+                    </>
+                  )}
+                </>
+              }
               align={[undefined, 'right', 'right', 'right', 'right', 'right']}
               rowHref={(i) => `/app/campaigns/${s.byCampaign[i].id}`}
             />

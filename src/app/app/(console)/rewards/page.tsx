@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Box, LinkButton } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { db } from '@/lib/db'
@@ -44,7 +45,21 @@ export default async function RewardsPage() {
       />
       <div className="two">
         <Box title={REWARDS.perCampaign.title} sub={REWARDS.perCampaign.sub}>
-          <RewardsTable rows={rows} editable={editable} />
+          <RewardsTable
+            rows={rows}
+            editable={editable}
+            empty={
+              <>
+                {REWARDS.perCampaign.empty}
+                {canCreate && (
+                  <>
+                    {' '}
+                    <Link href="/app/campaigns/new">{REWARDS.newCampaign}</Link>
+                  </>
+                )}
+              </>
+            }
+          />
         </Box>
         <div>
           <Box title={REWARDS.caps.title} sub={REWARDS.caps.sub}>
