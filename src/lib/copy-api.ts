@@ -24,6 +24,7 @@ export const API_COPY = {
     done: 'Done',
     rotated: 'Key rotated',
     copied: 'Key copied',
+    copyFailed: 'Copy the key above before closing.',
   },
   errorsTitle: 'Errors',
 } as const

@@ -570,7 +570,8 @@ model FraudRule {
 
 model ClaimCode {
   id         String   @id @default(cuid())
-  code       String   @unique
+  // Unique per campaign, not globally: a global space of 32^4 codes could be exhausted by cheap claims.
+  code       String
   campaignId String
   channelId  String
   sessionId  String
@@ -581,6 +582,7 @@ model ClaimCode {
   channel    Channel  @relation(fields: [channelId], references: [id])
 
   @@unique([campaignId, channelId, sessionId, day])
+  @@unique([campaignId, code])
 }
 
 model JobRun {

@@ -82,6 +82,17 @@ describe('issueClaimCode', () => {
     expect(draws).toEqual([])
   })
 
+  it('lets two campaigns issue the same code string, since a code is unique only within its campaign', async () => {
+    const channel = await seedChannel()
+    const a = await seedCampaign()
+    const b = await seedCampaign()
+    const now = new Date('2026-11-13T10:00:00Z')
+    const same = () => 'PHX-K4Q7'
+    expect((await issueClaimCode(a.id, channel.id, 'sess-1', now, same)).code).toBe('PHX-K4Q7')
+    expect((await issueClaimCode(b.id, channel.id, 'sess-2', now, same)).code).toBe('PHX-K4Q7')
+    expect(await db.claimCode.count({ where: { code: 'PHX-K4Q7' } })).toBe(2)
+  })
+
   it('hands both of two concurrent asks the same code', async () => {
     const channel = await seedChannel()
     const c = await seedCampaign()

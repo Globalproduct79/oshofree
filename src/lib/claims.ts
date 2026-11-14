@@ -4,7 +4,8 @@ import { db, isUniqueViolation } from '@/lib/db'
 import { startOfUtcDay } from '@/lib/link-events'
 
 // Claim codes (GLB §2.6 "Claim codes"): PHX- and four characters, none of them 0/O or 1/I.
-// One per session per offer per channel per UTC day; valid until the campaign ends.
+// One per session per offer per channel per UTC day; valid until the campaign ends. A code is unique
+// within its campaign only (the brand honours its own offer's codes), so the 32^4 space is per campaign.
 export const CLAIM_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
 const ATTEMPTS = 8
 
@@ -20,7 +21,7 @@ const KEY = (campaignId: string, channelId: string, sessionId: string, day: Date
 })
 
 // The session's code for the offer today, issuing one when it has none. A concurrent ask for the same
-// session loses the unique race and reads the winner's; a code already taken by anyone is drawn again.
+// session loses the unique race and reads the winner's; a code this campaign already issued is drawn again.
 export async function issueClaimCode(
   campaignId: string,
   channelId: string,
@@ -39,6 +40,7 @@ export async function issueClaimCode(
       })
       return { code: row.code, validUntil: row.validUntil, created: true }
     } catch (e) {
+      // Either (campaign, channel, session, day) or (campaign, code) collided; the first means we lost a race.
       if (!isUniqueViolation(e)) throw e
       const won = await db.claimCode.findUnique({ where: KEY(campaignId, channelId, sessionId, day) })
       if (won) return { code: won.code, validUntil: won.validUntil, created: false }

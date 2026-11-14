@@ -14,10 +14,12 @@ const body: React.CSSProperties = { color: 'var(--ink2)', lineHeight: 1.6, margi
 export function RotateKey() {
   const [open, setOpen] = useState(false)
   const [key, setKey] = useState<string | null>(null)
+  const [copyFailed, setCopyFailed] = useState(false)
   const [pending, start] = useTransition()
   const close = () => {
     setOpen(false)
     setKey(null)
+    setCopyFailed(false)
   }
   const rotate = () =>
     start(async () => {
@@ -29,12 +31,14 @@ export function RotateKey() {
       setKey(res.key)
       toast(K.rotated)
     })
+  // The key never goes into a toast: a toast outlives the modal, and the key must not.
   const copy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value)
+      setCopyFailed(false)
       toast(K.copied)
     } catch {
-      toast(value)
+      setCopyFailed(true)
     }
   }
 
@@ -52,6 +56,11 @@ export function RotateKey() {
                 {key}
               </span>
             </p>
+            {copyFailed && (
+              <p role="alert" style={{ color: 'var(--ink3)', fontSize: 13, margin: '10px 0 0' }}>
+                {K.copyFailed}
+              </p>
+            )}
             <div className="row">
               <Button type="button" variant="primary" onClick={() => copy(key)}>
                 {K.copy}

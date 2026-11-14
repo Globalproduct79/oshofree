@@ -3,7 +3,8 @@ import { tokens } from '@/lib/tokens'
 
 // The Phoenix API page's boxes (GLB §2.6) as data, so the page is markup only. The prose is the
 // prototype's, with OshoFree's own paths; where the prototype describes a wire format OshoFree does not
-// use (the share token, the events reply), the box says what this API does. Field names and errors
+// use (the share token, the events reply), the box says what this API does. "Link stats" is OshoFree's
+// own endpoint, which the prototype does not document. Field names and errors
 // mirror src/app/api/v1 and src/lib/{offers,events,claims,link-events}.ts.
 // In prose, `backticks` mark an inline token (.tok). Code blocks are highlighted by the page.
 
@@ -67,6 +68,20 @@ export function contractBoxes(base: string): DocBox[] {
       id: 'share',
       title: '3 · Share token',
       sub: `Minted by us when Phoenix calls \`POST /api/v1/share\` with the offer and the sharer's OTP-verified number (\`msisdn\`). Format \`${TOKEN}\`, 8 alphanumerics, no ambiguous characters, valid to the campaign end date. The share link is \`${base}/o/<token>\`; it opens OshoFree's offer page, where the friend claims and can get a link of their own. One sharer earns at most 5 rewards per day per campaign; the friend's session must be a different device.`,
+    },
+    {
+      id: 'stats',
+      title: 'Link stats',
+      sub: "What one share link has earned so far: opens and claims on OshoFree's offer page, details left, links shared on from it (`children`), and the `share_open` / `share_claim` events you posted for the token (`share_opens`, `share_claims`). Your own channel's links only; any other code is 404 `unknown_link`.",
+      code: [
+        `GET ${api}/links/${TOKEN}/stats`,
+        'Authorization: Bearer <channel key>',
+        '',
+        '{',
+        '  "opens_unique": 14, "opens_all": 21, "details_left": 5, "claims": 3, "children": 2,',
+        '  "share_opens": 6, "share_claims": 2',
+        '}',
+      ].join('\n'),
     },
   ]
 }
