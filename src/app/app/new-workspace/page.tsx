@@ -15,11 +15,9 @@ export default async function NewWorkspacePage() {
   return (
     <main className="wrap">
       <PageHead crumb={[{ label: COPY.workspace.newCrumb }]} title={COPY.workspace.newTitle} lead={COPY.workspace.newLead} />
-      <div className="two">
-        <Box>
-          <WorkspaceForm action={createWorkspaceAction} submitLabel={COPY.workspace.createAction} />
-        </Box>
-      </div>
+      <Box>
+        <WorkspaceForm action={createWorkspaceAction} submitLabel={COPY.workspace.createAction} />
+      </Box>
     </main>
   )
 }
