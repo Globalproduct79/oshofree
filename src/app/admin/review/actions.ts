@@ -18,7 +18,7 @@ async function decide(run: (adminId: string) => Promise<unknown>): Promise<Resul
   } catch (e) {
     if (e === 'REASON_REQUIRED') return { error: COPY.review.reasonRequired }
     if (e === 'WORKSPACE_NOT_APPROVED') return { error: COPY.review.workspaceNotApproved }
-    if (e === 'INVALID_TRANSITION') return { error: COPY.review.alreadyDecided }
+    if (e === 'INVALID_TRANSITION' || e === 'NOT_FOUND') return { error: COPY.review.alreadyDecided }
     throw e
   }
   revalidatePath('/admin/review')
@@ -37,8 +37,10 @@ export async function declineWorkspaceAction(id: unknown, reason: unknown) {
 export async function approveCampaignAction(id: unknown) {
   return decide((by) => approveCampaign(idOf(id), by))
 }
+// The slice-1 Reject box sends a note only; until the reason-code modal lands it is filed under the
+// code its default note describes ("Terms unclear — …").
 export async function rejectCampaignAction(id: unknown, reason: unknown) {
-  return decide((by) => rejectCampaign(idOf(id), by, textOf(reason)))
+  return decide((by) => rejectCampaign(idOf(id), by, 'misleading_terms', textOf(reason)))
 }
 
 // The offers a campaign waiting here would sit among on Phoenix.

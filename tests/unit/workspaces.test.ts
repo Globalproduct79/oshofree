@@ -68,6 +68,9 @@ describe('workspaces', () => {
       },
     })
     expect(await setupChecklist(ws.id)).toMatchObject({ firstCampaign: true, approvedCampaign: false })
+    // Approved with a start still ahead: stored as scheduled.
+    await db.campaign.update({ where: { id: campaign.id }, data: { status: 'scheduled' } })
+    expect(await setupChecklist(ws.id)).toMatchObject({ approvedCampaign: true })
     await db.campaign.update({ where: { id: campaign.id }, data: { status: 'paused' } })
     expect(await setupChecklist(ws.id)).toMatchObject({ approvedCampaign: true, firstShare: false })
     const channel = await db.channel.create({ data: { key: 'k', name: 'K', apiKeyHash: 'h' } })

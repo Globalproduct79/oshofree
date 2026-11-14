@@ -158,11 +158,11 @@ describe('GET /o/[code]', () => {
     ])
   })
 
-  it('answers 410 "This offer has ended" for an unknown code, a past end date or an unapproved workspace', async () => {
+  it('answers 410 "This offer has ended" for an unknown code, an ended campaign or an unapproved workspace', async () => {
     const unknown = await page('NOPE0000')
     expect(unknown.status).toBe(410)
     expect(await unknown.text()).toContain('This offer has ended')
-    const past = await seed({ ...linkOffer, startsAt: new Date(Date.now() - 9 * DAY), endsAt: new Date(Date.now() - DAY) })
+    const past = await seed({ ...linkOffer, status: 'ended', startsAt: new Date(Date.now() - 9 * DAY), endsAt: new Date(Date.now() - DAY) })
     const pending = await seed({}, false)
     for (const code of [past.code, pending.code]) {
       for (const res of [await page(code), await page(code, '?go=claim')]) {

@@ -35,7 +35,12 @@ export async function seedCampaigns(workspaceId: string, adminId: string, now: D
       data: { workspaceId, brand: 'Kola Bright', country: 'NG', category: 'Food & drink', placement: 'card',
         status: 'review', submittedAt, startsAt, endsAt: new Date(startsAt.getTime() + days * DAY), ...s },
     })
-    made.push(s.name === 'Weekend cashback' ? c : await approveCampaign(c.id, adminId))
+    if (s.name === 'Weekend cashback') { made.push(c); continue }
+    const approved = await approveCampaign(c.id, adminId, now)
+    // A flight already over is ended, as the daily job would have ended it.
+    made.push(approved.endsAt <= now
+      ? await db.campaign.update({ where: { id: c.id }, data: { status: 'ended', endedAt: approved.endsAt } })
+      : approved)
   }
   return { buy2: made[0], weekend: made[1], draw: made[2], august: made[3] }
 }

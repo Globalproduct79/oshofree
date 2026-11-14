@@ -17,7 +17,7 @@ export const FIRST_INVOICE_NUMBER = 52
 export const NEAR_LIMIT = 0.85
 const CHARGES: LedgerKind[] = ['delivery', 'reward']
 // Ended and rejected campaigns release their remainder; drafts never held any.
-const COMMITTED: CampaignStatus[] = ['live', 'review', 'scheduled', 'paused']
+export const COMMITTED: CampaignStatus[] = ['live', 'review', 'scheduled', 'paused']
 const SETTLEMENT_CHANNEL = 'phoenix'
 const DAY_MS = 86_400_000
 // Serialises invoice issuing, so two closes can neither double-invoice nor share a number.

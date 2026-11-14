@@ -1,6 +1,7 @@
 import type { Workspace } from '@prisma/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { pause, previewOffers, saveDraft, submit } from '@/app/app/(console)/campaigns/actions'
+import { pause, previewOffers, resume, saveDraft, submit } from '@/app/app/(console)/campaigns/actions'
+import { auth } from '@/lib/auth'
 import { createCampaign, type CampaignInput } from '@/lib/campaigns'
 import { db } from '@/lib/db'
 import { requireWorkspace } from '@/lib/workspaces'
@@ -70,7 +71,16 @@ describe('saveDraft', () => {
 })
 
 describe('transitions', () => {
+  beforeEach(async () => {
+    const u = await db.user.create({ data: { email: 'owner@x.test', name: 'Owner', passwordHash: 'x' } })
+    vi.mocked(auth).mockResolvedValue({ user: { id: u.id, email: u.email, name: u.name }, expires: '2099-01-01' } as never)
+  })
+
   it('submits its own draft to review', async () => {
+    const phoenix = await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'x', isLive: true } })
+    const from = new Date('2026-01-01T00:00:00Z')
+    await db.rateCard.create({ data: { channelId: phoenix.id, country: 'NG', placement: 'card', cpmCents: 120, effectiveFrom: from } })
+    await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1550, effectiveFrom: from } })
     const own = await createCampaign(mine.id, input)
     expect(await submit(own.id)).toEqual({ ok: true })
     expect((await db.campaign.findUniqueOrThrow({ where: { id: own.id } })).status).toBe('review')
@@ -95,6 +105,16 @@ describe('transitions', () => {
   it("explains when a campaign can't change state", async () => {
     const own = await createCampaign(mine.id, input)
     expect(await pause(own.id)).toEqual({ error: "That campaign can't change state right now." })
+  })
+
+  it('refuses to resume over the credit limit with the resume toast, and leaves it paused', async () => {
+    await db.workspace.update({ where: { id: mine.id }, data: { creditLimitCents: 1000 } })
+    const own = await createCampaign(mine.id, input)
+    await db.campaign.update({ where: { id: own.id }, data: { status: 'paused', pausedBy: 'credit' } })
+    expect(await resume(own.id)).toEqual({
+      error: "Can't resume — credit limit reached. Pay the open invoice or ask Global to raise the limit.",
+    })
+    expect((await db.campaign.findUniqueOrThrow({ where: { id: own.id } })).status).toBe('paused')
   })
 })
 

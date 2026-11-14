@@ -1,15 +1,16 @@
 'use server'
 
-import type { Campaign } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import {
-  campaignInput, createCampaign, pauseCampaign, resumeCampaign, submitCampaign, updateCampaign, validateCampaign,
+  campaignInput, createCampaign, isCreditLimit, pauseCampaign, resumeCampaign, submitCampaign, updateCampaign, validateCampaign,
 } from '@/lib/campaigns'
 import { COPY } from '@/lib/copy'
+import { MONEY } from '@/lib/copy-money'
 import { db } from '@/lib/db'
 import { isCountry } from '@/lib/markets'
 import { previewOffersFor } from '@/lib/offers'
 import type { PreviewOffer } from '@/lib/preview-merge'
+import { requireUser } from '@/lib/session'
 import { requireWorkspace } from '@/lib/workspaces'
 
 type Failure = { error: string }
@@ -18,7 +19,8 @@ type Failure = { error: string }
 async function change(
   workspaceId: string,
   id: unknown,
-  apply: (id: string) => Promise<Campaign>,
+  apply: (id: string) => Promise<unknown>,
+  overCredit?: string,
 ): Promise<{ ok: true } | Failure> {
   const row =
     typeof id === 'string'
@@ -29,6 +31,7 @@ async function change(
     await apply(row.id)
   } catch (e) {
     if (e === 'INVALID_TRANSITION') return { error: COPY.campaignForm.invalidTransition }
+    if (isCreditLimit(e)) return { error: overCredit ?? MONEY.overCredit(e.limitCents, e.excessCents) }
     throw e
   }
   revalidatePath('/app')
@@ -54,17 +57,20 @@ export async function saveDraft(input: unknown, id?: string): Promise<{ id: stri
 export async function submit(id: string): Promise<{ ok: true } | Failure> {
   const ws = await requireWorkspace()
   if (ws.status === 'declined') return { error: COPY.campaignForm.workspaceDeclined }
-  return change(ws.id, id, submitCampaign)
+  const by = await requireUser()
+  return change(ws.id, id, (cid) => submitCampaign(cid, by.id))
 }
 
 export async function pause(id: string) {
   const ws = await requireWorkspace()
-  return change(ws.id, id, pauseCampaign)
+  const by = await requireUser()
+  return change(ws.id, id, (cid) => pauseCampaign(cid, by.id))
 }
 
 export async function resume(id: string) {
   const ws = await requireWorkspace()
-  return change(ws.id, id, resumeCampaign)
+  const by = await requireUser()
+  return change(ws.id, id, (cid) => resumeCampaign(cid, by.id), MONEY.cantResume)
 }
 
 // The live offers for the Phoenix preview. They are public on Phoenix already, so this reads across workspaces.

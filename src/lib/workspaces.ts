@@ -37,7 +37,8 @@ export async function updateWorkspace(id: string, input: WorkspaceInput): Promis
 export async function setupChecklist(workspaceId: string) {
   const [anyCampaign, approved, share] = await Promise.all([
     db.campaign.findFirst({ where: { workspaceId }, select: { id: true } }),
-    db.campaign.findFirst({ where: { workspaceId, status: { in: ['live', 'paused'] } }, select: { id: true } }),
+    // Every status Global's approval leads to: scheduled, live, paused and, once over, ended.
+    db.campaign.findFirst({ where: { workspaceId, status: { in: ['scheduled', 'live', 'paused', 'ended'] } }, select: { id: true } }),
     db.shareLink.findFirst({
       where: { sharerType: { not: 'Root' }, campaign: { workspaceId } },
       select: { id: true },

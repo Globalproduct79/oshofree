@@ -102,13 +102,14 @@ describe('GET /api/v1/offers', () => {
       await expectError(await offers(q), 400, 'bad_country')
   })
 
-  it('lists only campaigns delivering now in that country, earliest start first', async () => {
+  it('lists only live campaigns in that country, earliest start first', async () => {
     await seedChannel()
     const later = await seedCampaign({ startsAt: new Date(Date.now() - DAY / 2) })
     const live = await seedCampaign()
     await seedCampaign({ country: 'KE' })
-    await seedCampaign({ startsAt: new Date(Date.now() - 8 * DAY), endsAt: new Date(Date.now() - DAY) })
-    await seedCampaign({}, 'pending')
+    await seedCampaign({ status: 'ended', startsAt: new Date(Date.now() - 8 * DAY), endsAt: new Date(Date.now() - DAY) })
+    await seedCampaign({ status: 'scheduled', startsAt: new Date(Date.now() + DAY) })
+    await seedCampaign({ status: 'review' }, 'pending')
     await seedCampaign({ status: 'paused' })
     const res = await offers()
     expect(res.status).toBe(200)
@@ -171,8 +172,8 @@ describe('POST /api/v1/share', () => {
 
   it('answers 404 for an unknown offer and 409 for one not delivering', async () => {
     await seedChannel()
-    const ended = await seedCampaign({ startsAt: new Date(Date.now() - 8 * DAY), endsAt: new Date(Date.now() - DAY) })
-    const pending = await seedCampaign({}, 'pending')
+    const ended = await seedCampaign({ status: 'ended', startsAt: new Date(Date.now() - 8 * DAY), endsAt: new Date(Date.now() - DAY) })
+    const pending = await seedCampaign({ status: 'review' }, 'pending')
     await expectError(await share({ offer_id: 'nope', session_id: 's', via: 'sms' }), 404, 'unknown_offer')
     await expectError(await share({ offer_id: ended.id, session_id: 's', via: 'sms' }), 409, 'not_delivering')
     await expectError(await share({ offer_id: pending.id, session_id: 's', via: 'sms' }), 409, 'not_delivering')

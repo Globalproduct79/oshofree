@@ -1,3 +1,4 @@
+import type { RejectReason } from '@prisma/client'
 import { describe, expect, it, vi } from 'vitest'
 import { previewOffersAction } from '@/app/admin/review/actions'
 import { auth } from '@/lib/auth'
@@ -26,12 +27,18 @@ const input: CampaignInput = {
   termsAccepted: true,
 }
 
+// The input starts on 1 Dec: approving after that puts it straight live.
+const AFTER_START = new Date('2026-12-02T09:00:00Z')
+const RATES_FROM = new Date('2026-01-01T00:00:00Z')
+
 async function setup(wsStatus: 'pending' | 'approved' = 'approved') {
   const admin = await db.user.create({ data: { email: 'a@x.test', name: 'A', passwordHash: 'x', isGlobalAdmin: true } })
   const ws = await db.workspace.create({ data: { name: 'Acme', type: 'Brand', country: 'NG', status: wsStatus } })
-  const c = await submitCampaign((await createCampaign(ws.id, input)).id)
-  await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'h1', isLive: true } })
+  const phoenix = await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'h1', isLive: true } })
   await db.channel.create({ data: { key: 'other', name: 'Other', apiKeyHash: 'h2', isLive: false } })
+  await db.rateCard.create({ data: { channelId: phoenix.id, country: 'NG', placement: 'card', cpmCents: 120, effectiveFrom: RATES_FROM } })
+  await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1550, effectiveFrom: RATES_FROM } })
+  const c = await submitCampaign((await createCampaign(ws.id, input)).id, admin.id)
   return { admin, ws, c }
 }
 
@@ -46,7 +53,7 @@ describe('generateCode', () => {
 describe('approveCampaign', () => {
   it('goes live, mints one Root link per live channel and records the decision', async () => {
     const { admin, c } = await setup()
-    const live = await approveCampaign(c.id, admin.id)
+    const live = await approveCampaign(c.id, admin.id, AFTER_START)
     expect(live.status).toBe('live')
     expect(live.decidedAt).not.toBeNull()
     const links = await db.shareLink.findMany({ where: { campaignId: c.id } })
@@ -58,8 +65,8 @@ describe('approveCampaign', () => {
   })
   it('does not mint a second link when approved twice', async () => {
     const { admin, c } = await setup()
-    await approveCampaign(c.id, admin.id)
-    await expect(approveCampaign(c.id, admin.id)).rejects.toBe('INVALID_TRANSITION')
+    await approveCampaign(c.id, admin.id, AFTER_START)
+    await expect(approveCampaign(c.id, admin.id, AFTER_START)).rejects.toBe('INVALID_TRANSITION')
     expect(await db.shareLink.count({ where: { campaignId: c.id } })).toBe(1)
     expect(await db.reviewAction.count({ where: { targetId: c.id } })).toBe(1)
   })
@@ -85,17 +92,17 @@ describe('atomic decisions', () => {
 })
 
 describe('rejectCampaign', () => {
-  it('stores the reason and records the decision', async () => {
+  it('stores the reason code and note and records the decision', async () => {
     const { admin, c } = await setup()
-    const r = await rejectCampaign(c.id, admin.id, '  Terms unclear  ')
-    expect(r.status).toBe('rejected')
-    expect(r.rejectReason).toBe('Terms unclear')
+    const r = await rejectCampaign(c.id, admin.id, 'misleading_terms', '  Terms unclear  ')
+    expect(r).toMatchObject({ status: 'rejected', rejectReasonCode: 'misleading_terms', rejectReason: 'Terms unclear' })
     expect(r.decidedAt).not.toBeNull()
-    expect(await db.reviewAction.count({ where: { targetId: c.id, action: 'Reject', reason: 'Terms unclear' } })).toBe(1)
+    const reason = 'misleading_terms: Terms unclear'
+    expect(await db.reviewAction.count({ where: { targetId: c.id, action: 'Reject', reason } })).toBe(1)
   })
-  it('requires a reason', async () => {
+  it('requires a reason code', async () => {
     const { admin, c } = await setup()
-    await expect(rejectCampaign(c.id, admin.id, '   ')).rejects.toBe('REASON_REQUIRED')
+    await expect(rejectCampaign(c.id, admin.id, '' as RejectReason, 'Terms unclear')).rejects.toBe('REASON_REQUIRED')
   })
 })
 
@@ -139,8 +146,7 @@ describe('previewOffersAction', () => {
 
   it('lists the live offers in the campaign country for an admin', async () => {
     const { admin, c } = await setup()
-    await approveCampaign(c.id, admin.id)
-    await db.campaign.update({ where: { id: c.id }, data: { startsAt: new Date(Date.now() - 86_400_000) } })
+    await approveCampaign(c.id, admin.id, AFTER_START)
     signIn(admin)
     expect((await previewOffersAction('NG')).map((o) => o.id)).toEqual([c.id])
     expect(await previewOffersAction('KE')).toEqual([])

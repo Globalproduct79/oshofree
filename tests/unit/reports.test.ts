@@ -43,7 +43,7 @@ async function fixture() {
   return { ws, campaign, channel }
 }
 
-function mkCampaign(workspaceId: string, status: 'live' | 'paused' | 'review', startsAt: string, endsAt: string) {
+function mkCampaign(workspaceId: string, status: 'live' | 'paused' | 'review' | 'ended', startsAt: string, endsAt: string) {
   return db.campaign.create({
     data: {
       workspaceId, name: status, brand: 'B', country: 'NG', category: 'Retail', headline: 'H',
@@ -122,7 +122,7 @@ describe('reports', () => {
     expect((await heroCampaign(ws.id, NOW))?.id).toBe(review.id)
     const paused = await mkCampaign(ws.id, 'paused', '2026-12-01', '2026-12-09')
     expect((await heroCampaign(ws.id, NOW))?.id).toBe(paused.id)
-    await mkCampaign(ws.id, 'live', '2026-11-01', '2026-11-20') // ended
+    await mkCampaign(ws.id, 'ended', '2026-11-01', '2026-11-20')
     expect((await heroCampaign(ws.id, NOW))?.id).toBe(paused.id)
     await mkCampaign(ws.id, 'live', '2026-12-01', '2026-12-09')
     const newer = await mkCampaign(ws.id, 'live', '2026-12-02', '2026-12-09')
