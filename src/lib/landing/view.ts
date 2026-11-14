@@ -4,8 +4,10 @@ import { COPY } from '@/lib/copy'
 import type { LandingView } from '@/lib/landing/render'
 import type { ShareTargets } from '@/lib/landing/share-targets'
 import { MARKETS } from '@/lib/markets'
-import { imageUrl } from '@/lib/storage'
+import { imageUrl } from '@/lib/image-rules'
 import { tokens } from '@/lib/tokens'
+
+// No database here: the console's preview (lib/landing/preview) builds its view with offerView in the browser.
 
 export type LinkWithCampaign = ShareLink & { campaign: Campaign }
 
@@ -14,25 +16,35 @@ const TILE_COLORS: readonly string[] = tokens.tileColors
 // The offer's last day. Campaign days are UTC days (it stops at midnight UTC), so this prints in UTC,
 // the same day the Phoenix card and the console show.
 const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
-const endsAtText = (c: Campaign) => day.format(lastDay(c.endsAt))
+const endsAtText = (endsAt: Date) => day.format(lastDay(endsAt))
+
+// The offer as every view prints it: its words, its image, its tile colour when it is one of the wall's, its reward and
+// its last day. A stored campaign (viewFor) and the console's preview of one (lib/landing/preview) both build it here.
+export type LandingOffer = Pick<Campaign, 'brand' | 'headline' | 'description' | 'tileColor' | 'shareRewardLabel' | 'endsAt' | 'redeemMethod'> & {
+  imageUrl: string | null
+}
+
+export function offerView(o: LandingOffer, state: LandingView['state'], code: string, extras: Partial<LandingView> = {}): LandingView {
+  return {
+    state,
+    code,
+    brand: o.brand,
+    headline: o.headline,
+    description: o.description,
+    imageUrl: o.imageUrl,
+    color: o.tileColor && TILE_COLORS.includes(o.tileColor) ? o.tileColor : null,
+    rewardLabel: o.shareRewardLabel,
+    endsAtText: endsAtText(o.endsAt),
+    redeemMethod: o.redeemMethod,
+    ...extras,
+  }
+}
 
 // One builder for every route: the offer as the campaign stands, plus what the state adds.
 export function viewFor(link: LinkWithCampaign, state: LandingView['state'], extras: Partial<LandingView> = {}): LandingView {
   const c = link.campaign
-  return {
-    state,
-    code: link.code,
-    brand: c.brand,
-    headline: c.headline,
-    description: c.description,
-    imageUrl: c.creativeImageKey ? imageUrl(c.creativeImageKey) : null,
-    color: c.tileColor && TILE_COLORS.includes(c.tileColor) ? c.tileColor : null,
-    rewardLabel: c.shareRewardLabel,
-    endsAtText: endsAtText(c),
-    redeemMethod: c.redeemMethod,
-    // The claim code is the visitor's own (issueClaimCode), passed in only once they have asked for it.
-    ...extras,
-  }
+  // The claim code is the visitor's own (issueClaimCode), passed in only once they have asked for it.
+  return offerView({ ...c, imageUrl: c.creativeImageKey ? imageUrl(c.creativeImageKey) : null }, state, link.code, extras)
 }
 
 // The brand's link as a Location header can carry it: percent-encoded, punycoded host.
