@@ -39,13 +39,18 @@ export async function bellFor(
   }
 }
 
-// The topbar avatar: the workspace's first Owner. Memberships carry no join date, so the
-// earliest-created Owner account stands in for "first to join".
-export async function ownerInitials(workspaceId: string): Promise<string | null> {
+// The workspace's first Owner: the topbar avatar and the home greeting. Memberships carry no join
+// date, so the earliest-created Owner account stands in for "first to join".
+export async function ownerName(workspaceId: string): Promise<string | null> {
   const owner = await db.workspaceMember.findFirst({
     where: { workspaceId, role: 'Owner' },
     orderBy: { user: { createdAt: 'asc' } },
     select: { user: { select: { name: true } } },
   })
-  return owner ? initials(owner.user.name) : null
+  return owner?.user.name ?? null
+}
+
+export async function ownerInitials(workspaceId: string): Promise<string | null> {
+  const name = await ownerName(workspaceId)
+  return name === null ? null : initials(name)
 }

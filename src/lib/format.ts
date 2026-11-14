@@ -47,6 +47,14 @@ export const pct = (a: number, b: number): string => (b === 0 ? '0%' : ((a / b) 
 export const fd = (d: Date, tz: string): string =>
   new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: tz }).format(d)
 
+// The hour of the day (0–23) on the wall clock in `tz`.
+export const hourIn = (d: Date, tz: string): number =>
+  Number(
+    new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: tz })
+      .formatToParts(d)
+      .find((p) => p.type === 'hour')?.value,
+  )
+
 export const daysLeft = (end: Date, now: Date): number =>
   Math.max(0, Math.ceil((end.getTime() - now.getTime()) / 86_400_000))
 

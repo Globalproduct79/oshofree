@@ -1,5 +1,6 @@
 import { Prisma, type Campaign, type CampaignStatus, type ChannelEventType, type LedgerKind, type ShareVia } from '@prisma/client'
 import type { CardModel } from '@/components/og/CampaignCard'
+import { HOME_FILTERS, type HomeFilter } from '@/lib/campaign-filters'
 import { rejectReasonText } from '@/lib/copy-campaign'
 import { REPORT_COPY } from '@/lib/copy-report'
 import { db } from '@/lib/db'
@@ -287,9 +288,6 @@ function pickHero<T extends { status: CampaignStatus }>(listed: T[]): T | null {
 // rejected and draft campaigns are never the hero. Statuses are stored, so `now` is not needed.
 export const heroCampaign: (workspaceId: string, now?: Date) => Promise<Campaign | null> = async (workspaceId) =>
   pickHero(await db.campaign.findMany({ where: { workspaceId }, orderBy: LIST_ORDER }))
-
-export const HOME_FILTERS = ['all', 'live', 'review', 'paused', 'ended', 'scheduled', 'rejected'] as const
-export type HomeFilter = (typeof HOME_FILTERS)[number]
 
 export type CardData = CardModel & { id: string; status: CampaignStatus }
 

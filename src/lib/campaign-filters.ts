@@ -1,36 +1,23 @@
-import type { EffectiveStatus } from '@/lib/campaign-status'
+import { HOME } from '@/lib/copy-home'
 
-// The Home pills, in order. Scheduled sits under Live; draft and rejected show only under All.
-export const STATUS_FILTERS = ['all', 'live', 'review', 'paused', 'ended'] as const
-export type StatusFilter = (typeof STATUS_FILTERS)[number]
+// The Campaigns home's filter (ADV §1, spec §6.8): `?filter=` in the URL, so the page stays
+// server-rendered and a workspace switch (which lands on /app) starts again at All.
 
-const PILL: Partial<Record<EffectiveStatus, StatusFilter>> = {
-  live: 'live',
-  scheduled: 'live',
-  review: 'review',
-  paused: 'paused',
-  ended: 'ended',
-}
+export const HOME_FILTERS = ['all', 'live', 'review', 'paused', 'ended', 'scheduled', 'rejected'] as const
+export type HomeFilter = (typeof HOME_FILTERS)[number]
 
-export function parseStatusFilter(raw: unknown): StatusFilter {
-  return (STATUS_FILTERS as readonly unknown[]).includes(raw) ? (raw as StatusFilter) : 'all'
-}
+// Always shown; Scheduled and Rejected join them only when the workspace has such campaigns.
+const ALWAYS: readonly HomeFilter[] = ['all', 'live', 'review', 'paused', 'ended']
 
-export function inFilter(status: EffectiveStatus, filter: StatusFilter): boolean {
-  return filter === 'all' || PILL[status] === filter
-}
+export const parseHomeFilter = (raw: unknown): HomeFilter =>
+  (HOME_FILTERS as readonly unknown[]).includes(raw) ? (raw as HomeFilter) : 'all'
 
-export function countByFilter(statuses: EffectiveStatus[]): Record<StatusFilter, number> {
-  const counts = { all: 0, live: 0, review: 0, paused: 0, ended: 0 }
-  for (const s of statuses) for (const f of STATUS_FILTERS) if (inFilter(s, f)) counts[f] += 1
-  return counts
-}
+export const pillShown = (filter: HomeFilter, counts: Record<HomeFilter, number>): boolean =>
+  ALWAYS.includes(filter) || counts[filter] > 0
 
-// The cards under the pills. Under All the hero is already at the top, so it is left out.
-export function gridFor<T extends { id: string; status: EffectiveStatus }>(
-  rows: T[],
-  filter: StatusFilter,
-  heroId: string | null,
-): T[] {
-  return rows.filter((r) => inFilter(r.status, filter) && !(filter === 'all' && r.id === heroId))
-}
+export const homePills = (counts: Record<HomeFilter, number>) =>
+  HOME_FILTERS.filter((f) => pillShown(f, counts)).map((key) => ({ key, label: HOME.pills[key], count: counts[key] }))
+
+export const homeHref = (filter: HomeFilter): string => (filter === 'all' ? '/app' : `/app?filter=${filter}`)
+
+export const sectionTitle = (filter: HomeFilter): string => (filter === 'all' ? HOME.allCampaigns : HOME.pills[filter])

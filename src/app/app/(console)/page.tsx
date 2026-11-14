@@ -1,88 +1,72 @@
-import type { Campaign } from '@prisma/client'
-import { CampaignCard, NewCampaignCard } from '@/components/campaign/CampaignCard'
-import { CampaignHero } from '@/components/campaign/CampaignHero'
-import { StatusFilter } from '@/components/campaign/StatusFilter'
-import { LinkButton } from '@/components/console/LinkButton'
-import { PageHead } from '@/components/console/PageHead'
-import { countByFilter, gridFor, parseStatusFilter } from '@/lib/campaign-filters'
-import { effectiveStatus } from '@/lib/campaign-status'
-import { COPY } from '@/lib/copy'
-import { db } from '@/lib/db'
-import { heroCampaign, homeNumbers } from '@/lib/reports'
-import { imageUrl } from '@/lib/storage'
-import { tokens } from '@/lib/tokens'
-import { requireWorkspace } from '@/lib/workspaces'
+import { HeroPauseResume } from '@/components/campaign/HeroPauseResume'
+import { HomeFilterPills } from '@/components/campaign/HomeFilterPills'
+import { CampaignCard, EmptyState, HeroCampaignCard, LinkButton, NewCampaignTile } from '@/components/og'
+import { PageHead } from '@/components/shell/PageHead'
+import { homePills, parseHomeFilter, pillShown, sectionTitle } from '@/lib/campaign-filters'
+import { HOME } from '@/lib/copy-home'
+import { hourIn } from '@/lib/format'
+import { firstName, heroModel } from '@/lib/home'
+import { MARKETS } from '@/lib/markets'
+import { can, requireMember } from '@/lib/permissions'
+import { homeCards } from '@/lib/reports'
+import { ownerName } from '@/lib/shell'
 
-const H = COPY.home
-const thumb = (c: Campaign) => (c.creativeImageKey ? imageUrl(c.creativeImageKey) : null)
+const NEW = '/app/campaigns/new'
+const campaignHref = (id: string) => `/app/campaigns/${id}`
 
-function Empty() {
-  return (
-    <div
-      className="flex flex-col items-center gap-4 border px-6 py-14 text-center"
-      style={{ borderRadius: tokens.radius, borderColor: tokens.line, backgroundColor: tokens.card }}
-    >
-      <p className="text-sm" style={{ color: tokens.ink2 }}>
-        {H.empty}
-      </p>
-      <LinkButton primary href="/app/campaigns/new">
-        {H.newCampaign}
-      </LinkButton>
-    </div>
-  )
-}
-
-export default async function CampaignsPage({ searchParams }: { searchParams: Promise<{ status?: string | string[] }> }) {
-  const ws = await requireWorkspace()
+// Campaigns home (ADV §1): the greeting, the pills, the campaign that matters most, then the grid.
+// The filter is `?filter=`; one the workspace has no pill for reads as All.
+export default async function CampaignsHome({ searchParams }: { searchParams: Promise<{ filter?: string | string[] }> }) {
+  const { user, workspace: ws, role } = await requireMember('view')
   const now = new Date()
-  const [campaigns, hero, shareRows] = await Promise.all([
-    db.campaign.findMany({ where: { workspaceId: ws.id }, orderBy: { createdAt: 'desc' } }),
-    heroCampaign(ws.id, now),
-    db.shareLink.groupBy({
-      by: ['campaignId'],
-      where: { sharerType: { not: 'Root' }, campaign: { workspaceId: ws.id } },
-      _count: { _all: true },
-    }),
-  ])
-  const head = <PageHead title={COPY.page.campaigns.title} subtitle={COPY.page.campaigns.subtitle} />
-  if (campaigns.length === 0)
-    return (
-      <>
-        {head}
-        <Empty />
-      </>
-    )
-
-  const filter = parseStatusFilter((await searchParams).status)
-  const rows = campaigns.map((c) => ({ id: c.id, status: effectiveStatus(c, now), campaign: c }))
-  const grid = gridFor(rows, filter, hero?.id ?? null)
-  const shares = new Map(shareRows.map((r) => [r.campaignId, r._count._all]))
-  const numbers = hero ? await homeNumbers(hero.id, now) : null
+  const asked = parseHomeFilter((await searchParams).filter)
+  const [first, owner] = await Promise.all([homeCards(ws.id, asked, now), ownerName(ws.id)])
+  const filter = pillShown(asked, first.counts) ? asked : 'all'
+  const home = filter === asked ? first : await homeCards(ws.id, filter, now)
+  const hero = home.hero && { id: home.hero.id, status: home.hero.status, model: await heroModel(home.hero, now) }
+  // A Viewer sees the page without the controls that change anything (spec §6.2).
+  const canAct = can(role, 'campaigns')
+  const greeting = HOME.greeting(hourIn(now, MARKETS[ws.country].timezone))
 
   return (
     <>
-      {head}
-      {hero && numbers && (
-        <CampaignHero campaign={hero} status={effectiveStatus(hero, now)} numbers={numbers} imageUrl={thumb(hero)} now={now} />
+      <PageHead
+        crumb={[{ label: ws.name }, { label: HOME.crumb }]}
+        title={HOME.title(greeting, firstName(owner ?? user.name))}
+        lead={HOME.lead}
+        actions={
+          canAct && (
+            <LinkButton variant="primary" href={NEW}>
+              {HOME.newCampaign}
+            </LinkButton>
+          )
+        }
+      />
+      <HomeFilterPills options={homePills(home.counts)} value={filter} />
+      {hero && (
+        <HeroCampaignCard model={hero.model}>
+          {canAct && (hero.status === 'live' || hero.status === 'paused') && (
+            <HeroPauseResume id={hero.id} status={hero.status} />
+          )}
+          <LinkButton variant="dark" size="lg" href={campaignHref(hero.id)}>
+            {HOME.open}
+          </LinkButton>
+        </HeroCampaignCard>
       )}
-      <StatusFilter active={filter} counts={countByFilter(rows.map((r) => r.status))} />
-      {grid.length === 0 && filter !== 'all' ? (
-        <p className="py-6 text-sm" style={{ color: tokens.ink2 }}>
-          {H.nothing}
-        </p>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {grid.map((r) => (
-            <CampaignCard
-              key={r.id}
-              campaign={r.campaign}
-              status={r.status}
-              shares={shares.get(r.id) ?? 0}
-              imageUrl={thumb(r.campaign)}
-            />
-          ))}
-          <NewCampaignCard />
-        </div>
+      <div className="sect">
+        <h3>{sectionTitle(filter)}</h3>
+        <span className="n">{home.cards.length}</span>
+      </div>
+      <div className="cards">
+        {home.cards.map((c) => (
+          <CampaignCard key={c.id} campaign={c} href={campaignHref(c.id)} />
+        ))}
+        {filter === 'all' && canAct && <NewCampaignTile href={NEW} />}
+      </div>
+      {home.counts.all === 0 && (
+        <EmptyState box title={HOME.empty.title}>
+          {HOME.empty.line}
+        </EmptyState>
       )}
     </>
   )

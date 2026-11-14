@@ -1,5 +1,5 @@
 import { CAMPAIGN_FORM_COPY } from '@/lib/copy-campaign-form'
-import { CAMPAIGN_COPY, HOME_COPY, PREVIEW_COPY } from '@/lib/copy-report'
+import { CAMPAIGN_COPY, PREVIEW_COPY } from '@/lib/copy-report'
 
 export const COPY = {
   auth: {
@@ -107,7 +107,6 @@ export const COPY = {
     owner: (name: string, email: string) => `${name} · ${email}`,
   },
   campaignForm: CAMPAIGN_FORM_COPY,
-  home: HOME_COPY,
   campaign: CAMPAIGN_COPY,
   preview: PREVIEW_COPY,
   landing: {
@@ -158,10 +157,6 @@ export const COPY = {
     declined: 'Declined',
   },
   page: {
-    campaigns: {
-      title: 'Campaigns',
-      subtitle: 'Everything this workspace is running on Phoenix. The one that matters most is at the top.',
-    },
     sharing: {
       title: 'Sharing',
       subtitle:

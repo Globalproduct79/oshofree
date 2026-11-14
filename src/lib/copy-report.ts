@@ -1,25 +1,4 @@
-// Home, the campaign page and the Phoenix preview, split out of copy.ts. Reached through COPY.home/campaign/preview.
-
-const plural = (n: number, one: string, many: string) => `${n.toLocaleString('en-GB')} ${n === 1 ? one : many}`
-
-export const HOME_COPY = {
-  empty: 'No campaigns yet. Your first one takes about five minutes.',
-  newCampaign: 'New campaign',
-  nothing: 'Nothing here right now.',
-  open: 'Open campaign',
-  filters: { all: 'All', live: 'Live', review: 'In review', paused: 'Paused', ended: 'Ended' },
-  filterLabel: 'Filter campaigns by status',
-  tiles: {
-    impressions: 'Impressions',
-    today: (n: string) => `${n} today`,
-    opens: 'Unique link opens',
-    shares: 'Shares',
-    claims: 'Claims',
-  },
-  pace: (day: number, total: number) => `Day ${day} of ${total}`,
-  starts: (date: string, total: number) => `Starts ${date} · ${plural(total, 'day', 'days')}`,
-  shares: (n: number) => plural(n, 'share', 'shares'),
-} as const
+// The campaign page and the Phoenix preview, split out of copy.ts. Reached through COPY.campaign/preview.
 
 // Channel facts carry the channel's short name: "Saw on Phoenix", not "Saw on Phoenix Browser".
 const CHANNELS: Record<string, string> = { phoenix: 'Phoenix', boomplay: 'Boomplay' }
