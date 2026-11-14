@@ -39,6 +39,8 @@ export const ADVERTISERS = {
     // "{Type} · {Country} · owner {name} · since {Mon YYYY}"
     lead: (type: string, country: string, owner: string, since: string) => `${type} · ${country} · owner ${owner} · since ${since}`,
     noOwner: '—',
+    // The head's primary: Global enters the workspace (audited), as "Open workspace" does on the list.
+    enter: 'Enter workspace',
 
     facts: 'Facts',
     status: 'Status',

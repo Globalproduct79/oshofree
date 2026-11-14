@@ -1,6 +1,7 @@
-import { Box, Button, DataTable } from '@/components/og'
+import { Box, Button, DataTable, LinkButton } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { RATES } from '@/lib/copy-rates'
+import { SHELL } from '@/lib/copy-shell'
 import { db } from '@/lib/db'
 import { COUNTRIES } from '@/lib/markets'
 import { currentFx, EXPECTED_OPEN_RATE, PLACEMENTS, rateTable } from '@/lib/rates'
@@ -22,7 +23,16 @@ export default async function RatesPage() {
 
   return (
     <>
-      <PageHead crumb={[{ label: 'Platform' }, { label: RATES.crumb }]} title={RATES.title} lead={RATES.lead} />
+      <PageHead
+        crumb={[{ label: SHELL.groups.platform }, { label: RATES.crumb }]}
+        title={RATES.title}
+        lead={RATES.lead}
+        actions={
+          <LinkButton variant="ghost" href="/admin/settlement">
+            {SHELL.nav.settlement}
+          </LinkButton>
+        }
+      />
       <div className="pills">
         <span className="pill" aria-pressed="true">
           {RATES.phoenix.name}

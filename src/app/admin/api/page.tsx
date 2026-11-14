@@ -3,6 +3,7 @@ import { Box, TokenChip } from '@/components/og'
 import { AUTH_AND_LIMITS, contractBoxes, REFERENCE_BOXES } from '@/lib/api-docs'
 import { hashKey } from '@/lib/channels'
 import { API_COPY } from '@/lib/copy-api'
+import { SHELL } from '@/lib/copy-shell'
 import { db } from '@/lib/db'
 import { fd } from '@/lib/format'
 import { requireAdmin } from '@/lib/session'
@@ -28,7 +29,12 @@ export default async function ApiDocsPage() {
 
   return (
     <>
-      <PageHead crumb={[{ label: 'Platform' }, { label: API_COPY.crumb }]} title={API_COPY.title} lead={API_COPY.lead} />
+      <PageHead
+        crumb={[{ label: SHELL.groups.platform }, { label: API_COPY.crumb }]}
+        title={API_COPY.title}
+        lead={API_COPY.lead}
+        actions={phoenix && <RotateKey />}
+      />
       <div className="two">
         <div>
           {contractBoxes(base).map((box) => (
@@ -45,16 +51,13 @@ export default async function ApiDocsPage() {
                     <b>{K.channel}</b>
                   </td>
                   <td>{phoenix ? K.created(fd(phoenix.keyCreatedAt, 'UTC')) : K.notSetUp}</td>
-                  <td style={{ textAlign: 'right' }}>{phoenix && <RotateKey />}</td>
                 </tr>
                 {devAccepted && (
                   <tr>
                     <td>{K.devKey}</td>
-                    <td colSpan={2}>
+                    <td>
                       <TokenChip>{dev}</TokenChip>
-                      <div className="sub" style={{ margin: '6px 0 0' }}>
-                        {K.devKeyNote}
-                      </div>
+                      <div className="sub">{K.devKeyNote}</div>
                     </td>
                   </tr>
                 )}

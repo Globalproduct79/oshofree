@@ -1,6 +1,7 @@
 import { Box, DataTable, LinkButton, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { MONEY, periodLabel } from '@/lib/copy-money'
+import { SHELL } from '@/lib/copy-shell'
 import { fd, loc, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
 import { creditSummary, invoiceStatus, monthBounds } from '@/lib/money'
@@ -55,7 +56,16 @@ export default async function InvoicesPage() {
 
   return (
     <>
-      <PageHead crumb={[{ label: ws.name }, { label: 'Money' }, { label: I.title }]} title={I.title} lead={I.lead} />
+      <PageHead
+        crumb={[{ label: ws.name }, { label: SHELL.groups.money }, { label: I.title }]}
+        title={I.title}
+        lead={I.lead}
+        actions={
+          <LinkButton variant="ghost" href="/app/billing">
+            {SHELL.nav.billing}
+          </LinkButton>
+        }
+      />
       <Box>
         <DataTable head={I.head(m.currency)} rows={rows} emptyText={I.empty} align={[undefined, undefined, undefined, undefined, 'right', 'right']} />
       </Box>

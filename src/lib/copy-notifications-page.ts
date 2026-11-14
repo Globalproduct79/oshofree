@@ -6,6 +6,8 @@ export const NOTIFICATIONS_PAGE = {
   crumb: 'Notifications',
   title: 'Notifications',
   lead: 'What we tell you, and where.',
+  // The head's link back to Campaigns home (there is no "mark all read").
+  home: 'Home',
   prefsBox: 'Email and in-app',
   recentBox: 'Recent',
   empty: 'Nothing new.',

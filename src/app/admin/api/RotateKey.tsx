@@ -10,7 +10,8 @@ import { rotateKeyAction } from './actions'
 const K = API_COPY.keys
 const body: React.CSSProperties = { color: 'var(--ink2)', lineHeight: 1.6, margin: '0 0 16px' }
 
-// "Rotate key" → a styled confirm → the new key, shown once with Copy. Closing the modal forgets it.
+// "Rotate key" (the API page's head primary) → a styled confirm → the new key, shown once with Copy. Closing the
+// modal forgets it.
 export function RotateKey() {
   const [open, setOpen] = useState(false)
   const [key, setKey] = useState<string | null>(null)
@@ -44,7 +45,7 @@ export function RotateKey() {
 
   return (
     <>
-      <Button type="button" variant="ghost" size="s" onClick={() => setOpen(true)}>
+      <Button type="button" variant="primary" onClick={() => setOpen(true)}>
         {K.rotate}
       </Button>
       <Modal open={open} onClose={close} title={key ? K.newTitle : K.confirmTitle} narrow>

@@ -1,4 +1,4 @@
-import { Box } from '@/components/og'
+import { Box, LinkButton } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { db } from '@/lib/db'
 import { REWARDS } from '@/lib/copy-rewards'
@@ -8,10 +8,12 @@ import { can, requireMember } from '@/lib/permissions'
 import { chargedBy, LIST_ORDER } from '@/lib/reports'
 import { CapsForm, RewardsTable } from './RewardsClient'
 
-// Rewards (ADV §6): airtime per successful share per campaign, and the workspace caps.
+// Rewards (ADV §6): airtime per successful share per campaign, and the workspace caps. A reward is set when a
+// campaign is made, so the head's primary is New campaign (for those who can make one).
 export default async function RewardsPage() {
   const { workspace: ws, role } = await requireMember('view')
   const editable = can(role, 'rewards')
+  const canCreate = can(role, 'campaigns')
   const campaigns = await db.campaign.findMany({
     where: { workspaceId: ws.id, status: { notIn: ['ended', 'rejected'] } },
     orderBy: LIST_ORDER,
@@ -28,7 +30,18 @@ export default async function RewardsPage() {
   }))
   return (
     <>
-      <PageHead crumb={[{ label: ws.name }, { label: REWARDS.growth }, { label: REWARDS.crumb }]} title={REWARDS.title} lead={REWARDS.lead} />
+      <PageHead
+        crumb={[{ label: ws.name }, { label: REWARDS.growth }, { label: REWARDS.crumb }]}
+        title={REWARDS.title}
+        lead={REWARDS.lead}
+        actions={
+          canCreate && (
+            <LinkButton variant="primary" href="/app/campaigns/new">
+              {REWARDS.newCampaign}
+            </LinkButton>
+          )
+        }
+      />
       <div className="two">
         <Box title={REWARDS.perCampaign.title} sub={REWARDS.perCampaign.sub}>
           <RewardsTable rows={rows} editable={editable} />

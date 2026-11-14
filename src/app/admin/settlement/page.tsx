@@ -1,8 +1,9 @@
 import Link from 'next/link'
-import { Box, DataTable, MetricCard, StatusBadge } from '@/components/og'
+import { Box, DataTable, LinkButton, MetricCard, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { SETTLEMENT as S } from '@/lib/copy-settlement'
 import { periodLabel } from '@/lib/copy-money'
+import { SHELL } from '@/lib/copy-shell'
 import { db } from '@/lib/db'
 import { usd } from '@/lib/format'
 import { COUNTRIES, MARKETS } from '@/lib/markets'
@@ -51,7 +52,16 @@ export default async function SettlementPage({ searchParams }: { searchParams?: 
 
   return (
     <>
-      <PageHead crumb={[{ label: 'Platform' }, { label: S.crumb }]} title={S.title} lead={S.lead} />
+      <PageHead
+        crumb={[{ label: SHELL.groups.platform }, { label: S.crumb }]}
+        title={S.title}
+        lead={S.lead}
+        actions={
+          <LinkButton variant="ghost" href="/admin/rates">
+            {SHELL.nav.rates}
+          </LinkButton>
+        }
+      />
       <nav aria-label={S.monthNav} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
         {monthLinks.map(([k, label]) => (
           <Link key={k} href={`/admin/settlement?month=${k}`} aria-current={k === selected ? 'page' : undefined} style={k === selected ? { fontWeight: 700 } : { color: 'var(--ink2)' }}>

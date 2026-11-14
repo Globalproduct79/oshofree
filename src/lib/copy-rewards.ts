@@ -6,6 +6,8 @@ export const REWARDS = {
   growth: 'Growth',
   title: 'Rewards',
   lead: 'What a successful share earns, per campaign, and the caps that stop it being gamed.',
+  // The head's primary: a reward is set when a campaign is made.
+  newCampaign: 'New campaign',
   perCampaign: {
     title: 'Per campaign',
     sub: "Airtime per successful share, in your campaign's currency. Deducted from the campaign budget as rewards are earned.",

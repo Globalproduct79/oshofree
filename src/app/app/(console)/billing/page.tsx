@@ -1,6 +1,7 @@
 import { AlertBox, Box, KVGrid, LinkButton, MetricCard } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { MONEY, periodLabel } from '@/lib/copy-money'
+import { SHELL } from '@/lib/copy-shell'
 import { loc, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
 import { creditSummary, monthBounds, statement, statementMonths } from '@/lib/money'
@@ -46,7 +47,7 @@ export default async function BillingPage({ searchParams }: { searchParams?: Pro
   return (
     <>
       <PageHead
-        crumb={[{ label: ws.name }, { label: 'Money' }, { label: B.title }]}
+        crumb={[{ label: ws.name }, { label: SHELL.groups.money }, { label: B.title }]}
         title={B.title}
         lead={B.lead}
         actions={<LinkButton variant="ghost" href="/app/invoices">{B.invoicesAction}</LinkButton>}
@@ -58,7 +59,7 @@ export default async function BillingPage({ searchParams }: { searchParams?: Pro
         <MetricCard
           title={B.unbilledTitle}
           value={usd(c.unbilledCents)}
-          sub={fx === null ? 'invoiced on the 1st' : B.unbilledSub(loc(c.unbilledCents, ws.country, fx))}
+          sub={fx === null ? B.unbilledSubNoFx : B.unbilledSub(loc(c.unbilledCents, ws.country, fx))}
           fill={100}
         />
       </div>

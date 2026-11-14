@@ -36,6 +36,7 @@ export const MONEY = {
     nearLimitSub: 'close to the limit',
     unbilledTitle: 'Unbilled this month',
     unbilledSub: (local: string) => `invoiced on the 1st · ${local}`,
+    unbilledSubNoFx: 'invoiced on the 1st',
     statementTitle: 'Statement',
     statementSub: 'Every charge this month. Delivery and share rewards are separate lines.',
     statementHead: (currency: string) => ['Date', 'Description', 'USD', currency],

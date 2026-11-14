@@ -1,6 +1,7 @@
 import { Box, KVGrid, LinkButton, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { COPY } from '@/lib/copy'
+import { SHELL } from '@/lib/copy-shell'
 import { usd } from '@/lib/format'
 import { can, requireMember } from '@/lib/permissions'
 import { clientBrands, workspaceStatusBox } from '@/lib/workspaces'
@@ -15,9 +16,14 @@ export default async function WorkspacePage() {
   return (
     <>
       <PageHead
-        crumb={[{ label: ws.name }, { label: 'Organisation' }, { label: COPY.workspace.crumb }]}
+        crumb={[{ label: ws.name }, { label: SHELL.groups.organisation }, { label: COPY.workspace.crumb }]}
         title={COPY.workspace.title}
         lead={COPY.workspace.lead}
+        actions={
+          <LinkButton variant="ghost" href="/app/people">
+            {SHELL.nav.people}
+          </LinkButton>
+        }
       />
       <div className="two">
         <Box>

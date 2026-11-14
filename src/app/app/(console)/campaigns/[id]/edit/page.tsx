@@ -2,9 +2,11 @@ import type { Campaign } from '@prisma/client'
 import { notFound, redirect } from 'next/navigation'
 import { CampaignForm } from '@/components/campaign/CampaignForm'
 import { campaignDefaults } from '@/components/campaign/form/values'
+import { LinkButton } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { pendingRevision, RUNNING } from '@/lib/campaigns'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
+import { SHELL } from '@/lib/copy-shell'
 import { db } from '@/lib/db'
 import { campaignSpendCents, COMMITTED, creditSummary } from '@/lib/money'
 import { can, requireMember } from '@/lib/permissions'
@@ -37,6 +39,11 @@ export default async function EditOfferPage({ params }: { params: Promise<{ id: 
         crumb={[{ label: ws.name }, { label: F.head.edit.crumb[0], href: '/app' }, { label: F.head.edit.crumb[1] }]}
         title={F.head.edit.title}
         lead={F.head.edit.lead}
+        actions={
+          <LinkButton variant="ghost" href="/app">
+            {SHELL.nav.campaigns}
+          </LinkButton>
+        }
       />
       <CampaignForm
         workspace={{ id: ws.id, type: ws.type, declined: ws.status === 'declined' }}

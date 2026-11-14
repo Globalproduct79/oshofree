@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation'
 import { CampaignForm } from '@/components/campaign/CampaignForm'
 import { newCampaignDefaults } from '@/components/campaign/form/values'
+import { LinkButton } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
+import { SHELL } from '@/lib/copy-shell'
 import { creditSummary } from '@/lib/money'
 import { can, requireMember } from '@/lib/permissions'
 import { phoenixRates } from '@/lib/rates'
@@ -26,6 +28,11 @@ export default async function NewCampaignPage({ searchParams }: { searchParams: 
         crumb={[{ label: ws.name }, { label: F.head.new.crumb[0], href: '/app' }, { label: F.head.new.crumb[1] }]}
         title={F.head.new.title}
         lead={F.head.new.lead}
+        actions={
+          <LinkButton variant="ghost" href="/app">
+            {SHELL.nav.campaigns}
+          </LinkButton>
+        }
       />
       <CampaignForm
         workspace={{ id: ws.id, type: ws.type, declined: ws.status === 'declined' }}

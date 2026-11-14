@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { Box, DataTable } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { MONEY, periodLabel } from '@/lib/copy-money'
+import { SHELL } from '@/lib/copy-shell'
 import { db } from '@/lib/db'
 import { fd, loc, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
@@ -38,7 +39,7 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
   return (
     <>
       <PageHead
-        crumb={[{ label: ws.name }, { label: 'Money' }, { label: 'Invoices', href: '/app/invoices' }, { label: inv.number }]}
+        crumb={[{ label: ws.name }, { label: SHELL.groups.money }, { label: SHELL.nav.invoices, href: '/app/invoices' }, { label: inv.number }]}
         title={P.title(inv.number)}
         lead={P.period(periodLabel(inv.period, m.timezone))}
         actions={<PrintButton label={P.action} />}

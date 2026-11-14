@@ -1,4 +1,4 @@
-import { Box } from '@/components/og'
+import { Box, LinkButton } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { NOTIFICATIONS_PAGE as T } from '@/lib/copy-notifications-page'
 import { SHELL } from '@/lib/copy-shell'
@@ -17,7 +17,16 @@ export default async function NotificationsPage() {
   const now = new Date()
   return (
     <>
-      <PageHead crumb={[{ label: workspace.name }, { label: SHELL.groups.organisation }, { label: T.crumb }]} title={T.title} lead={T.lead} />
+      <PageHead
+        crumb={[{ label: workspace.name }, { label: SHELL.groups.organisation }, { label: T.crumb }]}
+        title={T.title}
+        lead={T.lead}
+        actions={
+          <LinkButton variant="ghost" href="/app">
+            {T.home}
+          </LinkButton>
+        }
+      />
       <div className="two">
         <Box title={T.prefsBox}>
           <PrefsClient initial={prefs} canEdit={can(role, 'settings')} />
