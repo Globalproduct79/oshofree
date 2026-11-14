@@ -32,8 +32,17 @@ const clampPct = (n: number) => (Number.isNaN(n) ? 0 : Math.min(100, Math.max(0,
 
 // The campaign card (ADV §1 "CampaignCard anatomy"): a 118 px cover with the status pill, 18+ and
 // placement overlays, then headline, brand · country, the main row and the spend bar. With an
-// href the whole card is a link; without one it is static (`data-static`, the form preview).
-export function CampaignCard({ campaign: c, href }: { campaign: CardModel; href?: string }) {
+// href the whole card is a link; without one it is static (`data-static`, the form preview). A client
+// caller may take over the click (Review's "Live now" enters the campaign's workspace first).
+export function CampaignCard({
+  campaign: c,
+  href,
+  onClick,
+}: {
+  campaign: CardModel
+  href?: string
+  onClick?: React.MouseEventHandler<HTMLAnchorElement>
+}) {
   const body = (
     <>
       <div className="cv" style={coverStyle(c.imageUrl, c.color)}>
@@ -62,7 +71,7 @@ export function CampaignCard({ campaign: c, href }: { campaign: CardModel; href?
     </>
   )
   return href ? (
-    <Link href={href} className="cc">
+    <Link href={href} className="cc" onClick={onClick}>
       {body}
     </Link>
   ) : (

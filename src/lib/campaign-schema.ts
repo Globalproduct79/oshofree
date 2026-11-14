@@ -72,8 +72,14 @@ function creativeMismatch(i: CampaignInput) {
   return Boolean(i.creativeImageKey) && i.placement === 'video'
 }
 
+// Betting or a draw (GLB §2.1): such an offer must carry a licence or approval number.
+export const isBettingOrDraw = (i: { category: string; headline: string }): boolean =>
+  i.category === 'Betting' || DRAW.test(i.headline)
+
+export const hasLicence = (description: string): boolean => LICENCE.test(description)
+
 function needsLicence(i: CampaignInput) {
-  return (i.category === 'Betting' || DRAW.test(i.headline)) && !LICENCE.test(i.description)
+  return isBettingOrDraw(i) && !hasLicence(i.description)
 }
 
 const DAY = 86_400_000

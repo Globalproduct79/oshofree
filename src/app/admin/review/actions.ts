@@ -1,8 +1,9 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { approveCampaign, rejectCampaign } from '@/lib/campaigns'
-import { COPY } from '@/lib/copy'
+import { approveCampaign, approveRevision, rejectCampaign, rejectRevision } from '@/lib/campaigns'
+import { isRejectReason } from '@/lib/copy-campaign'
+import { REVIEW } from '@/lib/copy-review'
 import { simulateDayAs, type SimulateDayResult } from '@/lib/demo/controls'
 import { runDaily, type DailyResult } from '@/lib/jobs/daily'
 import { isCountry } from '@/lib/markets'
@@ -11,38 +12,76 @@ import type { PreviewOffer } from '@/lib/preview-merge'
 import { isAdminInDb, requireAdmin, requireUser } from '@/lib/session'
 import { approveWorkspace, declineWorkspace } from '@/lib/workspaces'
 
-type Result = { ok: true } | { error: string }
+// Global's decisions on the Review page (GLB §2.1, spec §6.4). Each answers with the toast to show: what was
+// done, or why nothing was (a refusal is a toast, not an error page).
+export type ReviewResult = { ok: true; toast: string } | { error: string }
 
-async function decide(run: (adminId: string) => Promise<unknown>): Promise<Result> {
+const E = REVIEW.errors
+const REFUSALS: Record<string, string> = {
+  REASON_REQUIRED: E.reasonRequired,
+  WORKSPACE_NOT_APPROVED: E.workspaceFirst,
+  FLIGHT_ENDED: E.flightEnded,
+  INVALID_TRANSITION: E.alreadyDecided,
+  NOT_FOUND: E.alreadyDecided,
+}
+
+// Global only; after a decision every layout redraws, so the Review badge and the bell move with it (D2).
+async function decide(run: (adminId: string) => Promise<string>): Promise<ReviewResult> {
   const admin = await requireAdmin()
+  let toast: string
   try {
-    await run(admin.id)
+    toast = await run(admin.id)
   } catch (e) {
-    if (e === 'REASON_REQUIRED') return { error: COPY.review.reasonRequired }
-    if (e === 'WORKSPACE_NOT_APPROVED') return { error: COPY.review.workspaceNotApproved }
-    if (e === 'INVALID_TRANSITION' || e === 'NOT_FOUND') return { error: COPY.review.alreadyDecided }
+    if (typeof e === 'string' && Object.hasOwn(REFUSALS, e)) return { error: REFUSALS[e] }
     throw e
   }
-  revalidatePath('/admin/review')
-  return { ok: true }
+  revalidatePath('/', 'layout')
+  return { ok: true, toast }
 }
 
-const idOf = (v: unknown) => (typeof v === 'string' ? v : '')
 const textOf = (v: unknown) => (typeof v === 'string' ? v : '')
+// A reason code off the list is no reason code.
+const codeOf = (v: unknown) => {
+  if (!isRejectReason(v)) throw 'REASON_REQUIRED'
+  return v
+}
 
-export async function approveWorkspaceAction(id: unknown) {
-  return decide((by) => approveWorkspace(idOf(id), by))
+export async function approveWorkspaceAction(id: unknown): Promise<ReviewResult> {
+  return decide(async (by) => REVIEW.toast.workspaceApproved((await approveWorkspace(textOf(id), by)).name))
 }
-export async function declineWorkspaceAction(id: unknown, reason: unknown) {
-  return decide((by) => declineWorkspace(idOf(id), by, textOf(reason)))
+
+export async function declineWorkspaceAction(id: unknown, reason: unknown): Promise<ReviewResult> {
+  return decide(async (by) => REVIEW.toast.workspaceDeclined((await declineWorkspace(textOf(id), by, textOf(reason))).name))
 }
-export async function approveCampaignAction(id: unknown) {
-  return decide((by) => approveCampaign(idOf(id), by))
+
+export async function approveCampaignAction(id: unknown): Promise<ReviewResult> {
+  return decide(async (by) => {
+    await approveCampaign(textOf(id), by)
+    return REVIEW.toast.approved
+  })
 }
-// The slice-1 Reject box sends a note only; until the reason-code modal lands it is filed under the
-// code its default note describes ("Terms unclear — …").
-export async function rejectCampaignAction(id: unknown, reason: unknown) {
-  return decide((by) => rejectCampaign(idOf(id), by, 'misleading_terms', textOf(reason)))
+
+// The code is required; the note may be empty (spec §6.4).
+export async function rejectCampaignAction(id: unknown, code: unknown, note: unknown): Promise<ReviewResult> {
+  return decide(async (by) => {
+    await rejectCampaign(textOf(id), by, codeOf(code), textOf(note))
+    return REVIEW.toast.rejected
+  })
+}
+
+// A revised offer (spec §6.14.3): Approve swaps it into the running campaign; Reject leaves the campaign as it was.
+export async function approveRevisionAction(id: unknown): Promise<ReviewResult> {
+  return decide(async (by) => {
+    await approveRevision(textOf(id), by)
+    return REVIEW.toast.approved
+  })
+}
+
+export async function rejectRevisionAction(id: unknown, code: unknown, note: unknown): Promise<ReviewResult> {
+  return decide(async (by) => {
+    await rejectRevision(textOf(id), by, codeOf(code), textOf(note))
+    return REVIEW.toast.rejected
+  })
 }
 
 // The offers a campaign waiting here would sit among on Phoenix.
