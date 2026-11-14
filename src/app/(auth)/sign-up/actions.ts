@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { clearActiveWorkspace } from '@/lib/active-workspace'
 import { signIn } from '@/lib/auth'
 import { COPY } from '@/lib/copy'
-import { joinFromInvite } from '@/lib/invite-join'
+import { joinedHref, joinFromInvite } from '@/lib/invite-join'
 import { createUser, MIN_PASSWORD_LENGTH } from '@/lib/users'
 
 const schema = z.object({
@@ -17,11 +17,14 @@ export async function signUpAction(_prev: string | null, formData: FormData): Pr
   const parsed = schema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return COPY.auth.invalidSignUp
   const invite = String(formData.get('invite') ?? '')
+  // An invite that joins lands on that workspace's home, which says so; otherwise /app (New workspace, for most).
+  let redirectTo = '/app'
   try {
     const user = await createUser(parsed.data)
     // A new account starts outside whatever workspace this browser last had open (an invite then opens its own).
     await clearActiveWorkspace()
-    if (invite) await joinFromInvite(invite, user)
+    const joined = invite ? await joinFromInvite(invite, user) : null
+    if (joined) redirectTo = joinedHref(joined)
   } catch (e) {
     if (e === 'EMAIL_TAKEN') return COPY.auth.emailTaken
     throw e
@@ -30,7 +33,7 @@ export async function signUpAction(_prev: string | null, formData: FormData): Pr
   await signIn('credentials', {
     email: parsed.data.email,
     password: parsed.data.password,
-    redirectTo: '/app',
+    redirectTo,
   })
   return null
 }

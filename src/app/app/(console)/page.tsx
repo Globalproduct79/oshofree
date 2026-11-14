@@ -2,12 +2,15 @@ import { HomeFilterPills } from '@/components/campaign/HomeFilterPills'
 import { PauseResume } from '@/components/campaign/PauseResume'
 import { SimulateDayButton } from '@/components/demo/SimulateDayButton'
 import { CampaignCard, EmptyState, HeroCampaignCard, LinkButton, NewCampaignTile } from '@/components/og'
+import { ArrivalToast } from '@/components/shell/ArrivalToast'
 import { PageHead } from '@/components/shell/PageHead'
 import { homePills, parseHomeFilter, pillShown, sectionTitle } from '@/lib/campaign-filters'
 import { HOME } from '@/lib/copy-home'
+import { INVITE_PAGE } from '@/lib/copy-people'
 import { demoControlsOn } from '@/lib/demo/controls'
 import { hourIn } from '@/lib/format'
 import { firstName, heroModel } from '@/lib/home'
+import { JOINED_PARAM } from '@/lib/invite-join'
 import { MARKETS } from '@/lib/markets'
 import { can, requireMember } from '@/lib/permissions'
 import { homeCards } from '@/lib/reports'
@@ -18,11 +21,16 @@ const campaignHref = (id: string) => `/app/campaigns/${id}`
 
 // Campaigns home (ADV §1): the greeting (to whoever is signed in), the pills, the campaign that matters most,
 // then the grid.
-// The filter is `?filter=`; one the workspace has no pill for reads as All.
-export default async function CampaignsHome({ searchParams }: { searchParams: Promise<{ filter?: string | string[] }> }) {
+// The filter is `?filter=`; one the workspace has no pill for reads as All. `?joined={workspace}` (where an invite
+// lands) toasts whom they joined as, for that workspace only.
+type Search = { filter?: string | string[]; [JOINED_PARAM]?: string | string[] }
+
+export default async function CampaignsHome({ searchParams }: { searchParams: Promise<Search> }) {
   const { user, workspace: ws, role } = await requireMember('view')
   const now = new Date()
-  const asked = parseHomeFilter((await searchParams).filter)
+  const q = await searchParams
+  const joined = q[JOINED_PARAM] === ws.id && role !== 'Global'
+  const asked = parseHomeFilter(q.filter)
   const first = await homeCards(ws.id, asked, now)
   const filter = pillShown(asked, first.counts) ? asked : 'all'
   const home = filter === asked ? first : await homeCards(ws.id, filter, now)
@@ -34,6 +42,7 @@ export default async function CampaignsHome({ searchParams }: { searchParams: Pr
 
   return (
     <>
+      {joined && <ArrivalToast message={INVITE_PAGE.joined(ws.name, role)} />}
       <PageHead
         crumb={[{ label: ws.name }, { label: HOME.crumb }]}
         title={HOME.title(greeting, firstName(user.name))}

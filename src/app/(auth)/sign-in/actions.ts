@@ -4,7 +4,7 @@ import { AuthError } from 'next-auth'
 import { clearActiveWorkspace } from '@/lib/active-workspace'
 import { signIn } from '@/lib/auth'
 import { COPY } from '@/lib/copy'
-import { joinFromInvite } from '@/lib/invite-join'
+import { joinedHref, joinFromInvite } from '@/lib/invite-join'
 import { verifyCredentials } from '@/lib/users'
 
 // Auth.js hands us an absolute callbackUrl; keep only same-origin paths (no open redirect).
@@ -23,13 +23,15 @@ function safeRedirect(raw: string): string {
 
 export async function signInAction(_prev: string | null, formData: FormData): Promise<string | null> {
   const invite = String(formData.get('invite') ?? '')
-  const redirectTo = invite ? '/app' : safeRedirect(String(formData.get('callbackUrl') ?? ''))
+  // An invite that joins lands on that workspace's home, which says so.
+  let redirectTo = invite ? '/app' : safeRedirect(String(formData.get('callbackUrl') ?? ''))
   // A fresh session never inherits the last one's workspace: Global would land inside it, unaudited.
   await clearActiveWorkspace()
   try {
     if (invite) {
       const user = await verifyCredentials(String(formData.get('email') ?? ''), String(formData.get('password') ?? ''))
-      if (user) await joinFromInvite(invite, user)
+      const joined = user ? await joinFromInvite(invite, user) : null
+      if (joined) redirectTo = joinedHref(joined)
     }
     await signIn('credentials', {
       email: String(formData.get('email') ?? ''),

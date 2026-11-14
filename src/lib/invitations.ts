@@ -110,6 +110,14 @@ export async function findInvite(token: string) {
   return db.invitation.findUnique({ where: { token }, include: { workspace: true } })
 }
 
+// An invite its link can still accept (not accepted, revoked or expired), with its workspace; null for any other
+// token. The invite, sign-up and sign-in pages show what it offers; none of them shows the token.
+export async function validInvite(token: string) {
+  if (!token) return null
+  const inv = await findInvite(token)
+  return inv && !inv.acceptedAt && !inv.revokedAt && inv.expiresAt.getTime() > Date.now() ? inv : null
+}
+
 export async function acceptInvite(token: string, user: { id: string; email: string }) {
   const inv = await db.invitation.findUnique({ where: { token } })
   if (!inv || inv.revokedAt || inv.acceptedAt) throw 'INVALID'

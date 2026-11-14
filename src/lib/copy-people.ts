@@ -64,10 +64,17 @@ export const PEOPLE = {
   ],
 } as const
 
+// The invite page (/invite/[token]), and what sign-up, sign-in and the workspace's home say about an invite.
 export const INVITE_PAGE = {
   headline: (who: string, workspace: string, role: string) => `${who} invited you to ${workspace} as ${role}.`,
   invalid: 'This invite is no longer valid.',
-  join: (workspace: string) => `Join ${workspace}`,
   createAccount: 'Create an account',
   signIn: 'Sign in',
+  // Already signed in: whose account the invite would join, or sign out and sign in with another.
+  signedInAs: (name: string, email: string) => `You're signed in as ${name} (${email}).`,
+  acceptAs: (name: string) => `Accept as ${name}`,
+  signInOther: 'Sign in as someone else',
+  // Sign-up and sign-in opened from an invite link, and the toast on the workspace's home once joined.
+  joining: (workspace: string, role: string) => `You're joining ${workspace} as ${role}.`,
+  joined: (workspace: string, role: string) => `You've joined ${workspace} as ${role}.`,
 } as const
