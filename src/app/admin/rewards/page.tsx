@@ -1,4 +1,5 @@
 import { Box, DataTable, LinkButton, MetricCard, StatusBadge } from '@/components/og'
+import { EnterLink } from '@/components/platform/EnterLink'
 import { PageHead } from '@/components/shell/PageHead'
 import { REWARDS_LEDGER as R } from '@/lib/copy-rewards-ledger'
 import { SHELL } from '@/lib/copy-shell'
@@ -13,8 +14,9 @@ import { requireAdmin } from '@/lib/session'
 import { FraudToggle, HeldButtons } from './RewardsControls'
 
 // Rewards ledger (GLB §2.5): what sharers are owed per campaign, the aggregator balance that pays it, the recent
-// top-ups, the three fraud checks as real switches, and the held rewards Global releases or rejects. Topping up
-// has its own page, opened from the head.
+// top-ups, the three fraud checks as real switches, and the held rewards Global releases or rejects, each campaign a
+// link into its workspace to that reward's line in Recent activity (Prompt 8). Topping up has its own page, opened
+// from the head.
 export default async function RewardsLedgerPage() {
   await requireAdmin()
   const now = new Date()
@@ -85,7 +87,9 @@ export default async function RewardsLedgerPage() {
         <DataTable
           head={[...R.heldHead, '']}
           rows={held.map((h) => [
-            <b key="c">{h.campaign}</b>,
+            <EnterLink key="c" workspaceId={h.workspaceId} href={`/app/campaigns/${h.campaignId}?line=reward-${h.id}`} title={R.seeActivity}>
+              <b>{h.campaign}</b>
+            </EnterLink>,
             h.sharer,
             `${h.local} · ${usd(h.amountCents)}`,
             h.reason ? (R.reasons[h.reason] ?? h.reason) : '',

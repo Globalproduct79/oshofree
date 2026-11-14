@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SHELL } from '@/lib/copy-shell'
-import { isCurrent, navFor } from '@/lib/nav'
+import { inAppPath, isCurrent, navFor } from '@/lib/nav'
 
 const zero = { campaigns: 0, invoices: 0, review: 0 }
 const labels = (g: { label: string }[]) => g.map((x) => x.label)
@@ -120,5 +120,14 @@ describe('bell line', () => {
     expect(SHELL.bell.line('budget will finish ~3 days early', '2h ago')).toBe('budget will finish ~3 days early · 2h ago')
     expect(SHELL.bell.line('', '3h ago')).toBe('3h ago')
     expect(SHELL.bell.line(null, 'now')).toBe('now')
+  })
+})
+
+describe('inAppPath', () => {
+  it('lets entering a workspace land on an in-app path, with a line to show; anything else lands on Campaigns', () => {
+    expect(inAppPath('/app/campaigns/cm1')).toBe('/app/campaigns/cm1')
+    expect(inAppPath('/app/campaigns/cm1?line=reward-cm2')).toBe('/app/campaigns/cm1?line=reward-cm2')
+    for (const bad of ['https://evil.example/app', '//evil.example', '/admin/rewards', '/app/../admin', '/app?next=https://x', '/app/c#x', '/appx'])
+      expect(inAppPath(bad)).toBe('/app')
   })
 })

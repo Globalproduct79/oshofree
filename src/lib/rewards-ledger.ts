@@ -53,6 +53,8 @@ export async function recentTopUps(): Promise<{ id: string; at: Date; amountCent
 
 export type HeldRow = {
   id: string
+  campaignId: string
+  workspaceId: string
   campaign: string
   workspace: string
   sharer: string
@@ -77,7 +79,7 @@ export async function heldPayouts(): Promise<HeldRow[]> {
     const p = r.sharerConsumerId ? phone.get(r.sharerConsumerId) : undefined
     const sharer = p ? maskPhone(p) : `Phoenix user · ••${(r.sharerSessionId ?? r.shareLinkId).slice(-4)}`
     return {
-      id: r.id, campaign: r.campaign.name, workspace: r.workspace.name, sharer,
+      id: r.id, campaignId: r.campaignId, workspaceId: r.workspaceId, campaign: r.campaign.name, workspace: r.workspace.name, sharer,
       local: `${MARKETS[r.campaign.country as Country].symbol}${r.amountLocal}`,
       amountCents: r.amountCents, reason: r.reason, createdAt: r.createdAt,
     }

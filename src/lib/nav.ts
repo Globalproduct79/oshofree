@@ -59,3 +59,9 @@ export function isCurrent(pathname: string | null, href: string): boolean {
   if (href === '/app/campaigns/new') return pathname === href || EDIT_OFFER.test(pathname)
   return pathname === href || pathname.startsWith(`${href}/`)
 }
+
+// Where entering a workspace may land (Global's search, Live now cards, a held reward's line): a path in the
+// console, with at most a plain query such as ?line=reward-… ; anything else lands on Campaigns.
+export function inAppPath(next: string): string {
+  return /^\/app(\/[\w-]+)*(\?[\w=&-]+)?$/.test(next) ? next : '/app'
+}

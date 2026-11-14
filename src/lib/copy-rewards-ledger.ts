@@ -38,6 +38,8 @@ export const REWARDS_LEDGER = {
   heldTitle: 'Held rewards',
   heldHead: ['Campaign', 'Sharer', 'Reward', 'Reason', 'Held'],
   heldEmpty: 'Nothing held.',
+  // Ours (Prompt 8): a held reward's campaign links to that reward's line on the campaign page.
+  seeActivity: "See this reward in the campaign's Recent activity",
   release: 'Release',
   reject: 'Reject',
   released: 'Reward released',

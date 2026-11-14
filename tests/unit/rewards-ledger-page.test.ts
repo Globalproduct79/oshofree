@@ -137,6 +137,15 @@ describe('/admin/rewards', () => {
     expect(await render()).toContain('Nothing held.')
   })
 
+  it("links a held reward's campaign to that reward's line in the campaign's Recent activity", async () => {
+    await signIn(true)
+    const { c, payout } = await world()
+    const a = await payout('held', 500, 'no_phone')
+    expect(await render()).toContain(
+      `<a href="/app/campaigns/${c.id}?line=reward-${a.id}" title="See this reward in the campaign&#x27;s Recent activity"><b>Buy 2 get 1</b></a>`,
+    )
+  })
+
   it('release over the cap gives the toast and stays held', async () => {
     await signIn(true)
     const { payout } = await world({ budgetUsd: 1 })
