@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import type { CampaignStatus, Prisma, Workspace } from '@prisma/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -196,6 +199,35 @@ describe('submitAction', () => {
       error: "The creative doesn't match the placement.",
     })
     expect(await db.campaign.count()).toBe(0)
+  })
+
+  it('refuses a stored creative larger than the placement takes, crafted past the form', async () => {
+    const { phoenix } = await setup('Owner')
+    await db.rateCard.create({
+      data: { channelId: phoenix.id, country: 'NG', placement: 'splash', cpmCents: 800, effectiveFrom: new Date(Date.now() - DAY) },
+    })
+    const before = process.env.UPLOAD_DIR
+    const dir = await mkdtemp(path.join(tmpdir(), 'oshofree-cap-'))
+    process.env.UPLOAD_DIR = dir
+    try {
+      // A 3 MB PNG: fine as a splash (4 MB), too large for a Wall card or a Featured tile (2 MB).
+      const big = new Uint8Array(3 * 1024 * 1024)
+      big.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+      await writeFile(path.join(dir, IMAGE_KEY), big)
+      for (const placement of ['card', 'featured'] as const) {
+        expect(await submitAction({ ...input(), placement, creativeImageKey: IMAGE_KEY })).toEqual({
+          error: 'The creative is too large for this placement.',
+        })
+      }
+      expect(await db.campaign.count()).toBe(0)
+      const live = await campaign(mine.id, 'live')
+      expect(await editOfferAction(live.id, offer)).toEqual({ error: 'The creative is too large for this placement.' })
+      expect(await db.campaignRevision.count()).toBe(0)
+      expect(await submitAction({ ...input(), placement: 'splash', creativeImageKey: IMAGE_KEY })).toEqual({ id: expect.any(String) })
+    } finally {
+      process.env.UPLOAD_DIR = before
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   it('keeps the brand a Brand workspace is named for', async () => {

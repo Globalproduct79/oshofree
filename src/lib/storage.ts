@@ -4,16 +4,20 @@ import { createReadStream } from 'node:fs'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
-import { CREATIVE_KEY_RE, UPLOAD_CAP, uploadKind } from '@/lib/image-rules'
+import { capFor, CREATIVE_KEY_RE, UPLOAD_CAP, uploadKind } from '@/lib/image-rules'
 import { uploadDir } from '@/lib/upload-dir'
 
 // Local disk in slice 1; an S3-compatible bucket replaces the body of these three functions later.
+
+const MP4_BRANDS = ['isom', 'iso2', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'M4V ', 'dash']
 
 const TYPES = {
   'image/jpeg': { ext: 'jpg', magic: (b: Uint8Array) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
   'image/png': { ext: 'png', magic: (b: Uint8Array) => b[0] === 0x89 && ascii(b, 1, 4) === 'PNG' },
   'image/webp': { ext: 'webp', magic: (b: Uint8Array) => ascii(b, 0, 4) === 'RIFF' && ascii(b, 8, 12) === 'WEBP' },
-  'video/mp4': { ext: 'mp4', magic: (b: Uint8Array) => ascii(b, 4, 8) === 'ftyp' },
+  // An ISO media file starts with an `ftyp` box whose major brand (bytes 8-12) names the format. HEIC and AVIF
+  // images share the box, so the brand must be an MP4 one.
+  'video/mp4': { ext: 'mp4', magic: (b: Uint8Array) => ascii(b, 4, 8) === 'ftyp' && MP4_BRANDS.includes(ascii(b, 8, 12)) },
 } as const
 
 const CONTENT_TYPE: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4' }
@@ -39,6 +43,21 @@ export async function putCreative(file: File, opts: { placement?: unknown } = {}
   await mkdir(uploadDir(), { recursive: true })
   await writeFile(path.join(uploadDir(), key), bytes)
   return { key, kind: type.ext === 'mp4' ? 'video' : 'image' }
+}
+
+// The submit-time backstop for the caps by kind: true when the stored creative is larger than its placement takes
+// (a 3 MB image uploaded for a splash, then sent on a card past the form). One stat; a key with no file on disk is
+// left to the other rules.
+export async function creativeOverCap(i: {
+  placement: string
+  creativeImageKey?: string | null
+  creativeVideoKey?: string | null
+}): Promise<boolean> {
+  const key = i.creativeVideoKey ?? i.creativeImageKey
+  if (!key || !CREATIVE_KEY_RE.test(key)) return false
+  const info = await stat(path.join(uploadDir(), key)).catch(() => null)
+  if (!info?.isFile()) return false
+  return info.size > capFor(i.creativeVideoKey ? 'video' : 'image', i.placement)
 }
 
 // Slice-1 callers: images only, one error code.

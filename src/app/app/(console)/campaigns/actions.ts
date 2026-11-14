@@ -20,6 +20,7 @@ import { simulateDayAs, type SimulateDayResult } from '@/lib/demo/controls'
 import { isCountry, MARKETS, type Country } from '@/lib/markets'
 import { campaignSpendCents, COMMITTED, creditSummary } from '@/lib/money'
 import { previewOffersFor } from '@/lib/offers'
+import { creativeOverCap } from '@/lib/storage'
 import { requireMember, type Member } from '@/lib/permissions'
 import type { PreviewOffer } from '@/lib/preview-merge'
 
@@ -73,6 +74,7 @@ export async function submitAction(input: unknown): Promise<{ id: string } | Fai
   const country = isCountry(raw.country) ? raw.country : ws.country
   const checked = checkCampaign(raw, ruleContext(ws.type, await creditSummary(ws.id), country))
   if (!checked.ok) return { error: checked.message }
+  if (await creativeOverCap(checked.input)) return { error: F.validation.creativeTooLarge }
   const created = await createCampaign(ws.id, checked.input)
   try {
     await submitCampaign(created.id, user.id)
@@ -124,6 +126,7 @@ export async function editOfferAction(id: unknown, input: unknown): Promise<{ re
   const edit: FormEdit = { running, heldCents: COMMITTED.includes(c.status) ? c.budgetUsd * 100 : spendCents }
   const checked = checkCampaign(raw, ruleContext(ws.type, await creditSummary(ws.id), c.country, edit))
   if (!checked.ok) return { error: checked.message }
+  if (await creativeOverCap(checked.input)) return { error: F.validation.creativeTooLarge }
   const i = checked.input
   const offer = offerOf(i, c)
   const change: OfferFields | CampaignEdit = running

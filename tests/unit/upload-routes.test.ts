@@ -87,7 +87,7 @@ describe('POST /api/upload then GET /uploads/[key]', () => {
 
   const mp4 = (n: number) => {
     const b = new Uint8Array(n)
-    b.set([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70])
+    b.set([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d])
     return b
   }
 

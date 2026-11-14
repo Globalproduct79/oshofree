@@ -47,7 +47,7 @@ describe('putImage', () => {
 
 function mp4(bytes: number) {
   const buf = new Uint8Array(bytes)
-  buf.set([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70]) // size, 'ftyp'
+  buf.set([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]) // size, 'ftyp'
   return buf
 }
 
@@ -73,6 +73,25 @@ describe('putCreative', () => {
   it('refuses a .mov and a gif as unsupported_type', async () => {
     await expect(putCreative(new File([mp4(1024)], 'v.mov', { type: 'video/quicktime' }))).rejects.toBe('unsupported_type')
     await expect(putCreative(new File([new Uint8Array(1024)], 'a.gif', { type: 'image/gif' }))).rejects.toBe('unsupported_type')
+  })
+
+  // An ISO media header: the box size, 'ftyp', then the major brand.
+  const iso = (brand: string) => {
+    const b = new Uint8Array(1024)
+    b.set([0, 0, 0, 0x18, ...new TextEncoder().encode(`ftyp${brand}`)])
+    return new File([b], 'v.mp4', { type: 'video/mp4' })
+  }
+
+  it('takes an MP4 by its major brand: isom, mp42, M4V and dash among them', async () => {
+    for (const brand of ['isom', 'iso6', 'mp41', 'mp42', 'avc1', 'M4V ', 'dash']) {
+      expect((await putCreative(iso(brand))).kind).toBe('video')
+    }
+  })
+
+  it('refuses a HEIC or AVIF image, or a QuickTime movie, declared as an MP4: same ftyp box, other brand', async () => {
+    for (const brand of ['heic', 'mif1', 'avif', 'qt  ', '3gp4', '\0\0\0\0']) {
+      await expect(putCreative(iso(brand))).rejects.toBe('unsupported_type')
+    }
   })
 
   it('refuses bytes that are not an MP4 despite the declared type', async () => {
