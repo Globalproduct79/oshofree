@@ -24,7 +24,8 @@ const input: CampaignInput = {
   // Tomorrow: the actions submit through the real clock, and an expired flight is refused.
   startsAt: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
   runsForDays: 14,
-  shareRewardLabel: 'Share with 10 friends, get ₦50 airtime',
+  tileColor: '#FF5A1F',
+  rewardLocal: 50,
   termsAccepted: true,
 }
 

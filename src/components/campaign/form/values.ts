@@ -29,8 +29,14 @@ export function newCampaignDefaults(ws: Pick<Workspace, 'name' | 'country'>, now
     redeemMethod: 'code',
     startsAt: todayIn(MARKETS[ws.country].timezone, now),
     runsForDays: 14,
-    shareRewardLabel: '',
+    rewardLocal: 50,
   }
+}
+
+// A flight of exactly 7, 14 or 30 days is a preset; any other ends on a date.
+function flightOf(c: Campaign): Pick<FormDefaults, 'runsForDays' | 'endsAt'> {
+  const days = Math.round((c.endsAt.getTime() - c.startsAt.getTime()) / DAY)
+  return days === 7 || days === 14 || days === 30 ? { runsForDays: days } : { endsAt: c.endsAt.toISOString().slice(0, 10) }
 }
 
 export function campaignDefaults(c: Campaign): FormDefaults {
@@ -49,15 +55,16 @@ export function campaignDefaults(c: Campaign): FormDefaults {
     linkUrl: c.linkUrl ?? undefined,
     budgetUsd: c.budgetUsd,
     startsAt: c.startsAt.toISOString().slice(0, 10),
-    runsForDays: Math.round((c.endsAt.getTime() - c.startsAt.getTime()) / DAY),
-    shareRewardLabel: c.shareRewardLabel,
+    ...flightOf(c),
+    rewardLocal: c.rewardLocal,
   }
 }
 
 // The first thing standing between the form and "Submit for review", in the order the form asks.
 export function formProblem(values: unknown): string | null {
   const parsed = campaignInput.safeParse(values)
-  if (parsed.success) return validateCampaign(parsed.data)
+  // Credit is checked where the campaign is submitted; the slice-1 form has no credit figures to show.
+  if (parsed.success) return validateCampaign(parsed.data, { workspaceType: 'Brand', creditLimitCents: Infinity, creditInUseCents: 0 })
   const field = parsed.error.issues[0]?.path[0] as FieldName
   return COPY.campaignForm.errors[field] ?? COPY.campaignForm.invalid
 }
@@ -65,7 +72,7 @@ export function formProblem(values: unknown): string | null {
 // The exclusive end the card turns into its last day; until the dates are valid, a one-day run from today.
 export function previewEndsAt(startsAt: string | undefined, days: number | undefined): Date {
   const ok = /^\d{4}-\d{2}-\d{2}$/.test(startsAt ?? '') && Number.isInteger(days) && (days ?? 0) > 0
-  const dates = campaignDates(ok ? startsAt! : new Date().toISOString().slice(0, 10), ok ? days! : 1)
+  const dates = campaignDates(ok ? startsAt! : new Date().toISOString().slice(0, 10), ok ? days! : 1, 'GH')
   return Number.isNaN(dates.endsAt.getTime()) ? new Date() : dates.endsAt
 }
 

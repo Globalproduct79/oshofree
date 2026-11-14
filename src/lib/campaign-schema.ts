@@ -1,5 +1,7 @@
 import { z } from 'zod'
-import { CATEGORIES, COUNTRIES } from '@/lib/markets'
+import { CAMPAIGN_FORM_COPY as COPY } from '@/lib/copy-campaign-form'
+import { usd } from '@/lib/format'
+import { CATEGORIES, COUNTRIES, MARKETS, type Country } from '@/lib/markets'
 import { IMAGE_KEY_RE } from '@/lib/image-rules'
 import { tokens } from '@/lib/tokens'
 
@@ -15,52 +17,112 @@ export function normaliseUrl(raw: string): string {
   }
 }
 
-export const campaignInput = z.object({
+const YMD = /^\d{4}-\d{2}-\d{2}$/
+
+const base = z.object({
   name: z.string().trim().min(2).max(80),
   brand: z.string().trim().min(1).max(80),
   country: z.enum(COUNTRIES),
   category: z.enum(CATEGORIES),
   headline: z.string().trim().max(48),
   description: z.string().trim().max(240),
-  tileColor: z.string().refine((c) => (tokens.tileColors as readonly string[]).includes(c)).optional(),
+  tileColor: z.string().refine((c) => (tokens.tileColors as readonly string[]).includes(c)),
   creativeImageKey: z.string().regex(IMAGE_KEY_RE).optional(),
-  placement: z.literal('card'),
+  creativeVideoKey: z.string().regex(IMAGE_KEY_RE).optional(),
+  placement: z.enum(['card', 'featured', 'video', 'splash']),
   redeemMethod: z.enum(['code', 'link']),
   claimCode: z.string().trim().min(1).max(24).optional(),
   linkUrl: z.string().trim().transform(normaliseUrl).optional(),
   budgetUsd: z.number().int().min(50),
-  startsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  runsForDays: z.number().int().min(1).max(90),
-  shareRewardLabel: z.string().trim().min(1).max(60),
-  termsAccepted: z.literal(true),
+  rewardLocal: z.number().int().min(0),
+  startsAt: z.string().regex(YMD),
+  // A preset flight, or a custom one that ends on a date: exactly one of the two.
+  runsForDays: z.union([z.literal(7), z.literal(14), z.literal(30)]).optional(),
+  endsAt: z.string().regex(YMD).optional(),
+  /** legacy: ignored, derived at write time as "Earn {symbol}{rewardLocal} airtime". Removed by the form task. */
+  shareRewardLabel: z.string().optional(),
 })
+
+const oneFlight = (i: { runsForDays?: number; endsAt?: string }) => (i.runsForDays === undefined) !== (i.endsAt === undefined)
+const FLIGHT = { message: 'Give either runsForDays or endsAt', path: ['runsForDays'] }
+
+export const campaignInput = base.extend({ termsAccepted: z.literal(true) }).refine(oneFlight, FLIGHT)
+// A draft can be saved with the confirmation unticked; submission needs campaignInput.
+export const campaignDraftInput = base.extend({ termsAccepted: z.boolean() }).refine(oneFlight, FLIGHT)
 export type CampaignInput = z.infer<typeof campaignInput>
 
 const LICENCE = /licen|approv|NLRC|BCLB|LONASE|GBT/i
 const DRAW = /draw|jackpot/i
 
+// The 18+ badge and flag. Not the licence rule, which also matches "draw".
+export function ageGated(i: { category: string; headline: string }): boolean {
+  return i.category === 'Betting' || /jackpot|bet/i.test(i.headline)
+}
+
 function needsLicence(i: CampaignInput) {
   return (i.category === 'Betting' || DRAW.test(i.headline)) && !LICENCE.test(i.description)
 }
 
-export function validateCampaign(i: CampaignInput): string | null {
-  if (!i.name.trim()) return 'Give the campaign a name.'
-  if (!i.brand.trim()) return 'Which brand is this for?'
-  if (!i.headline.trim()) return 'Write the offer headline.'
-  if (!i.description.trim()) return 'Describe what the consumer gets.'
-  if (needsLicence(i))
-    return 'Betting and draw offers need a licence or approval number in the description.'
-  if (i.redeemMethod === 'link' && !i.linkUrl?.trim().startsWith('https://'))
-    return 'Online offers need an https:// link.'
-  if (i.redeemMethod === 'code' && !i.claimCode?.trim())
-    return 'Add the claim code consumers will show.'
-  if (i.budgetUsd < 50) return 'Minimum budget is $50.'
-  if (i.termsAccepted !== true) return 'Confirm the offer is genuine.'
+const DAY = 86_400_000
+const dayNumber = (ymd: string) => Date.parse(`${ymd}T00:00:00.000Z`) / DAY
+
+// Whole days from one date to the next; NaN when either is not a date.
+export const flightDays = (startsAt: string, endsAt: string) => dayNumber(endsAt) - dayNumber(startsAt)
+
+export type ValidationContext = {
+  workspaceType: 'Brand' | 'Agency'
+  creditLimitCents: number
+  creditInUseCents: number
+  isEdit?: boolean
+  previousBudgetUsd?: number
+  /** The market's calendar day ('YYYY-MM-DD'); when given, a new campaign cannot start before it. */
+  today?: string
+}
+
+// The first failing rule, in the order the New campaign form shows them (ADV §3), or null.
+export function validateCampaign(i: CampaignInput, ctx: ValidationContext): string | null {
+  const V = COPY.validation
+  if (!i.name.trim()) return V.name
+  if (!i.brand.trim()) return V.brand
+  if (!i.headline.trim()) return V.headline
+  if (!i.description.trim()) return V.description
+  if (needsLicence(i)) return V.licence
+  if (i.redeemMethod === 'link' && !i.linkUrl?.trim().startsWith('https://')) return V.link
+  if (i.placement === 'video' && !i.creativeVideoKey) return V.creative
+  if (i.placement === 'splash' && !i.creativeImageKey && !i.creativeVideoKey) return V.creative
+  if (!(i.budgetUsd >= 50)) return V.budget
+  if (!ctx.isEdit && ctx.today && i.startsAt < ctx.today) return V.startPast
+  if (i.endsAt !== undefined) {
+    const days = flightDays(i.startsAt, i.endsAt)
+    if (!(days >= 1 && days <= 90)) return V.flight
+  }
+  const addedUsd = ctx.isEdit ? Math.max(0, i.budgetUsd - (ctx.previousBudgetUsd ?? 0)) : i.budgetUsd
+  const excess = ctx.creditInUseCents + addedUsd * 100 - ctx.creditLimitCents
+  if (excess > 0) return V.credit(usd(ctx.creditLimitCents), usd(excess))
+  if (i.termsAccepted !== true) return V.terms
   return null
 }
 
-// A campaign starts at midnight UTC on its start date and ends runsForDays later.
-export function campaignDates(startsAt: string, runsForDays: number) {
-  const start = new Date(`${startsAt}T00:00:00.000Z`)
-  return { startsAt: start, endsAt: new Date(start.getTime() + runsForDays * 86_400_000) }
+// Milliseconds the market's clock is ahead of UTC at `at`. The five markets have no DST.
+function offsetMs(timeZone: string, at: number): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+  }).formatToParts(at)
+  const n = (t: string) => Number(parts.find((p) => p.type === t)!.value)
+  return Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute'), n('second')) - Math.floor(at / 1000) * 1000
+}
+
+// The UTC instant of local midnight on `ymd` in the market.
+function localMidnight(ymd: string, country: Country): Date {
+  const guess = Date.parse(`${ymd}T00:00:00.000Z`)
+  return new Date(guess - offsetMs(MARKETS[country].timezone, guess))
+}
+
+// A campaign starts at its market's local midnight on the start date and ends at local midnight
+// runsForDays later, or on endsAt for a custom flight.
+export function campaignDates(startsAt: string, runsForDays: number | undefined, country: Country, endsAt?: string) {
+  const start = localMidnight(startsAt, country)
+  if (endsAt !== undefined) return { startsAt: start, endsAt: localMidnight(endsAt, country) }
+  const end = new Date(start.getTime() + (runsForDays ?? 0) * DAY)
+  return { startsAt: start, endsAt: end }
 }

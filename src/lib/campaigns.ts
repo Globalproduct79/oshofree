@@ -2,7 +2,7 @@ import type {
   Campaign, CampaignRevision, CampaignStatus, Placement, Prisma, RedeemMethod, RejectReason,
 } from '@prisma/client'
 import { audit } from '@/lib/audit'
-import { campaignDates, type CampaignInput } from '@/lib/campaign-schema'
+import { ageGated, campaignDates, type CampaignInput } from '@/lib/campaign-schema'
 import { isRejectReason, PACE, rejectReasonText } from '@/lib/copy-campaign'
 import { NOTIFY } from '@/lib/copy-notifications'
 import { db, type Tx } from '@/lib/db'
@@ -13,7 +13,7 @@ import { campaignSpendCents, canSubmitBudget, COMMITTED, creditSummary } from '@
 import { notifyGlobal, notifyWorkspace } from '@/lib/notifications'
 import { currentCpmCents, currentFx } from '@/lib/rates'
 
-export { campaignInput, validateCampaign, type CampaignInput } from '@/lib/campaign-schema'
+export { ageGated, campaignDraftInput, campaignInput, validateCampaign, type CampaignInput } from '@/lib/campaign-schema'
 export { campaignSpendCents } from '@/lib/money'
 
 // The campaign state machine (ADV "Object model → Status state machine", spec §6.3, §6.14.3):
@@ -111,8 +111,12 @@ function termsOf(i: CampaignEdit): Terms {
   return { budgetUsd, startsAt, endsAt, rewardLocal }
 }
 
+// The label the wall shows, derived from the reward so the two can never disagree.
+export const rewardLabel = (country: Country, rewardLocal: number) =>
+  `Earn ${MARKETS[country].symbol}${rewardLocal} airtime`
+
 function fields(i: CampaignInput) {
-  const { startsAt, endsAt } = campaignDates(i.startsAt, i.runsForDays)
+  const { startsAt, endsAt } = campaignDates(i.startsAt, i.runsForDays, i.country, i.endsAt)
   return {
     name: i.name,
     brand: i.brand,
@@ -122,14 +126,17 @@ function fields(i: CampaignInput) {
     description: i.description,
     tileColor: i.tileColor ?? null,
     creativeImageKey: i.creativeImageKey ?? null,
+    creativeVideoKey: i.creativeVideoKey ?? null,
     placement: i.placement,
     redeemMethod: i.redeemMethod,
     claimCode: i.claimCode ?? null,
     linkUrl: i.linkUrl?.trim() || null,
+    ageGated: ageGated(i),
     budgetUsd: i.budgetUsd,
+    rewardLocal: i.rewardLocal,
     startsAt,
     endsAt,
-    shareRewardLabel: i.shareRewardLabel,
+    shareRewardLabel: rewardLabel(i.country, i.rewardLocal),
   }
 }
 
@@ -214,7 +221,7 @@ async function sendToReview(
   if (!credit.ok) throw creditLimit(credit.limitCents, credit.excessCents)
   const sent = await db.$transaction(async (tx) => {
     const row = await move(c.id, from, {
-      ...offer, ...terms, cpmCents, fxPerUsd, status: 'review', submittedAt: now,
+      ...offer, ...terms, ...(terms && { shareRewardLabel: rewardLabel(c.country, terms.rewardLocal) }), cpmCents, fxPerUsd, status: 'review', submittedAt: now,
       decidedAt: null, endedAt: null, pausedBy: null, rejectReasonCode: null, rejectReason: null,
     }, tx)
     await dropPendingRevision(tx, c.id)
@@ -329,7 +336,8 @@ export async function changeWithoutReview(
       if (!credit.ok) throw creditLimit(credit.limitCents, credit.excessCents)
     }
   }
-  return move(id, CHANGEABLE, { budgetUsd, endsAt, rewardLocal })
+  const label = rewardLocal === undefined ? undefined : rewardLabel(c.country, rewardLocal)
+  return move(id, CHANGEABLE, { budgetUsd, endsAt, rewardLocal, shareRewardLabel: label })
 }
 
 // ---- The offer and its revisions ----

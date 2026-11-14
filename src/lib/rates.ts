@@ -4,8 +4,8 @@ import { audit } from '@/lib/audit'
 import { db } from '@/lib/db'
 import { COUNTRIES, type Country } from '@/lib/markets'
 
-// What advertiser estimates assume until observed rates replace them (GLB §2.3).
-export const EXPECTED_OPEN_RATE = { card: 0.036, featured: 0.055, video: 0.07, splash: 0.09 } as const
+// Lives in estimate.ts so the browser can reach it without this file's database import.
+export { EXPECTED_OPEN_RATE } from '@/lib/estimate'
 
 export const PLACEMENTS = ['card', 'featured', 'video', 'splash'] as const satisfies readonly Placement[]
 

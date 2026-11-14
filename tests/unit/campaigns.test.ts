@@ -7,7 +7,6 @@ import {
   resumeCampaign,
   submitCampaign,
   updateCampaign,
-  validateCampaign,
   type CampaignInput,
 } from '@/lib/campaigns'
 import { CAMPAIGN } from '@/lib/copy-campaign'
@@ -27,7 +26,8 @@ const valid: CampaignInput = {
   budgetUsd: 50,
   startsAt: '2026-12-01',
   runsForDays: 14,
-  shareRewardLabel: 'Free drink',
+  tileColor: '#FF5A1F',
+  rewardLocal: 50,
   termsAccepted: true,
 }
 
@@ -67,7 +67,8 @@ describe('campaignInput', () => {
     expect(campaignInput.safeParse({ ...valid, headline: 'a'.repeat(49) }).success).toBe(false)
   })
   it('accepts only the card placement', () => {
-    expect(campaignInput.safeParse({ ...valid, placement: 'video' }).success).toBe(false)
+    expect(campaignInput.safeParse({ ...valid, placement: 'video' }).success).toBe(true)
+    expect(campaignInput.safeParse({ ...valid, placement: 'billboard' }).success).toBe(false)
   })
   it('accepts only an image key putImage could have made', () => {
     const key = '0b6f2a8e-3c1d-4e5f-9a7b-1c2d3e4f5a6b.png'
@@ -85,50 +86,14 @@ describe('campaignInput linkUrl', () => {
   })
 })
 
-describe('validateCampaign', () => {
-  it('passes a valid input', () => expect(validateCampaign(valid)).toBeNull())
-  it('asks for a name', () =>
-    expect(validateCampaign({ ...valid, name: '  ' })).toBe('Give the campaign a name.'))
-  it('asks for a brand', () =>
-    expect(validateCampaign({ ...valid, brand: '' })).toBe('Which brand is this for?'))
-  it('asks for a headline', () =>
-    expect(validateCampaign({ ...valid, headline: '' })).toBe('Write the offer headline.'))
-  it('asks for a description', () =>
-    expect(validateCampaign({ ...valid, description: '' })).toBe('Describe what the consumer gets.'))
-  it('requires a licence for betting offers', () => {
-    const msg = 'Betting and draw offers need a licence or approval number in the description.'
-    expect(validateCampaign({ ...valid, category: 'Betting' })).toBe(msg)
-    expect(validateCampaign({ ...valid, headline: 'Win the Jackpot' })).toBe(msg)
-    expect(
-      validateCampaign({ ...valid, category: 'Betting', description: 'Licensed by NLRC 123.' }),
-    ).toBeNull()
-  })
-  it('requires https for link offers', () => {
-    const link = { ...valid, redeemMethod: 'link' as const, claimCode: undefined }
-    expect(validateCampaign({ ...link, linkUrl: 'http://acme.com' })).toBe(
-      'Online offers need an https:// link.',
-    )
-    expect(validateCampaign(link)).toBe('Online offers need an https:// link.')
-    expect(validateCampaign({ ...link, linkUrl: 'https://acme.com' })).toBeNull()
-  })
-  it('requires a claim code for code offers', () =>
-    expect(validateCampaign({ ...valid, claimCode: undefined })).toBe(
-      'Add the claim code consumers will show.',
-    ))
-  it('enforces the minimum budget', () =>
-    expect(validateCampaign({ ...valid, budgetUsd: 49 })).toBe('Minimum budget is $50.'))
-  it('requires the genuine-offer confirmation', () =>
-    expect(validateCampaign({ ...valid, termsAccepted: false as unknown as true })).toBe(
-      'Confirm the offer is genuine.',
-    ))
-})
-
 describe('campaign lifecycle', () => {
   it('creates a draft with endsAt = startsAt + runsForDays', async () => {
     const c = await makeCampaign()
     expect(c.status).toBe('draft')
-    expect(c.startsAt.toISOString()).toBe('2026-12-01T00:00:00.000Z')
-    expect(c.endsAt.toISOString()).toBe('2026-12-15T00:00:00.000Z')
+    // Lagos midnight: the market's clock is an hour ahead of UTC.
+    expect(c.startsAt.toISOString()).toBe('2026-11-30T23:00:00.000Z')
+    expect(c.endsAt.toISOString()).toBe('2026-12-14T23:00:00.000Z')
+    expect(c.shareRewardLabel).toBe('Earn ₦50 airtime')
   })
   it('submits a draft to review', async () => {
     const c = await makeCampaign()

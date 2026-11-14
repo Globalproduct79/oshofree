@@ -23,7 +23,8 @@ const input: CampaignInput = {
   budgetUsd: 50,
   startsAt: '2026-12-01',
   runsForDays: 14,
-  shareRewardLabel: 'Free drink',
+  tileColor: '#FF5A1F',
+  rewardLocal: 50,
   termsAccepted: true,
 }
 

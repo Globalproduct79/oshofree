@@ -42,7 +42,8 @@ export async function saveDraft(input: unknown, id?: string): Promise<{ id: stri
   const ws = await requireWorkspace()
   const parsed = campaignInput.safeParse(input)
   if (!parsed.success) return { error: COPY.campaignForm.invalid }
-  const rule = validateCampaign(parsed.data)
+  // Credit is checked when the campaign is submitted; a draft can be saved over the limit.
+  const rule = validateCampaign(parsed.data, { workspaceType: ws.type, creditLimitCents: Infinity, creditInUseCents: 0 })
   if (rule) return { error: rule }
   if (id === undefined) {
     const created = await createCampaign(ws.id, parsed.data)
