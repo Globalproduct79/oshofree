@@ -211,14 +211,20 @@ then make sure the daily job is in cron:
 - `npm run bootstrap` creates what production needs before anyone signs in, and only what is missing:
   the Global user, the Phoenix channel (live in all five markets), Phoenix's rate card, FX and 55 % share
   (the seed's reference figures, from `src/lib/reference-rates.ts`), the three fraud rules and the aggregator
-  account. It never changes what is there, so Global's own rates, FX, share, fraud toggles and rotated key
-  survive every release. It prints one line saying what it created and what was already there.
+  account. The only things it changes are the Global user's: it makes that user Global again, and resets the
+  password when the stored one no longer matches `BOOTSTRAP_ADMIN_PASSWORD`. Everything else that is there
+  stays, so Global's own rates, FX, share, fraud toggles and rotated key survive every release. It prints one
+  line saying what it created, what it updated and what was already there.
   - `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`: the Global user. Needed on the first run; it stops
     without writing anything if there is no Global user to create. Later runs make that user Global again
-    if needed and set the password only when it has changed. The password is never printed.
+    if needed and set the password only when it has changed. The password is never printed. Unset
+    `BOOTSTRAP_ADMIN_PASSWORD` after the first run; later runs keep the Global user they find without it.
   - `PHOENIX_CHANNEL_KEY`: Phoenix's API key. If it is unset when the channel is first created, the bootstrap
     makes a key and prints it once. Store it then; only its hash is kept. Once the channel exists, the bootstrap
-    leaves its key alone; rotate it from Platform › Phoenix API.
+    leaves its key alone; rotate it from Platform › Phoenix API. If that first run fails after creating the
+    channel, the key was printed above the error; if it was lost, rotate it on Platform › Phoenix API.
+- `npm run bootstrap`, `npm run job:daily` and `npx prisma migrate deploy` run with the devDependencies
+  (`tsx`, `dotenv-cli`, `prisma`), so install them on the host: `npm ci`, not `npm ci --omit=dev`.
 - The daily job runs at 02:00 UTC, from the app's folder with the app's environment (see "The daily job").
 - `DATABASE_URL`: the production Postgres.
 - `APP_URL`: the public `https://` origin. Share links are built from it, and the visitor cookie is

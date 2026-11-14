@@ -8,17 +8,20 @@ import { db } from '@/lib/db'
 // fraud rules and the aggregator account — each only if missing (lib/bootstrap). Never the seed's job, and never
 // for the development database. Exits 1, having written nothing, when it cannot make a Global user.
 async function main() {
-  const result = await bootstrap({
+  const env = {
     adminEmail: process.env.BOOTSTRAP_ADMIN_EMAIL,
     adminPassword: process.env.BOOTSTRAP_ADMIN_PASSWORD,
     phoenixKey: process.env.PHOENIX_CHANNEL_KEY,
+  }
+  // Printed the moment the channel is stored, so a later step's error cannot swallow it.
+  const result = await bootstrap(env, new Date(), {
+    onGeneratedKey: (key) => {
+      console.log(`Phoenix channel key: ${key}`)
+      console.log('Store this now and give it to Phoenix: it is shown this once, and only its hash is kept.')
+    },
   })
   console.log(summaryLine(result))
   for (const note of result.notes) console.log(note)
-  if (result.generatedKey) {
-    console.log(`Phoenix channel key: ${result.generatedKey}`)
-    console.log('Store this now and give it to Phoenix: it is shown this once, and only its hash is kept.')
-  }
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href

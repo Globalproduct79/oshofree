@@ -26,15 +26,21 @@ export type BootstrapResult = {
   generatedKey?: string
 }
 
+export type BootstrapOptions = {
+  // Called with a key the run made the moment its channel is stored, so the key reaches the operator even when a
+  // later step throws: no rerun can show it again.
+  onGeneratedKey?: (key: string) => void
+}
+
 const PHOENIX = 'phoenix'
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 const text = (v: string | undefined) => v?.trim() || undefined
 
-export async function bootstrap(env: BootstrapEnv, now: Date = new Date()): Promise<BootstrapResult> {
+export async function bootstrap(env: BootstrapEnv, now: Date = new Date(), opts: BootstrapOptions = {}): Promise<BootstrapResult> {
   const r: BootstrapResult = { created: [], updated: [], there: [], notes: [] }
   const admin = await adminPlan(env)
   await ensureAdmin(admin, r)
-  const channelId = await ensurePhoenix(text(env.phoenixKey), now, r)
+  const channelId = await ensurePhoenix(text(env.phoenixKey), now, r, opts.onGeneratedKey)
   await ensureRates(channelId, now, r)
   await ensureFraud(r)
   const { count: made } = await db.aggregatorAccount.createMany({ data: [{ id: AGGREGATOR_ID, balanceCents: 0 }], skipDuplicates: true })
@@ -68,31 +74,40 @@ async function adminPlan(env: BootstrapEnv): Promise<AdminPlan> {
 }
 
 // The Global user: created, or made Global, or given the password the environment now names. The hash is only
-// rewritten when that password no longer matches, so an unchanged variable changes nothing.
+// rewritten when that password no longer matches, so an unchanged variable changes nothing. Both grants and
+// password changes are audited as the system's, never with the password or its hash.
 async function ensureAdmin(plan: AdminPlan, r: BootstrapResult): Promise<void> {
   if (plan.kind === 'keep') return void r.there.push('Global user')
   const { email, password } = plan
   const user = await db.user.findUnique({ where: { email } })
   if (!user) {
     const made = await createUser({ email, password: password!, name: 'Global Admin' })
-    await db.user.update({ where: { id: made.id }, data: { isGlobalAdmin: true } })
+    await makeGlobal(made.id)
     return void r.created.push('Global user')
   }
   const changed: string[] = []
   if (!user.isGlobalAdmin) {
-    await db.user.update({ where: { id: user.id }, data: { isGlobalAdmin: true } })
+    await makeGlobal(user.id)
     changed.push('Global user (made Global)')
   }
   if (password && !(await verifyCredentials(email, password))) {
     await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } })
+    await audit(SYSTEM_ACTOR, 'user.password', { type: 'User', id: user.id })
     changed.push('Global user password')
   }
   if (changed.length) r.updated.push(...changed)
   else r.there.push('Global user')
 }
 
+async function makeGlobal(userId: string): Promise<void> {
+  await db.user.update({ where: { id: userId }, data: { isGlobalAdmin: true } })
+  await audit(SYSTEM_ACTOR, 'user.global', { type: 'User', id: userId }, { isGlobalAdmin: false }, { isGlobalAdmin: true })
+}
+
 // Phoenix Browser, live in every market. An existing channel is never touched: its key may have been rotated.
-async function ensurePhoenix(envKey: string | undefined, now: Date, r: BootstrapResult): Promise<string> {
+async function ensurePhoenix(
+  envKey: string | undefined, now: Date, r: BootstrapResult, onGeneratedKey?: (key: string) => void,
+): Promise<string> {
   const found = await db.channel.findUnique({ where: { key: PHOENIX } })
   if (found) {
     r.there.push('Phoenix channel')
@@ -107,9 +122,12 @@ async function ensurePhoenix(envKey: string | undefined, now: Date, r: Bootstrap
   const ch = await db.channel.create({
     data: { key: PHOENIX, name: 'Phoenix Browser', isLive: true, countries: [...COUNTRIES], apiKeyHash: hashKey(key), keyCreatedAt: now },
   })
+  if (!envKey) {
+    r.generatedKey = key
+    onGeneratedKey?.(key)
+  }
   await audit(SYSTEM_ACTOR, 'channel.create', { type: 'Channel', id: ch.id }, undefined, { key: PHOENIX, isLive: true })
   r.created.push('Phoenix channel')
-  if (!envKey) r.generatedKey = key
   return ch.id
 }
 
