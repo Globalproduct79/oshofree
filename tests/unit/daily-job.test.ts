@@ -6,8 +6,8 @@ import { runDailyJobAction } from '@/app/admin/review/actions'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { endCampaign } from '@/lib/campaigns'
-import { invoiceStatus } from '@/lib/money'
-import { runDaily } from '@/lib/jobs/daily'
+import { INVOICE_LOCK, invoiceStatus } from '@/lib/money'
+import { chargeDay, runDaily } from '@/lib/jobs/daily'
 import { jobDay } from '../../scripts/daily'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
@@ -147,6 +147,65 @@ describe('runDaily — delivery charges', () => {
     ])
     await runDaily(at('2026-11-10T12:00:00Z'), at('2026-11-11T10:00:00Z'), { replay: true })
     expect(await deliveries(c.id)).toHaveLength(2)
+  })
+
+  // A day charged once (1,000 impressions, −120 ¢), its line as the next charge reads it, and the invoice a close
+  // would put it on.
+  async function chargedDay() {
+    const { ws, phoenix } = await world()
+    const c = await campaign(ws.id)
+    await events(phoenix.id, c.id, 'Impression', 1000, '2026-11-10T12:00:00Z')
+    await runDaily(at('2026-11-10T12:00:00Z'), at('2026-11-11T02:00:00Z'))
+    const key = `delivery:${c.id}:2026-11-10`
+    const read = await db.ledgerEntry.findMany({ where: { dedupeKey: key }, select: { id: true, amountCents: true, invoiceId: true } })
+    const invoice = await db.invoice.create({
+      data: {
+        workspaceId: ws.id, number: 'INV-0052', period: at('2026-10-31T23:00:00Z'), amountCents: 120, fxPerUsd: 1550, country: 'NG',
+        status: 'due', issuedAt: at('2026-12-01T02:00:00Z'), dueAt: at('2026-12-15T02:00:00Z'),
+      },
+    })
+    const lines = async () =>
+      (await deliveries(c.id)).sort((a, b) => a.dedupeKey!.localeCompare(b.dedupeKey!)).map((l) => ({ amountCents: l.amountCents, invoiceId: l.invoiceId, dedupeKey: l.dedupeKey }))
+    return { c, key, read, invoice, lines }
+  }
+
+  it('looks again before raising a line: one a close invoiced after it was read keeps its amount, and the rest is a line of its own', async () => {
+    const { c, key, read, invoice, lines } = await chargedDay()
+    expect(read).toMatchObject([{ amountCents: -120, invoiceId: null }])
+    await db.ledgerEntry.updateMany({ where: { dedupeKey: key }, data: { invoiceId: invoice.id } })
+
+    expect(await chargeDay(c, key, read, 180, at('2026-11-10T22:59:59Z'))).toBe(true)
+    expect(await lines()).toEqual([
+      { amountCents: -120, invoiceId: invoice.id, dedupeKey: key },
+      { amountCents: -60, invoiceId: null, dedupeKey: `${key}:1` },
+    ])
+  })
+
+  it("waits for a close that holds the invoice lock, so the invoice and its lines never disagree", async () => {
+    const { c, key, read, invoice, lines } = await chargedDay()
+    let locked!: () => void
+    let release!: () => void
+    const isLocked = new Promise<void>((r) => (locked = r))
+    const released = new Promise<void>((r) => (release = r))
+    // A close mid-way: it has the lock and has read the line at −120; it tags the line once released.
+    const close = db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${INVOICE_LOCK}::bigint)`
+      locked()
+      await released
+      await tx.ledgerEntry.updateMany({ where: { dedupeKey: key }, data: { invoiceId: invoice.id } })
+    }, { timeout: 10_000 })
+    await isLocked
+
+    const charging = chargeDay(c, key, read, 180, at('2026-11-10T22:59:59Z'))
+    await new Promise((r) => setTimeout(r, 300))
+    expect((await deliveries(c.id)).map((l) => l.amountCents)).toEqual([-120])
+    release()
+    await close
+    await charging
+    expect(await lines()).toEqual([
+      { amountCents: -120, invoiceId: invoice.id, dedupeKey: key },
+      { amountCents: -60, invoiceId: null, dedupeKey: `${key}:1` },
+    ])
   })
 
   it("lists one campaign's failed charge and carries on: the others are charged and the payouts sent", async () => {

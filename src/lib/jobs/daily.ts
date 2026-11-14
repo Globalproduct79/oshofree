@@ -8,7 +8,7 @@ import { db } from '@/lib/db'
 import { pct } from '@/lib/format'
 import { COUNTRIES, MARKETS, type Country } from '@/lib/markets'
 import { dayBounds, localMidnight, wallClock } from '@/lib/market-clock'
-import { closeMonth, postLedger, spendByCampaign } from '@/lib/money'
+import { closeMonth, INVOICE_LOCK, postLedger, spendByCampaign } from '@/lib/money'
 import { notifyWorkspace } from '@/lib/notifications'
 import { sendQueuedPayouts } from '@/lib/rewards'
 
@@ -132,29 +132,45 @@ async function chargeDelivery(day: Date, now: Date, fail: Fail): Promise<number>
           where: { campaignId: c.id, kind: 'delivery', OR: [{ dedupeKey: key }, { dedupeKey: { startsWith: `${key}:` } }] },
           select: { id: true, amountCents: true, invoiceId: true },
         })
-        const already = -lines.reduce((sum, l) => sum + l.amountCents, 0)
         const left = c.budgetUsd * 100 - (spend.get(c.id) ?? 0)
-        const total = Math.min(Math.round(((impressions.get(c.id) ?? 0) * c.cpmCents!) / 1000), left + already)
-        if (total - already <= 0) continue
-        if (lines.length === 1 && lines[0].invoiceId === null) {
-          // Only while it is still uninvoiced: a close that took it meanwhile leaves it, and the rest gets its own line.
-          const { count } = await db.ledgerEntry.updateMany({ where: { id: lines[0].id, invoiceId: null }, data: { amountCents: -total } })
-          if (count) {
-            charged++
-            continue
-          }
-        }
-        await postLedger(c.workspaceId, {
-          at, description: MONEY.deliveryLine(c.name), amountCents: already - total, kind: 'delivery', campaignId: c.id,
-          dedupeKey: lines.length ? `${key}:${lines.length}` : key,
-        })
-        charged++
+        const total = Math.min(Math.round(((impressions.get(c.id) ?? 0) * c.cpmCents!) / 1000), left + chargedOn(lines))
+        if (await chargeDay(c, key, lines, total, at)) charged++
       } catch (e) {
         fail(e, { campaignId: c.id })
       }
     }
   }
   return charged
+}
+
+export type DayLine = { id: string; amountCents: number; invoiceId: string | null }
+
+// What a campaign-day's delivery lines already charge, as a positive number of cents.
+const chargedOn = (lines: DayLine[]) => -lines.reduce((sum, l) => sum + l.amountCents, 0)
+
+// Brings a campaign-day's delivery charge up to `totalCents`, given its lines as read. Its one uninvoiced line is
+// raised under the close's lock (money.INVOICE_LOCK) and only if it is still uninvoiced there: a close either ran
+// before (and the line is now invoiced) or runs after (and sums the raised amount). A line invoiced meanwhile keeps
+// its amount, and the rest of the day goes on a line of its own, as it does once any line is invoiced. True when
+// it charged anything.
+export async function chargeDay(
+  c: { id: string; name: string; workspaceId: string }, key: string, lines: DayLine[], totalCents: number, at: Date,
+): Promise<boolean> {
+  const already = chargedOn(lines)
+  if (totalCents - already <= 0) return false
+  if (lines.length === 1 && lines[0].invoiceId === null) {
+    const raised = await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${INVOICE_LOCK}::bigint)`
+      const { count } = await tx.ledgerEntry.updateMany({ where: { id: lines[0].id, invoiceId: null }, data: { amountCents: -totalCents } })
+      return count > 0
+    })
+    if (raised) return true
+  }
+  await postLedger(c.workspaceId, {
+    at, description: MONEY.deliveryLine(c.name), amountCents: already - totalCents, kind: 'delivery', campaignId: c.id,
+    dedupeKey: lines.length ? `${key}:${lines.length}` : key,
+  })
+  return true
 }
 
 // (2) Live and paused campaigns end — only through endCampaign — once their budget is spent or their end

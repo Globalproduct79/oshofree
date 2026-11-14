@@ -20,8 +20,9 @@ const CHARGES: LedgerKind[] = ['delivery', 'reward']
 export const COMMITTED: CampaignStatus[] = ['live', 'review', 'scheduled', 'paused']
 const SETTLEMENT_CHANNEL = 'phoenix'
 const DAY_MS = 86_400_000
-// Serialises invoice issuing, so two closes can neither double-invoice nor share a number.
-const INVOICE_LOCK = 805_200
+// Serialises invoice issuing, so two closes can neither double-invoice nor share a number. The daily job takes it
+// too before it raises an uninvoiced delivery line, so a close never sums a line at one amount and tags it at another.
+export const INVOICE_LOCK = 805_200
 
 // The last instant before an exclusive end: lookups use effectiveFrom ≤ at.
 const lastInstant = (end: Date) => new Date(end.getTime() - 1)
