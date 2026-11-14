@@ -19,6 +19,7 @@ import NewCampaignPage from '@/app/app/(console)/campaigns/new/page'
 import InvoicePrintPage from '@/app/app/(console)/invoices/[id]/print/page'
 import InvoicesPage from '@/app/app/(console)/invoices/page'
 import NotificationsPage from '@/app/app/(console)/notifications/page'
+import OrganisationPage from '@/app/app/(console)/organisation/page'
 import HomePage from '@/app/app/(console)/page'
 import { InviteSent, sendInvite } from '@/app/app/(console)/people/invite/InviteForm'
 import InvitePage from '@/app/app/(console)/people/invite/page'
@@ -30,6 +31,7 @@ import NewWorkspacePage from '@/app/app/new-workspace/page'
 import { takeToast } from '@/components/shell/toast-store'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { fd } from '@/lib/format'
 import { inviteUrl } from '@/lib/invitations'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
@@ -151,6 +153,7 @@ const PAGES: Record<string, PageCase> = {
   '/app/billing': { as: 'owner', render: () => render(BillingPage(search)), head: { controls: ['Invoices'] } },
   '/app/invoices': { as: 'owner', render: () => render(InvoicesPage()), head: { controls: ['Billing & credit'] } },
   '/app/invoices/[id]/print': { as: 'owner', render: (w) => render(InvoicePrintPage(params(w.invoiceId))), head: { controls: ['Print'] } },
+  '/app/organisation': { as: 'owner', render: () => render(OrganisationPage()), head: { controls: ['Invite user'], primary: 'Invite user' } },
   '/app/people': { as: 'owner', render: () => render(PeoplePage()), head: { controls: ['Invite someone'], primary: 'Invite someone' } },
   '/app/people/invite': { as: 'owner', render: () => render(InvitePage()), head: { controls: ['People'] } },
   '/app/workspace': { as: 'owner', render: () => render(WorkspacePage()), head: { controls: ['People'] } },
@@ -218,15 +221,17 @@ describe('page heads', () => {
     expect(head(await render(HomePage(search))).labels).toEqual([])
     expect(head(await render(RewardsPage())).labels).toEqual([])
     expect(head(await render(PeoplePage())).labels).toEqual([])
+    expect(head(await render(OrganisationPage())).labels).toEqual([])
     expect(head(await render(NotificationsPage())).labels).toEqual(['Home'])
   })
 
-  it('gives a Manager New campaign but not Invite someone', async () => {
+  it('gives a Manager New campaign but not Invite someone or Invite user', async () => {
     const w = await world()
     signIn(await member(w, 'Manager'), w.ws.id)
     expect(head(await render(HomePage(search))).primaries).toEqual(['+ New campaign'])
     expect(head(await render(RewardsPage())).primaries).toEqual(['New campaign'])
     expect(head(await render(PeoplePage())).labels).toEqual([])
+    expect(head(await render(OrganisationPage())).labels).toEqual([])
   })
 })
 
@@ -240,7 +245,8 @@ describe('the two new pages', () => {
     expect(people).not.toContain('name@company.com')
 
     const invite = await render(InvitePage())
-    expect(text(invite)).toContain('Kola Bright › Organisation › People › Invite')
+    expect(text(invite)).toContain('Kola Bright › Organisation › Invite')
+    expect(invite).toMatch(/<div class="crumb">[^]*?<a [^>]*href="\/app\/organisation"[^>]*>Organisation<\/a>/)
     expect(invite).toContain('placeholder="name@company.com"')
     expect(invite).toMatch(/<select[^>]*>[^]*?<option[^>]*>Manager<\/option>/)
     expect(invite).toContain('Send invite')
@@ -254,7 +260,7 @@ describe('the two new pages', () => {
     }
   })
 
-  it('shows the inviter the link their own invite made, in a field to copy, never in a toast', async () => {
+  it('shows the inviter the pending invite their own invite made, its link in a field to copy, never in a toast', async () => {
     const w = await world()
     signIn(w.owner, w.ws.id)
     expect(await sendInvite('nope', 'Viewer')).toBeNull()
@@ -262,14 +268,19 @@ describe('the two new pages', () => {
 
     const sent = await sendInvite(' Ada@X.test ', 'Viewer')
     const inv = await db.invitation.findFirstOrThrow({ where: { workspaceId: w.ws.id, email: 'ada@x.test' } })
-    expect(sent).toEqual({ email: 'ada@x.test', url: inviteUrl(inv.token) })
+    const expires = fd(inv.expiresAt, 'Africa/Lagos')
+    expect(sent).toEqual({ id: inv.id, email: 'ada@x.test', role: 'Viewer', expires, url: inviteUrl(inv.token) })
     expect(inv.role).toBe('Viewer')
     expect(takeToast()?.message).toBe('Invite sent')
 
-    const box = renderToStaticMarkup(createElement(InviteSent, { sent: sent! }))
-    expect(text(box)).toContain('Invite link Invite sent to ada@x.test. Copy the link and send it to them.')
+    const box = renderToStaticMarkup(createElement(InviteSent, { sent: sent!, onAnother: () => {} }))
+    expect(text(box)).toBe(
+      `Pending invitation Invite sent to ada@x.test. Copy the link and send it to them. ` +
+        `A ada@x.test Viewer · expires ${expires} Resend Revoke Link Copy Invite another Back to Organisation`,
+    )
     expect(box).toContain(`readOnly="" value="${inviteUrl(inv.token)}"`)
-    expect(box).toContain('href="/app/people"')
+    expect(box).toMatch(/<a [^>]*href="\/app\/organisation"[^>]*>Back to Organisation<\/a>/)
+    expect(box).toMatch(/<button [^>]*type="button"[^>]*>Invite another<\/button>/)
   })
 
   it('ships no open invite link to the invite page', async () => {
@@ -370,12 +381,12 @@ describe('empty states', () => {
 
   it('People lists an open invite in Open invites, with its controls for the Owner', async () => {
     const w = await world()
-    await db.invitation.create({
+    const inv = await db.invitation.create({
       data: { workspaceId: w.ws.id, email: 'p@x.test', role: 'Viewer', token: 'c0ffee'.repeat(5) + 'ab', invitedById: w.owner.id, expiresAt: new Date(Date.now() + DAY) },
     })
     signIn(w.owner, w.ws.id)
     const t = text(await render(PeoplePage()))
-    expect(t).toContain('Open invites P p@x.test Invited · Viewer Copy invite link Revoke')
+    expect(t).toContain(`Open invites P p@x.test Viewer · invited by Tunde Okafor · expires ${fd(inv.expiresAt, 'Africa/Lagos')} Resend Revoke`)
     expect(t).not.toContain('No open invites.')
   })
 })

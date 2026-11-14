@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageLabel, daysLeft, fd, fmt, initials, isoInZone, loc, maskPhone, pct, usd, usdFromDollars } from '@/lib/format'
+import { ageLabel, daysLeft, fd, fmt, initials, isoInZone, loc, longDate, maskPhone, pct, usd, usdFromDollars } from '@/lib/format'
 
 describe('prototype formatting', () => {
   it('fmt abbreviates counts', () => {
@@ -40,6 +40,14 @@ describe('prototype formatting', () => {
     expect(maskPhone('+2348012344471')).toBe('+234 80• ••• 4471')
     expect(maskPhone('+254712345678')).toBe('+254 71• ••• 5678')
     expect(maskPhone('+441234567890')).toBe('+441 23• ••• 7890')
+  })
+})
+
+describe('longDate', () => {
+  it('is the day, short month and year on the wall clock of the zone, with Sep for September', () => {
+    expect(longDate(new Date('2026-11-16T12:00Z'), 'Africa/Lagos')).toBe('16 Nov 2026')
+    expect(longDate(new Date('2026-12-31T23:30Z'), 'Africa/Nairobi')).toBe('1 Jan 2027')
+    expect(longDate(new Date('2026-09-03T10:00Z'), 'Africa/Lagos')).toBe('3 Sep 2026')
   })
 })
 

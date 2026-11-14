@@ -1,12 +1,15 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { copyInviteLink, InviteLinkModal } from '@/app/app/(console)/people/InviteLink'
+import { copyInviteLink, InviteLinkField } from '@/app/app/(console)/people/InviteLink'
 import PeoplePage from '@/app/app/(console)/people/page'
 import { getToast, takeToast } from '@/components/shell/toast-store'
-import { changeRoleAction, inviteAction, removeMemberAction, revokeInviteAction } from '@/app/app/(console)/people/actions'
+import {
+  changeRoleAction, inviteAction, removeMemberAction, resendInviteAction, revokeInviteAction,
+} from '@/app/app/(console)/people/actions'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { fd } from '@/lib/format'
 import { inviteUrl } from '@/lib/invitations'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
@@ -42,6 +45,20 @@ describe('people actions', () => {
     await expect(changeRoleAction(owner.id, 'Viewer')).rejects.toBe('FORBIDDEN')
     await expect(removeMemberAction(owner.id)).rejects.toBe('FORBIDDEN')
     await expect(revokeInviteAction('x')).rejects.toBe('FORBIDDEN')
+    await expect(resendInviteAction('x')).rejects.toBe('FORBIDDEN')
+  })
+
+  it('a Viewer cannot resend: the token stays and no link comes back', async () => {
+    const { owner, ws, actor } = await setup('Manager')
+    await db.workspaceMember.update({ where: { userId_workspaceId: { userId: actor.id, workspaceId: ws.id } }, data: { role: 'Viewer' } })
+    const inv = await db.invitation.create({
+      data: { workspaceId: ws.id, email: 'p@x.test', role: 'Viewer', token: 'c0ffee'.repeat(5) + 'ab', invitedById: owner.id, expiresAt: new Date(Date.now() + 1e8) },
+    })
+    await expect(resendInviteAction(inv.id)).rejects.toBe('FORBIDDEN')
+    await expect(inviteAction('n@x.test', 'Viewer')).rejects.toBe('FORBIDDEN')
+    await expect(revokeInviteAction(inv.id)).rejects.toBe('FORBIDDEN')
+    expect((await db.invitation.findUniqueOrThrow({ where: { id: inv.id } })).token).toBe(inv.token)
+    expect(await db.auditEvent.count({ where: { action: 'invite.resend' } })).toBe(0)
   })
 
   it('an Owner invites, changes a role, revokes and removes', async () => {
@@ -49,7 +66,9 @@ describe('people actions', () => {
     const sent = await inviteAction('n@x.test', 'Manager')
     const inv = await db.invitation.findFirstOrThrow({ where: { workspaceId: ws.id } })
     // The new invite's link goes back to the inviter who made it, and to no one else.
-    expect(sent).toEqual({ ok: true, url: inviteUrl(inv.token) })
+    expect(sent).toEqual({
+      ok: true, url: inviteUrl(inv.token), id: inv.id, email: 'n@x.test', role: 'Manager', expires: fd(inv.expiresAt, 'Africa/Lagos'),
+    })
     expect(inv.role).toBe('Manager')
     expect(await db.auditEvent.count({ where: { action: 'member.invite' } })).toBe(1)
     await revokeInviteAction(inv.id)
@@ -62,9 +81,38 @@ describe('people actions', () => {
     expect(await db.workspaceMember.count({ where: { userId: m.id } })).toBe(0)
   })
 
+  it('Resend hands the one who clicked a new link, and the old one stops working', async () => {
+    const { ws } = await setup('Owner')
+    const sent = await inviteAction('n@x.test', 'Manager')
+    if (!('ok' in sent)) throw new Error('invite failed')
+    const again = await resendInviteAction(sent.id)
+    const inv = await db.invitation.findUniqueOrThrow({ where: { id: sent.id } })
+    expect(again).toEqual({ ok: true, link: inviteUrl(inv.token), expires: fd(inv.expiresAt, 'Africa/Lagos') })
+    expect('ok' in again && again.link).not.toBe(sent.url)
+    expect(await db.invitation.findFirst({ where: { token: sent.url.split('/invite/')[1] } })).toBeNull()
+    const ev = await db.auditEvent.findFirstOrThrow({ where: { action: 'invite.resend', workspaceId: ws.id } })
+    expect(ev.after).toEqual({ email: 'n@x.test', role: 'Manager' })
+  })
+
+  it('Resend of an invite already accepted or revoked says so instead of making a link', async () => {
+    await setup('Owner')
+    const sent = await inviteAction('n@x.test', 'Viewer')
+    if (!('ok' in sent)) throw new Error('invite failed')
+    await revokeInviteAction(sent.id)
+    expect(await resendInviteAction(sent.id)).toEqual({ error: 'GONE' })
+  })
+
+  it('Global can resend', async () => {
+    const { ws, owner } = await setup('Global')
+    const inv = await db.invitation.create({
+      data: { workspaceId: ws.id, email: 'p@x.test', role: 'Viewer', token: 'c0ffee'.repeat(5) + 'ab', invitedById: owner.id, expiresAt: new Date(Date.now() - 1000) },
+    })
+    expect(await resendInviteAction(inv.id)).toEqual({ ok: true, link: expect.stringMatching(/\/invite\/[0-9a-f]{32}$/), expires: expect.any(String) })
+  })
+
   it('Global can invite', async () => {
     await setup('Global')
-    expect(await inviteAction('n@x.test', 'Viewer')).toEqual({ ok: true, url: expect.stringMatching(/\/invite\/[0-9a-f]{32}$/) })
+    expect(await inviteAction('n@x.test', 'Viewer')).toMatchObject({ ok: true, url: expect.stringMatching(/\/invite\/[0-9a-f]{32}$/) })
   })
 
   it('invalid email and existing member are errors, the last Owner is protected', async () => {
@@ -75,15 +123,18 @@ describe('people actions', () => {
     expect(await removeMemberAction(owner.id)).toEqual({ error: 'LAST_OWNER' })
   })
 
-  it('the page lists members, the role table and a pending row', async () => {
-    await setup('Owner')
+  it('the page lists members, the role table and a pending row with Resend and Revoke, and ships no link', async () => {
+    const { ws } = await setup('Owner')
     await inviteAction('new@x.test', 'Manager')
-    const html = renderToStaticMarkup(await PeoplePage())
+    const inv = await db.invitation.findFirstOrThrow({ where: { workspaceId: ws.id } })
+    const tree = await PeoplePage()
+    expect(JSON.stringify(tree)).not.toContain(inv.token)
+    const html = renderToStaticMarkup(tree)
+    expect(html).not.toContain(inv.token)
+    expect(html).not.toContain('/invite/')
     const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
     expect(text).toContain('Tunde Okafor')
-    expect(text).toContain('Invited · Manager')
-    expect(text).toContain('Copy invite link')
-    expect(text).toContain('Revoke')
+    expect(text).toContain(`new@x.test Manager · invited by Tunde Okafor · expires ${fd(inv.expiresAt, 'Africa/Lagos')} Resend Revoke`)
     expect(text).toContain('Everything, including invoices, credit and people')
     expect(text).toContain('Create, submit, edit, pause campaigns; see reports')
     expect(text).toContain('Reports and invoices, read-only')
@@ -103,8 +154,9 @@ describe('people actions', () => {
     const html = renderToStaticMarkup(tree)
     expect(html).not.toContain(inv.token)
     expect(html).not.toContain('<select')
-    expect(html).toContain('Invited · Owner')
-    expect(html).not.toContain('Copy invite link')
+    expect(html).toContain('Owner · invited by Tunde Okafor')
+    expect(html).not.toContain('Resend')
+    expect(html).not.toContain('>Copy<')
     expect(html).not.toContain('Revoke')
     expect(html).not.toContain('>Remove<')
     expect(html).not.toContain('Send invite')
@@ -121,26 +173,22 @@ describe('copying an invite link', () => {
   it('says it was copied, without the link', async () => {
     takeToast()
     const written: string[] = []
-    const shown: string[] = []
-    await copyInviteLink(url, (u) => shown.push(u), async (t) => void written.push(t))
+    expect(await copyInviteLink(url, async (t) => void written.push(t))).toBe(true)
     expect(written).toEqual([url])
-    expect(shown).toEqual([])
     expect(takeToast()?.message).toBe('Invite link copied')
   })
 
-  it('when the browser refuses, shows the link in a read-only field with Copy and toasts nothing', async () => {
+  it('when the browser refuses, toasts nothing: the link stays in its field to copy by hand', async () => {
     takeToast()
-    const shown: string[] = []
-    await copyInviteLink(url, (u) => shown.push(u), refused)
-    expect(shown).toEqual([url])
+    expect(await copyInviteLink(url, refused)).toBe(false)
     expect(getToast()).toBeNull()
+  })
 
-    const html = renderToStaticMarkup(createElement(InviteLinkModal, { url, onClose: () => {} }))
-    expect(html).toContain('role="dialog"')
+  it('shows the link in a read-only field with Copy', () => {
+    const html = renderToStaticMarkup(createElement(InviteLinkField, { url }))
     const field = html.match(/<input[^>]*>/)?.[0] ?? ''
     expect(field).toMatch(/readonly=""/i)
     expect(field).toContain(`value="${url}"`)
     expect(html).toMatch(/<button[^>]*>Copy<\/button>/)
-    expect(renderToStaticMarkup(createElement(InviteLinkModal, { url: null, onClose: () => {} }))).toBe('')
   })
 })

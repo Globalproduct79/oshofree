@@ -1,17 +1,20 @@
-import { LinkButton } from '@/components/og'
+import { Box, LinkButton } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { SHELL } from '@/lib/copy-shell'
 import { PEOPLE } from '@/lib/copy-people'
-import { inviteUrl, members, pendingInvites } from '@/lib/invitations'
+import { members, openInvites } from '@/lib/invitations'
 import { can, requireMember } from '@/lib/permissions'
-import { PeopleClient } from './PeopleClient'
+import { inviteViews } from './invite-views'
+import { InvitesList } from './InvitesList'
 import { RolesBox } from './RolesBox'
+import { TeamList } from './TeamList'
 
 // People (ADV §9): the members, the invites still open and what each role can do. Inviting has its own page,
-// opened from the head; only Owners and Global see it.
+// opened from the head; only Owners and Global see it. No invite's link is sent to this page: Resend hands a new
+// one to whoever clicked it.
 export default async function PeoplePage() {
-  const { workspace, role } = await requireMember('view')
-  const [people, pending] = await Promise.all([members(workspace.id), pendingInvites(workspace.id)])
+  const { user, workspace, role } = await requireMember('view')
+  const [people, open] = await Promise.all([members(workspace.id), openInvites(workspace.id)])
   const canManage = can(role, 'people')
   return (
     <>
@@ -27,13 +30,17 @@ export default async function PeoplePage() {
           )
         }
       />
-      <PeopleClient
-        canManage={canManage}
-        members={people}
-        pending={pending.map((p) => ({ id: p.id, email: p.email, role: p.role, url: canManage ? inviteUrl(p.token) : null }))}
-      >
+      <div className="two">
+        <div>
+          <Box title={PEOPLE.members}>
+            <TeamList canManage={canManage} members={people} meId={user.id} />
+          </Box>
+          <Box title={PEOPLE.openInvites}>
+            <InvitesList canManage={canManage} invites={inviteViews(open, workspace.country)} empty={PEOPLE.noOpenInvites} />
+          </Box>
+        </div>
         <RolesBox />
-      </PeopleClient>
+      </div>
     </>
   )
 }

@@ -163,3 +163,8 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
 .btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .months{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}.months a{color:var(--ink2)}.months a[aria-current=page]{color:var(--blu);font-weight:700}
 .box td .sub{margin:6px 0 0}
+/* People and Organisation › Overview: a member or an invite on one ruled line (initials, who, then the controls).
+   A link a Send or Resend just made sits on its own line under its invite. */
+.roles li{flex-wrap:wrap}.roles .av{width:32px;height:32px;border-radius:50%;background:var(--blu2);color:var(--blu);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex:none}
+.roles .nm{flex:1;min-width:0;overflow-wrap:anywhere}.roles .nm small{display:block;color:var(--ink3);font-size:12px}.roles .nm .tagp{margin:0 0 0 6px;font-size:11px;padding:1px 7px}
+.roles .link{flex-basis:100%}

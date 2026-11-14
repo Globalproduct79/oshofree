@@ -47,6 +47,12 @@ export const pct = (a: number, b: number): string => (b === 0 ? '0%' : ((a / b) 
 export const fd = (d: Date, tz: string): string =>
   new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: tz }).format(d)
 
+// fd with the year, for a date that may be in another year: '3 Sep 2026' (en-GB's 'Sept' read as 'Sep').
+export const longDate = (d: Date, tz: string): string =>
+  new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: tz })
+    .format(d)
+    .replace(/\bSept\b/, 'Sep')
+
 // An instant as ISO 8601 on the wall clock of `tz`, with that zone's offset: 2026-11-17T00:00:00+03:00.
 // Whole seconds; the instant is unchanged, so new Date() of the result is the same moment.
 export function isoInZone(d: Date, tz: string): string {
