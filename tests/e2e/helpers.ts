@@ -69,8 +69,9 @@ export const todayInLagos = () => new Intl.DateTimeFormat('en-CA', { timeZone: '
 export type NewCampaign = { name: string; headline: string; description: string; budgetUsd: number }
 
 // Fills the New campaign form for a brand workspace (the brand is the workspace's): a Wall card, redeemed
-// with a claim code, starting today, then submits it. Returns the campaign page's path.
-export async function submitCampaign(page: Page, c: NewCampaign): Promise<string> {
+// with a claim code, starting today, then submits it. `creative` runs once the placement is chosen (F1 attaches
+// an image there). Returns the campaign page's path.
+export async function submitCampaign(page: Page, c: NewCampaign, creative?: (page: Page) => Promise<void>): Promise<string> {
   const L = F.fields
   await page.goto('/app/campaigns/new')
   await expect(page.getByRole('heading', { name: F.head.new.title })).toBeVisible()
@@ -81,6 +82,7 @@ export async function submitCampaign(page: Page, c: NewCampaign): Promise<string
   await page.getByLabel(L.headline.label).fill(c.headline)
   await page.getByLabel(L.description.label).fill(c.description)
   await page.getByRole('button', { name: new RegExp(`^${F.placements.card.name}`) }).click()
+  await creative?.(page)
   await page.getByLabel(L.redeem.label).selectOption('code')
   await page.getByLabel(L.budget.label).fill(String(c.budgetUsd))
   await page.getByLabel(L.startsAt.label).fill(todayInLagos())

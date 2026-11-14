@@ -1,6 +1,7 @@
-import { expect, test } from '@playwright/test'
+import path from 'node:path'
+import { expect, test, type Page } from '@playwright/test'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
-import { STATUS_LABEL } from '@/lib/copy-components'
+import { COMPONENTS, STATUS_LABEL } from '@/lib/copy-components'
 import { HOME } from '@/lib/copy-home'
 import { NOTIFY } from '@/lib/copy-notifications'
 import { CAMPAIGN_COPY, PREVIEW_COPY } from '@/lib/copy-report'
@@ -9,14 +10,60 @@ import {
   ADMIN, approveCampaign, box, homeCard, metricValue, signIn, submitCampaign, TUNDE, type NewCampaign,
 } from './helpers'
 
-// F1: Tunde creates "Harmattan sale" as a Wall card and submits it; it waits in review; Global approves it
-// from the queue; Tunde's home shows it Live and the bell says so.
+// F1: Tunde creates "Harmattan sale" as a Wall card with the seed's JPG (attached, replaced, removed and attached
+// again) and submits it; it waits in review; Global approves it from the queue; Tunde's home shows it Live, with
+// that image, and the bell says so.
 
 const HARMATTAN: NewCampaign = {
   name: 'Harmattan sale',
   headline: 'Harmattan sale: 20% off 1L bottles',
   description: 'Show your claim code at any participating store for 20% off a 1L Kola Bright.',
   budgetUsd: 120,
+}
+
+// The seed's creatives (prisma/seed/creatives): JPGs well under the 2 MB a Wall card takes.
+const METRO = path.join('prisma', 'seed', 'creatives', 'metro.jpg')
+const PARIEZ = path.join('prisma', 'seed', 'creatives', 'pariez.jpg')
+const STORED_JPG = /^\/uploads\/[0-9a-f-]{36}\.jpg$/
+// A cover drawn from that image (the browser writes the style back as `background-image: url("…")`).
+const coverOf = (url: string) => new RegExp(`background-image:\\s*url\\("${url}"\\)`)
+
+// The creative step on the form: the thumbnail is the uploaded file itself, and the card preview takes it at once;
+// Replace opens the file picker; Remove empties the zone and gives it the focus; attaching again works. Returns
+// the URL of the image the campaign is submitted with.
+async function attachReplaceRemoveReattach(page: Page): Promise<string> {
+  const input = page.getByLabel(F.drop.card.label)
+  const thumb = page.locator('.drop img')
+  const cover = box(page, F.previewBox.title).locator('.cv')
+
+  await input.setInputFiles(METRO)
+  await expect(thumb).toHaveAttribute('src', STORED_JPG)
+  const first = (await thumb.getAttribute('src'))!
+  await expect(cover).toHaveAttribute('style', coverOf(first))
+
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: COMPONENTS.drop.replace, exact: true }).click()
+  await (await chooser).setFiles(PARIEZ)
+  await expect(thumb).not.toHaveAttribute('src', first)
+  await expect(thumb).toHaveAttribute('src', STORED_JPG)
+  const replaced = (await thumb.getAttribute('src'))!
+  await expect(cover).toHaveAttribute('style', coverOf(replaced))
+
+  await page.getByRole('button', { name: COMPONENTS.drop.remove, exact: true }).click()
+  await expect(thumb).toHaveCount(0)
+  const zone = page.getByRole('button', { name: new RegExp(`^${F.drop.card.zoneTitle}`) })
+  await expect(zone).toBeFocused()
+  await expect(cover).not.toHaveAttribute('style', /url\(/)
+
+  await input.setInputFiles(METRO)
+  await expect(thumb).toHaveAttribute('src', STORED_JPG)
+  const final = (await thumb.getAttribute('src'))!
+  expect(final).not.toBe(first)
+  await expect(cover).toHaveAttribute('style', coverOf(final))
+  // The stored file is served back as the JPG it is.
+  const served = await page.request.get(final)
+  expect(served.headers()['content-type']).toBe('image/jpeg')
+  return final
 }
 
 test('F1: a brand previews and submits a Wall card, Global approves it, and it is live on Phoenix', async ({ browser }) => {
@@ -39,8 +86,11 @@ test('F1: a brand previews and submits a Wall card, Global approves it, and it i
   })
 
   let campaignPath = ''
-  await test.step('Tunde submits it and it waits for Global', async () => {
-    campaignPath = await submitCampaign(tunde, HARMATTAN)
+  let image = ''
+  await test.step('Tunde attaches the JPG, replaces it, removes it, attaches it again, submits, and it waits for Global', async () => {
+    campaignPath = await submitCampaign(tunde, HARMATTAN, async (page) => {
+      image = await attachReplaceRemoveReattach(page)
+    })
     await expect(tunde.getByRole('heading', { name: HARMATTAN.headline })).toBeVisible()
     await expect(tunde.getByText(STATUS_LABEL.review, { exact: true })).toBeVisible()
     await expect(tunde.getByText(CAMPAIGN_COPY.status.review)).toBeVisible()
@@ -59,6 +109,7 @@ test('F1: a brand previews and submits a Wall card, Global approves it, and it i
     const card = homeCard(tunde, HARMATTAN.headline)
     await expect(card.getByText(STATUS_LABEL.live, { exact: true })).toBeVisible()
     await expect(card).toHaveAttribute('href', campaignPath)
+    await expect(card.locator('.cv')).toHaveAttribute('style', coverOf(image))
 
     await tunde.getByRole('button', { name: SHELL.bell.label }).click()
     const bell = tunde.getByRole('region', { name: SHELL.bell.label })
