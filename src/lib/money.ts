@@ -1,0 +1,416 @@
+import 'server-only'
+import type {
+  CampaignStatus, CreditRequest, Invoice, InvoiceStatus, LedgerEntry, LedgerKind, SettlementStatement,
+} from '@prisma/client'
+import { audit } from '@/lib/audit'
+import { MONEY } from '@/lib/copy-money'
+import { NOTIFY } from '@/lib/copy-notifications'
+import { db, type Tx } from '@/lib/db'
+import { COUNTRIES, MARKETS, type Country } from '@/lib/markets'
+import { notifyWorkspace } from '@/lib/notifications'
+import { currentFx, currentShare } from '@/lib/rates'
+
+// Post-paid credit against monthly invoices (ADV §7–§8, spec §6.5). Every amount is integer USD
+// cents; charges (delivery, rewards) are negative ledger rows and payments positive ones.
+
+export const FIRST_INVOICE_NUMBER = 52
+export const NEAR_LIMIT = 0.85
+const CHARGES: LedgerKind[] = ['delivery', 'reward']
+// Ended and rejected campaigns release their remainder; drafts never held any.
+const COMMITTED: CampaignStatus[] = ['live', 'review', 'scheduled', 'paused']
+const SETTLEMENT_CHANNEL = 'phoenix'
+const DAY_MS = 86_400_000
+// Serialises invoice issuing, so two closes can neither double-invoice nor share a number.
+const INVOICE_LOCK = 805_200
+
+// −Σ of charge rows as a positive number (and 0, never −0, when there are none).
+const charged = (sum: number | null) => (sum ? -sum : 0)
+
+// ---- Months in a market's time zone ----
+
+const clocks = new Map<string, Intl.DateTimeFormat>()
+
+function wallClock(timeZone: string, at: Date) {
+  let clock = clocks.get(timeZone)
+  if (!clock) {
+    clock = new Intl.DateTimeFormat('en-US', {
+      timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+    })
+    clocks.set(timeZone, clock)
+  }
+  const p = Object.fromEntries(clock.formatToParts(at).map((x) => [x.type, Number(x.value)]))
+  return { year: p.year, month: p.month - 1, day: p.day, hour: p.hour, minute: p.minute, second: p.second }
+}
+
+// The UTC instant of local midnight on the 1st of (year, month) — month is 0-based and may overflow.
+function localMonthStart(timeZone: string, year: number, month: number): Date {
+  const wall = Date.UTC(year, month, 1)
+  let t = wall
+  for (let i = 0; i < 2; i++) {
+    const w = wallClock(timeZone, new Date(t))
+    const offset = Date.UTC(w.year, w.month, w.day, w.hour, w.minute, w.second) - Math.floor(t / 1000) * 1000
+    t = wall - offset
+  }
+  return new Date(t)
+}
+
+const localMonth = (timeZone: string, year: number, month: number) => ({
+  start: localMonthStart(timeZone, year, month),
+  end: localMonthStart(timeZone, year, month + 1),
+})
+
+// The calendar month containing `period` in the market's time zone: its first local midnight and the
+// next month's, as UTC instants. Invoice.period stores `start`.
+export function monthBounds(country: Country, period: Date): { start: Date; end: Date } {
+  const timeZone = MARKETS[country].timezone
+  const { year, month } = wallClock(timeZone, period)
+  return localMonth(timeZone, year, month)
+}
+
+// The calendar month a close is for, read where `period` is latest, so the 1st at 00:00 UTC, any
+// market's first local midnight (a stored Invoice.period) and any day inside the month all name it.
+function calendarMonth(period: Date): { year: number; month: number } {
+  const latest = COUNTRIES.map((c) => wallClock(MARKETS[c].timezone, period))
+    .reduce((a, b) => (b.year * 12 + b.month > a.year * 12 + a.month ? b : a))
+  return { year: latest.year, month: latest.month }
+}
+
+// ---- Ledger ----
+
+export type LedgerInput = {
+  at?: Date
+  description: string
+  amountCents: number
+  kind: LedgerKind
+  campaignId?: string
+  invoiceId?: string
+  dedupeKey?: string
+}
+
+// With a dedupeKey, posting again returns the first row unchanged.
+export async function postLedger(workspaceId: string, entry: LedgerInput, tx: Tx = db): Promise<LedgerEntry> {
+  const { amountCents, kind } = entry
+  if (!Number.isInteger(amountCents)) throw 'INVALID'
+  if (CHARGES.includes(kind) && amountCents > 0) throw 'INVALID'
+  if (kind === 'payment' && amountCents < 0) throw 'INVALID'
+  const data = { ...entry, workspaceId, at: entry.at ?? new Date() }
+  if (!entry.dedupeKey) return tx.ledgerEntry.create({ data })
+  // ON CONFLICT DO NOTHING: no unique-violation error, so it is safe inside a transaction too.
+  await tx.ledgerEntry.createMany({ data: [data], skipDuplicates: true })
+  return tx.ledgerEntry.findUniqueOrThrow({ where: { dedupeKey: entry.dedupeKey } })
+}
+
+export type StatementRow = {
+  id: string
+  at: Date
+  description: string
+  amountCents: number
+  kind: LedgerKind
+  isPayment: boolean
+}
+
+// The ledger rows of the workspace's local month containing `month`, newest first.
+export async function statement(workspaceId: string, month: Date): Promise<StatementRow[]> {
+  const { country } = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { country: true } })
+  const { start, end } = monthBounds(country, month)
+  const rows = await db.ledgerEntry.findMany({
+    where: { workspaceId, at: { gte: start, lt: end } },
+    orderBy: [{ at: 'desc' }, { kind: 'asc' }, { id: 'asc' }],
+  })
+  return rows.map(({ id, at, description, amountCents, kind }) => ({
+    id, at, description, amountCents, kind, isPayment: kind === 'payment',
+  }))
+}
+
+// The local months that have ledger rows, newest first, each as its first local midnight.
+export async function statementMonths(workspaceId: string): Promise<Date[]> {
+  const { country } = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { country: true } })
+  const timeZone = MARKETS[country].timezone
+  const rows = await db.$queryRaw<{ month: Date }[]>`
+    SELECT DISTINCT date_trunc('month', ("at" AT TIME ZONE 'UTC') AT TIME ZONE ${timeZone}) AS month
+    FROM "LedgerEntry" WHERE "workspaceId" = ${workspaceId}
+    ORDER BY month DESC`
+  return rows.map(({ month }) => localMonthStart(timeZone, month.getUTCFullYear(), month.getUTCMonth()))
+}
+
+// ---- Credit ----
+
+// What the campaign has been charged: delivery and rewards, invoiced or not.
+export async function campaignSpendCents(campaignId: string): Promise<number> {
+  const { _sum } = await db.ledgerEntry.aggregate({ where: { campaignId, kind: { in: CHARGES } }, _sum: { amountCents: true } })
+  return charged(_sum.amountCents)
+}
+
+// Σ (budget − spend) over live, review, scheduled and paused campaigns, each floored at 0.
+export async function committedCents(workspaceId: string): Promise<number> {
+  const campaigns = await db.campaign.findMany({
+    where: { workspaceId, status: { in: COMMITTED } },
+    select: { id: true, budgetUsd: true },
+  })
+  if (!campaigns.length) return 0
+  const spent = await db.ledgerEntry.groupBy({
+    by: ['campaignId'],
+    where: { campaignId: { in: campaigns.map((c) => c.id) }, kind: { in: CHARGES } },
+    _sum: { amountCents: true },
+  })
+  const spend = new Map(spent.map((s) => [s.campaignId, charged(s._sum.amountCents)]))
+  return campaigns.reduce((sum, c) => sum + Math.max(0, c.budgetUsd * 100 - (spend.get(c.id) ?? 0)), 0)
+}
+
+// Issued and unpaid: due, overdue included.
+export async function outstandingCents(workspaceId: string): Promise<number> {
+  const { _sum } = await db.invoice.aggregate({ where: { workspaceId, status: 'due' }, _sum: { amountCents: true } })
+  return _sum.amountCents ?? 0
+}
+
+async function unbilledFor(workspaceId: string, country: Country): Promise<number> {
+  const last = await db.invoice.findFirst({ where: { workspaceId }, orderBy: { period: 'desc' }, select: { period: true } })
+  const since = last ? monthBounds(country, last.period).end : undefined
+  const { _sum } = await db.ledgerEntry.aggregate({
+    where: { workspaceId, kind: { in: CHARGES }, invoiceId: null, ...(since && { at: { gte: since } }) },
+    _sum: { amountCents: true },
+  })
+  return charged(_sum.amountCents)
+}
+
+// Charges not on an invoice, since the end of the last invoiced month (all of them before the first invoice).
+export async function unbilledCents(workspaceId: string): Promise<number> {
+  const { country } = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { country: true } })
+  return unbilledFor(workspaceId, country)
+}
+
+export type CreditSummary = {
+  limitCents: number
+  inUseCents: number
+  availableCents: number
+  unbilledCents: number
+  outstandingCents: number
+  committedCents: number
+  nearLimit: boolean
+  overLimit: boolean
+}
+
+// In use = outstanding invoices + unbilled charges + committed budgets (ADV §7).
+export async function creditSummary(workspaceId: string): Promise<CreditSummary> {
+  const ws = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { country: true, creditLimitCents: true } })
+  const [outstanding, unbilled, committed] = await Promise.all([
+    outstandingCents(workspaceId),
+    unbilledFor(workspaceId, ws.country),
+    committedCents(workspaceId),
+  ])
+  const limit = ws.creditLimitCents
+  const inUse = outstanding + unbilled + committed
+  return {
+    limitCents: limit,
+    inUseCents: inUse,
+    availableCents: Math.max(0, limit - inUse),
+    unbilledCents: unbilled,
+    outstandingCents: outstanding,
+    committedCents: committed,
+    nearLimit: inUse > NEAR_LIMIT * limit,
+    overLimit: inUse > limit,
+  }
+}
+
+export const creditInUseCents = async (workspaceId: string) => (await creditSummary(workspaceId)).inUseCents
+export const availableCents = async (workspaceId: string) => (await creditSummary(workspaceId)).availableCents
+
+// A new budget (or, when editing, only its increase) must fit under the limit. The caller builds the
+// hint from the result: MONEY.overCredit(limitCents, excessCents).
+export async function canSubmitBudget(
+  workspaceId: string, budgetCents: number, increaseOnly = budgetCents,
+): Promise<{ ok: boolean; excessCents: number; limitCents: number }> {
+  const { inUseCents, limitCents } = await creditSummary(workspaceId)
+  const after = inUseCents + increaseOnly
+  return { ok: after <= limitCents, excessCents: Math.max(0, after - limitCents), limitCents }
+}
+
+// ---- Invoices ----
+
+export type InvoiceDisplayStatus = 'open' | 'due' | 'overdue' | 'paid'
+
+// `open` is the running "(to date)" row the pages build; `overdue` is a due invoice past its date.
+export function invoiceStatus(inv: { status: InvoiceStatus; dueAt: Date }, now = new Date()): InvoiceDisplayStatus {
+  if (inv.status === 'due') return inv.dueAt < now ? 'overdue' : 'due'
+  return inv.status
+}
+
+// One global sequence: INV-0052 upward, always past the highest number already issued.
+export async function nextInvoiceNumber(tx: Tx = db): Promise<string> {
+  const [{ max }] = await tx.$queryRaw<{ max: number | null }[]>`
+    SELECT max(substring("number" from '[0-9]+$')::int) AS max FROM "Invoice"`
+  return `INV-${String(Math.max(FIRST_INVOICE_NUMBER, (max ?? 0) + 1)).padStart(4, '0')}`
+}
+
+// Issues the month's invoice to every workspace with uninvoiced charges in its own market's month,
+// then Phoenix's settlement statement. Re-running is a no-op. A month still running in any market,
+// or a market without FX, is refused before anything is written.
+export async function closeMonth(
+  period: Date, byUserId: string, now = new Date(),
+): Promise<{ invoices: Invoice[]; statements: SettlementStatement[] }> {
+  const { year, month } = calendarMonth(period)
+  const bounds = new Map(COUNTRIES.map((c) => [c, localMonth(MARKETS[c].timezone, year, month)]))
+  if ([...bounds.values()].some((b) => b.end > now)) throw 'MONTH_NOT_OVER'
+
+  const pending = await Promise.all(
+    COUNTRIES.map((country) => {
+      const { start, end } = bounds.get(country)!
+      return db.ledgerEntry.findMany({
+        where: { invoiceId: null, kind: { in: CHARGES }, at: { gte: start, lt: end }, workspace: { country } },
+        distinct: ['workspaceId'],
+        select: { workspaceId: true },
+      })
+    }),
+  )
+  const workspaces = await db.workspace.findMany({
+    where: { id: { in: pending.flat().map((r) => r.workspaceId) } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  })
+  const fx = new Map<Country, number>()
+  for (const country of new Set(workspaces.map((w) => w.country))) fx.set(country, await currentFx(country, bounds.get(country)!.end))
+
+  // Any market's first local midnight lies within a day of the 1st at 00:00 UTC.
+  const utcStart = Date.UTC(year, month, 1)
+  const thisMonth = { gte: new Date(utcStart - DAY_MS), lt: new Date(utcStart + DAY_MS) }
+
+  const invoices: Invoice[] = []
+  for (const ws of workspaces) {
+    const { start, end } = bounds.get(ws.country)!
+    const invoice = await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${INVOICE_LOCK}::bigint)`
+      if (await tx.invoice.findFirst({ where: { workspaceId: ws.id, period: thisMonth }, select: { id: true } })) return null
+      const rows = await tx.ledgerEntry.findMany({
+        where: { workspaceId: ws.id, invoiceId: null, kind: { in: CHARGES }, at: { gte: start, lt: end } },
+        select: { id: true, amountCents: true },
+      })
+      if (!rows.length) return null
+      const created = await tx.invoice.create({
+        data: {
+          workspaceId: ws.id,
+          number: await nextInvoiceNumber(tx),
+          period: start,
+          amountCents: charged(rows.reduce((s, r) => s + r.amountCents, 0)),
+          fxPerUsd: fx.get(ws.country)!,
+          status: 'due',
+          issuedAt: now,
+          dueAt: new Date(now.getTime() + ws.termsDays * DAY_MS),
+        },
+      })
+      await tx.ledgerEntry.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { invoiceId: created.id } })
+      return created
+    })
+    if (!invoice) continue
+    invoices.push(invoice)
+    await audit(byUserId, 'invoice.issue', { type: 'Invoice', id: invoice.id, workspaceId: ws.id }, undefined, {
+      number: invoice.number,
+      period: invoice.period.toISOString(),
+      amountCents: invoice.amountCents,
+      fxPerUsd: Number(invoice.fxPerUsd),
+      dueAt: invoice.dueAt.toISOString(),
+    })
+  }
+
+  return { invoices, statements: await settle(year, month, bounds) }
+}
+
+// Phoenix is owed its share of the month's delivery charges (each market's own month); rewards are
+// not delivery. One statement per channel and month, keyed on the 1st at 00:00 UTC.
+async function settle(
+  year: number, month: number, bounds: Map<Country, { start: Date; end: Date }>,
+): Promise<SettlementStatement[]> {
+  const channel = await db.channel.findUnique({ where: { key: SETTLEMENT_CHANNEL }, select: { id: true } })
+  if (!channel) return []
+  const sums = await Promise.all(
+    COUNTRIES.map((country) => {
+      const { start, end } = bounds.get(country)!
+      return db.ledgerEntry.aggregate({
+        where: { kind: 'delivery', at: { gte: start, lt: end }, workspace: { country } },
+        _sum: { amountCents: true },
+      })
+    }),
+  )
+  const delivered = sums.reduce((s, r) => s + charged(r._sum.amountCents), 0)
+  if (!delivered) return []
+  const period = new Date(Date.UTC(year, month, 1))
+  const share = await currentShare(channel.id, new Date(Date.UTC(year, month + 1, 1)))
+  await db.settlementStatement.createMany({
+    data: [{ channelId: channel.id, period, amountCents: Math.round(delivered * share) }],
+    skipDuplicates: true,
+  })
+  return [await db.settlementStatement.findUniqueOrThrow({ where: { channelId_period: { channelId: channel.id, period } } })]
+}
+
+// Global records the bank transfer: the invoice is paid, a payment line is posted and the credit is
+// released. Paying a paid invoice again changes nothing.
+export async function markInvoicePaid(id: string, byUserId: string, now = new Date()): Promise<Invoice> {
+  const invoice = await db.invoice.findUnique({ where: { id } })
+  if (!invoice) throw 'NOT_FOUND'
+  if (invoice.status === 'paid') return invoice
+  const paid = await db.$transaction(async (tx) => {
+    const { count } = await tx.invoice.updateMany({ where: { id, status: { not: 'paid' } }, data: { status: 'paid', paidAt: now } })
+    if (!count) return false
+    await postLedger(invoice.workspaceId, {
+      at: now,
+      description: MONEY.paidLine(invoice.number),
+      amountCents: invoice.amountCents,
+      kind: 'payment',
+      invoiceId: invoice.id,
+      dedupeKey: `payment:${invoice.id}`,
+    }, tx)
+    return true
+  })
+  if (paid) {
+    await audit(byUserId, 'invoice.paid', { type: 'Invoice', id, workspaceId: invoice.workspaceId },
+      { status: invoice.status }, { status: 'paid', paidAt: now.toISOString() })
+  }
+  return db.invoice.findUniqueOrThrow({ where: { id } })
+}
+
+// ---- Credit limit and requests ----
+
+const isLimit = (cents: unknown): cents is number => Number.isInteger(cents) && (cents as number) >= 0
+
+async function writeLimit(tx: Tx, workspaceId: string, limitCents: number): Promise<number> {
+  const { creditLimitCents: before } = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { creditLimitCents: true } })
+  await tx.workspace.update({ where: { id: workspaceId }, data: { creditLimitCents: limitCents } })
+  return before
+}
+
+async function limitChanged(workspaceId: string, byUserId: string, before: number, after: number) {
+  await audit(byUserId, 'credit.limit', { type: 'Workspace', id: workspaceId, workspaceId },
+    { creditLimitCents: before }, { creditLimitCents: after })
+  await notifyWorkspace(workspaceId, 'credit', NOTIFY.creditLimit(after).title, undefined, '/app/billing')
+}
+
+// Global sets a workspace's limit (Advertisers): ≥ 0, audited, and the workspace is told.
+export async function setCreditLimit(workspaceId: string, limitCents: number, byUserId: string): Promise<void> {
+  if (!isLimit(limitCents)) throw 'INVALID'
+  const before = await writeLimit(db, workspaceId, limitCents)
+  await limitChanged(workspaceId, byUserId, before, limitCents)
+}
+
+// "Request a higher limit": at most one open request per workspace.
+export async function requestCredit(workspaceId: string, byUserId: string, note?: string): Promise<CreditRequest> {
+  const open = await db.creditRequest.findFirst({ where: { workspaceId, status: 'open' } })
+  return open ?? db.creditRequest.create({ data: { workspaceId, requestedById: byUserId, note } })
+}
+
+// Global approves (setting the new limit) or dismisses. Deciding a decided request changes nothing.
+export async function decideCredit(
+  id: string, byUserId: string, decision: 'approved' | 'dismissed', newLimitCents?: number,
+): Promise<CreditRequest> {
+  const request = await db.creditRequest.findUnique({ where: { id } })
+  if (!request) throw 'NOT_FOUND'
+  if (request.status !== 'open') return request
+  if (decision === 'approved' && !isLimit(newLimitCents)) throw 'INVALID'
+  const before = await db.$transaction(async (tx) => {
+    const { count } = await tx.creditRequest.updateMany({
+      where: { id, status: 'open' },
+      data: { status: decision, decidedAt: new Date(), decidedById: byUserId },
+    })
+    if (!count || decision !== 'approved') return null
+    return writeLimit(tx, request.workspaceId, newLimitCents!)
+  })
+  if (before !== null) await limitChanged(request.workspaceId, byUserId, before, newLimitCents!)
+  return db.creditRequest.findUniqueOrThrow({ where: { id } })
+}
