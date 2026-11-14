@@ -32,6 +32,7 @@ const NOW = at('2026-11-14T09:00:00Z')
 const KE_OCT = at('2026-09-30T21:00:00Z')
 const KE_NOV = at('2026-10-31T21:00:00Z')
 const NG_OCT = at('2026-09-30T23:00:00Z')
+const NG_NOV = at('2026-10-31T23:00:00Z')
 
 let users = 0
 const makeUser = (isGlobalAdmin = false) =>
@@ -89,8 +90,6 @@ async function briefFixture() {
   // October, invoiced on INV-0046 ($100 + $110 = $210).
   await line(ws.id, '2026-10-20T09:00:00Z', -10000, MONEY.deliveryLine(live.name), { campaignId: live.id, invoiceId: overdue.id })
   await line(ws.id, '2026-10-25T09:00:00Z', -11000, MONEY.deliveryLine(ended.name), { campaignId: ended.id, invoiceId: overdue.id })
-  // October history not linked to the invoice: before the last invoice's period end, so not unbilled.
-  await line(ws.id, '2026-10-28T09:00:00Z', -4000, MONEY.deliveryLine(ended.name), { campaignId: ended.id })
   // November (Nairobi): $28 + $5 + $102 = $135 unbilled. 22:30 UTC on 31 Oct is 01:30 on 1 Nov in Nairobi.
   await line(ws.id, '2026-11-03T08:00:00Z', -2800, MONEY.deliveryLine(live.name), { campaignId: live.id })
   await line(ws.id, '2026-11-03T08:00:00Z', -500, MONEY.rewardsLine(live.name), { kind: 'reward', campaignId: live.id })
@@ -312,6 +311,48 @@ describe('closeMonth', () => {
     expect(await db.auditEvent.count({ where: { action: 'invoice.issue' } })).toBe(2)
   })
 
+  it("a rate or share stamped at the next month's first instant belongs to the next month", async () => {
+    const { user, channel } = await closeFixture()
+    // Lagos's and Nairobi's first local midnight of November, and the statement's month end (1 Nov 00:00 UTC).
+    await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1700, effectiveFrom: NG_NOV } })
+    await db.marketFx.create({ data: { country: 'KE', fxPerUsd: 140, effectiveFrom: KE_NOV } })
+    await db.channelShare.create({ data: { channelId: channel.id, share: 0.7, effectiveFrom: at('2026-11-01T00:00:00Z') } })
+    const { invoices, statements } = await closeMonth(at('2026-10-01T00:00:00Z'), user.id, CLOSED_AT)
+    expect(invoices.map((i) => Number(i.fxPerUsd))).toEqual([1550, 129])
+    // (12800 + 9300) × 0.55, not × 0.7
+    expect(statements[0].amountCents).toBe(12155)
+  })
+
+  it("a charge dated in October but posted after October's close is unbilled, then lands on November's invoice", async () => {
+    const { user, kola } = await closeFixture()
+    await db.marketFx.create({ data: { country: 'GH', fxPerUsd: 15.5, effectiveFrom: at('2026-09-01T00:00:00Z') } })
+    const [octInvoice] = (await closeMonth(at('2026-10-01T00:00:00Z'), user.id, CLOSED_AT)).invoices
+    expect(octInvoice).toMatchObject({ workspaceId: kola.id, number: 'INV-0052', amountCents: 14500 })
+    expect(await unbilledCents(kola.id)).toBe(2000)
+
+    // The straggler: 31 Oct's last delivery, posted after the close.
+    const late = await line(kola.id, '2026-10-31T12:00:00Z', -600, 'Buy 2 get 1 — delivery')
+    // 2000 (November) + 600 (October, uninvoiced)
+    expect(await unbilledCents(kola.id)).toBe(2600)
+    // in use = outstanding 14500 + unbilled 2600 (no campaigns)
+    expect(await creditInUseCents(kola.id)).toBe(17100)
+
+    // Closing October again leaves Kola alone: it already has October's invoice.
+    expect((await closeMonth(at('2026-10-01T00:00:00Z'), user.id, at('2026-11-02T06:00:00Z'))).invoices).toEqual([])
+    expect((await db.ledgerEntry.findUniqueOrThrow({ where: { id: late.id } })).invoiceId).toBeNull()
+
+    // November: Kola 2000 + 600 = 2600 (INV-0054), Pesa 700 (INV-0055), SunFresh 400 (INV-0056).
+    const nov = await closeMonth(at('2026-11-01T00:00:00Z'), user.id, at('2026-12-01T06:00:00Z'))
+    expect(nov.invoices.map((i) => [i.number, i.amountCents])).toEqual([
+      ['INV-0054', 2600],
+      ['INV-0055', 700],
+      ['INV-0056', 400],
+    ])
+    expect(nov.invoices[0]).toMatchObject({ workspaceId: kola.id, period: NG_NOV })
+    expect((await db.ledgerEntry.findUniqueOrThrow({ where: { id: late.id } })).invoiceId).toBe(nov.invoices[0].id)
+    expect(await unbilledCents(kola.id)).toBe(0)
+  })
+
   it('refuses a month that has not ended in every market', async () => {
     const { user } = await closeFixture()
     await expect(closeMonth(at('2026-11-01T00:00:00Z'), user.id, NOW)).rejects.toBe('MONTH_NOT_OVER')
@@ -383,12 +424,11 @@ describe('ledger and statement', () => {
     ])
     const oct = await statement(ws.id, at('2026-10-15T00:00:00Z'))
     expect(oct.map((r) => [r.amountCents, r.isPayment])).toEqual([
-      [-4000, false],
       [-11000, false],
       [-10000, false],
       [50000, true],
     ])
-    expect(oct[3]).toMatchObject({ at: at('2026-10-01T08:00:00Z'), description: 'INV-0041 paid', kind: 'payment' })
+    expect(oct[2]).toMatchObject({ at: at('2026-10-01T08:00:00Z'), description: 'INV-0041 paid', kind: 'payment' })
     expect(await statementMonths(ws.id)).toEqual([KE_NOV, KE_OCT])
   })
 })

@@ -23,6 +23,9 @@ const DAY_MS = 86_400_000
 // Serialises invoice issuing, so two closes can neither double-invoice nor share a number.
 const INVOICE_LOCK = 805_200
 
+// The last instant before an exclusive end: lookups use effectiveFrom ≤ at.
+const lastInstant = (end: Date) => new Date(end.getTime() - 1)
+
 // −Σ of charge rows as a positive number (and 0, never −0, when there are none).
 const charged = (sum: number | null) => (sum ? -sum : 0)
 
@@ -163,20 +166,14 @@ export async function outstandingCents(workspaceId: string): Promise<number> {
   return _sum.amountCents ?? 0
 }
 
-async function unbilledFor(workspaceId: string, country: Country): Promise<number> {
-  const last = await db.invoice.findFirst({ where: { workspaceId }, orderBy: { period: 'desc' }, select: { period: true } })
-  const since = last ? monthBounds(country, last.period).end : undefined
+// Every charge not yet on an invoice, whatever its date: a charge posted after its month was closed
+// still counts, and rides on the next invoice.
+export async function unbilledCents(workspaceId: string): Promise<number> {
   const { _sum } = await db.ledgerEntry.aggregate({
-    where: { workspaceId, kind: { in: CHARGES }, invoiceId: null, ...(since && { at: { gte: since } }) },
+    where: { workspaceId, kind: { in: CHARGES }, invoiceId: null },
     _sum: { amountCents: true },
   })
   return charged(_sum.amountCents)
-}
-
-// Charges not on an invoice, since the end of the last invoiced month (all of them before the first invoice).
-export async function unbilledCents(workspaceId: string): Promise<number> {
-  const { country } = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { country: true } })
-  return unbilledFor(workspaceId, country)
 }
 
 export type CreditSummary = {
@@ -192,10 +189,10 @@ export type CreditSummary = {
 
 // In use = outstanding invoices + unbilled charges + committed budgets (ADV §7).
 export async function creditSummary(workspaceId: string): Promise<CreditSummary> {
-  const ws = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { country: true, creditLimitCents: true } })
+  const ws = await db.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { creditLimitCents: true } })
   const [outstanding, unbilled, committed] = await Promise.all([
     outstandingCents(workspaceId),
-    unbilledFor(workspaceId, ws.country),
+    unbilledCents(workspaceId),
     committedCents(workspaceId),
   ])
   const limit = ws.creditLimitCents
@@ -242,9 +239,11 @@ export async function nextInvoiceNumber(tx: Tx = db): Promise<string> {
   return `INV-${String(Math.max(FIRST_INVOICE_NUMBER, (max ?? 0) + 1)).padStart(4, '0')}`
 }
 
-// Issues the month's invoice to every workspace with uninvoiced charges in its own market's month,
-// then Phoenix's settlement statement. Re-running is a no-op. A month still running in any market,
-// or a market without FX, is refused before anything is written.
+// Issues the month's invoice to every workspace with uninvoiced charges up to the end of its own
+// market's month — stragglers from earlier months included — then Phoenix's settlement statement.
+// Re-running is a no-op. A month still running in any market, or a market without FX, is refused
+// before anything is written. Rates and shares are read at the month's last instant: one stamped at
+// the next month's first midnight belongs to the next month.
 export async function closeMonth(
   period: Date, byUserId: string, now = new Date(),
 ): Promise<{ invoices: Invoice[]; statements: SettlementStatement[] }> {
@@ -254,9 +253,8 @@ export async function closeMonth(
 
   const pending = await Promise.all(
     COUNTRIES.map((country) => {
-      const { start, end } = bounds.get(country)!
       return db.ledgerEntry.findMany({
-        where: { invoiceId: null, kind: { in: CHARGES }, at: { gte: start, lt: end }, workspace: { country } },
+        where: { invoiceId: null, kind: { in: CHARGES }, at: { lt: bounds.get(country)!.end }, workspace: { country } },
         distinct: ['workspaceId'],
         select: { workspaceId: true },
       })
@@ -267,7 +265,7 @@ export async function closeMonth(
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   })
   const fx = new Map<Country, number>()
-  for (const country of new Set(workspaces.map((w) => w.country))) fx.set(country, await currentFx(country, bounds.get(country)!.end))
+  for (const country of new Set(workspaces.map((w) => w.country))) fx.set(country, await currentFx(country, lastInstant(bounds.get(country)!.end)))
 
   // Any market's first local midnight lies within a day of the 1st at 00:00 UTC.
   const utcStart = Date.UTC(year, month, 1)
@@ -280,7 +278,7 @@ export async function closeMonth(
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${INVOICE_LOCK}::bigint)`
       if (await tx.invoice.findFirst({ where: { workspaceId: ws.id, period: thisMonth }, select: { id: true } })) return null
       const rows = await tx.ledgerEntry.findMany({
-        where: { workspaceId: ws.id, invoiceId: null, kind: { in: CHARGES }, at: { gte: start, lt: end } },
+        where: { workspaceId: ws.id, invoiceId: null, kind: { in: CHARGES }, at: { lt: end } },
         select: { id: true, amountCents: true },
       })
       if (!rows.length) return null
@@ -332,7 +330,7 @@ async function settle(
   const delivered = sums.reduce((s, r) => s + charged(r._sum.amountCents), 0)
   if (!delivered) return []
   const period = new Date(Date.UTC(year, month, 1))
-  const share = await currentShare(channel.id, new Date(Date.UTC(year, month + 1, 1)))
+  const share = await currentShare(channel.id, lastInstant(new Date(Date.UTC(year, month + 1, 1))))
   await db.settlementStatement.createMany({
     data: [{ channelId: channel.id, period, amountCents: Math.round(delivered * share) }],
     skipDuplicates: true,
