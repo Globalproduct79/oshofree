@@ -1,4 +1,4 @@
-import { effectiveStatus } from '@/lib/campaign-status'
+import { isDelivering } from '@/lib/campaign-status'
 import { type LandingView, renderLanding } from '@/lib/landing/render'
 import { endedView, errorView, type LinkWithCampaign } from '@/lib/landing/view'
 import { linkByCode } from '@/lib/links'
@@ -21,14 +21,15 @@ export function redirect(location: string, setCookie?: string): Response {
 
 export const ended = (brand?: string) => html(endedView(brand), 410)
 
-// The link, only while its campaign is delivering; otherwise the brand to name on the 410 page.
+// The link, only while its campaign is delivering (the offers feed's rule); otherwise the brand to name on the
+// 410 page. A flight past its end is refused even while the daily job has yet to store it as ended, so no route
+// counts, issues a code or pays a reward after the offer stopped.
 export async function liveLink(code: string, now = new Date()): Promise<
   { link: LinkWithCampaign; brand?: undefined } | { link: null; brand?: string }
 > {
   const link = await linkByCode(code)
   if (!link) return { link: null }
-  const live = effectiveStatus(link.campaign, now) === 'live' && link.campaign.workspace.status === 'approved'
-  return live ? { link } : { link: null, brand: link.campaign.brand }
+  return isDelivering(link.campaign, now) ? { link } : { link: null, brand: link.campaign.brand }
 }
 
 // Every /o route answers with a page, even when something breaks underneath.

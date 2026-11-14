@@ -106,6 +106,9 @@ async function seed(over: Partial<Prisma.CampaignUncheckedCreateInput> = {}, app
   return mintChannelLink(campaign.id, channel.id, 'sess-1', 'whatsapp')
 }
 const linkOffer = { redeemMethod: 'link', claimCode: null, linkUrl: BRAND_URL } as const
+// The campaign's Root link: the one Phoenix's cta points at with ?go=claim (offers.ts).
+const rootOf = (link: { campaignId: string }) =>
+  db.shareLink.findFirstOrThrow({ where: { campaignId: link.campaignId, sharerType: 'Root' } })
 
 const params = (code: string) => ({ params: Promise.resolve({ code }) })
 const page = (code: string, query = '', headers: Record<string, string> = {}) =>
@@ -175,7 +178,7 @@ describe('GET /o/[code]', () => {
   })
 
   it('renders a code offer for ?go=claim and never redirects', async () => {
-    const link = await seed()
+    const link = await rootOf(await seed())
     const res = await page(link.code, '?go=claim')
     expect(res.status).toBe(200)
     expect(res.headers.get('location')).toBeNull()
@@ -183,7 +186,7 @@ describe('GET /o/[code]', () => {
   })
 
   it('logs one Claim and no Open, then sends a link offer to the brand for ?go=claim', async () => {
-    const link = await seed(linkOffer)
+    const link = await rootOf(await seed(linkOffer))
     const res = await page(link.code, '?go=claim')
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toBe(BRAND_URL)
@@ -191,8 +194,23 @@ describe('GET /o/[code]', () => {
     expect(await events('Open')).toHaveLength(0)
   })
 
+  it("ignores ?go=claim on a sharer's link: the page and an Open, never a Claim or a reward", async () => {
+    const channel = await seed({ ...linkOffer, rewardLocal: 50, fxPerUsd: 1500 })
+    await submit(postDetails, channel.code, 'details', { phone: '0803 123 4567' })
+    const consumer = await db.shareLink.findFirstOrThrow({ where: { sharerType: 'Consumer' } })
+    for (const link of [channel, consumer]) {
+      const res = await page(link.code, '?go=claim')
+      expect(res.status).toBe(200)
+      expect(res.headers.get('location')).toBeNull()
+      expect(await res.text()).toContain('Buy 2 Kola Bright, get 1 free')
+    }
+    expect((await events('Open')).map((e) => e.linkId).sort()).toEqual([channel.id, consumer.id].sort())
+    expect(await events('Claim')).toHaveLength(0)
+    expect(await db.rewardPayout.count()).toBe(0)
+  })
+
   it('percent-encodes a brand link outside Latin-1 into a valid Location, after exactly one Claim per claim', async () => {
-    const link = await seed({ ...linkOffer, linkUrl: 'https://kolabright.ng/₦50 off' })
+    const link = await rootOf(await seed({ ...linkOffer, linkUrl: 'https://kolabright.ng/₦50 off' }))
     const encoded = 'https://kolabright.ng/%E2%82%A650%20off'
     const viaGet = await page(link.code, '?go=claim')
     expect(viaGet.status).toBe(302)
@@ -210,7 +228,7 @@ describe('GET /o/[code]', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('set-cookie')).toBeNull()
     expect(await res.text()).toContain('Buy 2 Kola Bright, get 1 free')
-    const viaClaim = await seed(linkOffer)
+    const viaClaim = await rootOf(await seed(linkOffer))
     const sent = await page(viaClaim.code, '?go=claim', { 'user-agent': 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)' })
     expect(sent.status).toBe(302)
     expect(sent.headers.get('set-cookie')).toBeNull()
@@ -218,7 +236,7 @@ describe('GET /o/[code]', () => {
   })
 
   it('answers HEAD with an empty 204: no cookie, no Open, no Claim', async () => {
-    const link = await seed(linkOffer)
+    const link = await rootOf(await seed(linkOffer))
     for (const query of ['', '?go=claim']) {
       const res = await getPage(new Request(`http://localhost/o/${link.code}${query}`, { method: 'HEAD' }), params(link.code))
       expect(res.status).toBe(204)
@@ -227,6 +245,43 @@ describe('GET /o/[code]', () => {
       expect(await res.text()).toBe('')
     }
     expect(await db.linkEvent.count()).toBe(0)
+  })
+})
+
+// The flight stops at the market's midnight; the 02:00 UTC job only then stores ended. In between the campaign is
+// still stored live, and no landing route may open it, count anything, issue a code or pay a reward.
+describe('a live campaign past its end, before the daily job ends it', () => {
+  it('answers every landing route with the ended page: no event, no claim code, no reward, no charge', async () => {
+    const channel = await seed({ rewardLocal: 50, fxPerUsd: 1500 })
+    const root = await rootOf(channel)
+    // While it ran, Ada left her number: a friend's first claim on her link would pay her and charge the brand.
+    await submit(postDetails, channel.code, 'details', { phone: '0803 123 4567' })
+    const ada = await db.shareLink.findFirstOrThrow({ where: { sharerType: 'Consumer' } })
+    const counted = await db.linkEvent.count()
+    await db.campaign.update({ where: { id: channel.campaignId }, data: { endsAt: new Date(Date.now() - 60_000) } })
+
+    const answers = [
+      await page(ada.code),
+      await page(root.code, '?go=claim'),
+      await submit(postClaim, ada.code, 'claim'),
+      await submit(postDetails, ada.code, 'details', { phone: '0803 765 4321' }),
+      await share(ada.code, 'whatsapp'),
+    ]
+    for (const res of answers) {
+      expect(res.status).toBe(410)
+      expect(res.headers.get('location')).toBeNull()
+      expect(res.headers.get('set-cookie')).toBeNull()
+      const html = await res.text()
+      expect(html).toContain('This offer has ended')
+      expect(html).toContain('Kola Bright')
+    }
+    expect((await db.campaign.findUniqueOrThrow({ where: { id: channel.campaignId } })).status).toBe('live')
+    expect(await db.linkEvent.count()).toBe(counted)
+    expect(await db.claimCode.count()).toBe(0)
+    expect(await db.rewardPayout.count()).toBe(0)
+    expect(await db.ledgerEntry.count()).toBe(0)
+    expect(await db.shareLink.count({ where: { sharerType: 'Consumer' } })).toBe(1)
+    expect((await db.shareLink.findUniqueOrThrow({ where: { id: ada.id } })).via).toBeNull()
   })
 })
 
