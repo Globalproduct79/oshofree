@@ -157,3 +157,9 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
    key-value cell holding a field lets it shrink at phone width instead of widening the page. */
 .box > .cards{margin-bottom:0}
 .kv > div{min-width:0}
+/* One rhythm instead of inline margins: a stacked form (its fields, then its buttons) at the 12px gap, a row of
+   buttons, the month links of Billing and Phoenix settlement, and a grey note under a table cell. */
+.stack{display:grid;gap:12px}.stack .sub{margin:0}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.months{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}.months a{color:var(--ink2)}.months a[aria-current=page]{color:var(--blu);font-weight:700}
+.box td .sub{margin:6px 0 0}
