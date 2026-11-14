@@ -83,4 +83,21 @@ describe('people actions', () => {
     expect(text).toContain('Reports and invoices, read-only')
     expect(html).toContain('title="The last Owner can&#x27;t be demoted."')
   })
+
+  it.each(['Manager', 'Viewer'] as const)('a %s gets no token, link, select or controls', async (role) => {
+    const { owner, ws, actor } = await setup('Manager')
+    await db.workspaceMember.update({ where: { userId_workspaceId: { userId: actor.id, workspaceId: ws.id } }, data: { role } })
+    const inv = await db.invitation.create({
+      data: { workspaceId: ws.id, email: 'p@x.test', role: 'Owner', token: 'c0ffee'.repeat(5) + 'ab', invitedById: owner.id, expiresAt: new Date(Date.now() + 1e8) },
+    })
+    const tree = await PeoplePage()
+    const props = JSON.stringify(tree)
+    expect(props).not.toContain(inv.token)
+    expect(props).not.toContain('/invite/')
+    const html = renderToStaticMarkup(tree)
+    expect(html).not.toContain(inv.token)
+    expect(html).not.toContain('<select')
+    expect(html).toContain('Invited · Owner')
+    expect(html).not.toContain('Copy invite link')
+  })
 })

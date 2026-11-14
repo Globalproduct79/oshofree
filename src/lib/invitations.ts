@@ -1,6 +1,6 @@
 import 'server-only'
 import { randomBytes } from 'node:crypto'
-import type { Invitation, Role } from '@prisma/client'
+import type { Invitation, Prisma, Role } from '@prisma/client'
 import { audit } from '@/lib/audit'
 import { db } from '@/lib/db'
 
@@ -76,35 +76,68 @@ export async function acceptInvite(token: string, user: { id: string; email: str
   const inv = await db.invitation.findUnique({ where: { token } })
   if (!inv || inv.revokedAt || inv.acceptedAt) throw 'INVALID'
   if (inv.expiresAt.getTime() <= Date.now()) throw 'EXPIRED'
+  const now = new Date()
   await db.$transaction(async (tx) => {
+    // The claim is atomic: of two concurrent accepts only one flips acceptedAt.
+    const claimed = await tx.invitation.updateMany({
+      where: { id: inv.id, acceptedAt: null, revokedAt: null, expiresAt: { gt: now } },
+      data: { acceptedAt: now },
+    })
+    if (claimed.count !== 1) throw 'INVALID'
     const existing = await tx.workspaceMember.findUnique({
       where: { userId_workspaceId: { userId: user.id, workspaceId: inv.workspaceId } },
     })
     if (!existing) {
       await tx.workspaceMember.create({ data: { userId: user.id, workspaceId: inv.workspaceId, role: inv.role } })
     }
-    await tx.invitation.update({ where: { id: inv.id }, data: { acceptedAt: new Date() } })
+  })
+  await audit(user.id, 'member.join', { type: 'Invitation', id: inv.id, workspaceId: inv.workspaceId }, undefined, {
+    invitedEmail: inv.email,
+    acceptedEmail: user.email,
+    role: inv.role,
   })
   return { workspaceId: inv.workspaceId, role: inv.role }
 }
 
-async function ownersOtherThan(workspaceId: string, userId: string) {
-  return db.workspaceMember.count({ where: { workspaceId, role: 'Owner', userId: { not: userId } } })
+// Serialises Owner changes per workspace so two Owners can't demote each other into zero Owners.
+async function guardedOwnerChange(
+  workspaceId: string,
+  userId: string,
+  change: (tx: Prisma.TransactionClient, current: Role) => Promise<void>,
+  isLoss: (current: Role) => boolean,
+): Promise<Role> {
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Workspace" WHERE id = ${workspaceId} FOR UPDATE`
+    const m = await tx.workspaceMember.findUnique({ where: { userId_workspaceId: { userId, workspaceId } } })
+    if (!m) throw 'NOT_FOUND'
+    if (isLoss(m.role)) {
+      const others = await tx.workspaceMember.count({ where: { workspaceId, role: 'Owner', userId: { not: userId } } })
+      if (others === 0) throw 'LAST_OWNER'
+    }
+    await change(tx, m.role)
+    return m.role
+  })
 }
 
 export async function changeRole(workspaceId: string, userId: string, role: Role, byUserId: string): Promise<void> {
-  const m = await db.workspaceMember.findUnique({ where: { userId_workspaceId: { userId, workspaceId } } })
-  if (!m) throw 'NOT_FOUND'
-  if (m.role === role) return
-  if (m.role === 'Owner' && (await ownersOtherThan(workspaceId, userId)) === 0) throw 'LAST_OWNER'
-  await db.workspaceMember.update({ where: { userId_workspaceId: { userId, workspaceId } }, data: { role } })
-  await audit(byUserId, 'member.role', { type: 'User', id: userId, workspaceId }, { role: m.role }, { role })
+  const before = await guardedOwnerChange(
+    workspaceId,
+    userId,
+    (tx, current) =>
+      current === role
+        ? Promise.resolve()
+        : tx.workspaceMember.update({ where: { userId_workspaceId: { userId, workspaceId } }, data: { role } }).then(() => {}),
+    (current) => current === 'Owner' && role !== 'Owner',
+  )
+  if (before !== role) await audit(byUserId, 'member.role', { type: 'User', id: userId, workspaceId }, { role: before }, { role })
 }
 
 export async function removeMember(workspaceId: string, userId: string, byUserId: string): Promise<void> {
-  const m = await db.workspaceMember.findUnique({ where: { userId_workspaceId: { userId, workspaceId } } })
-  if (!m) throw 'NOT_FOUND'
-  if (m.role === 'Owner' && (await ownersOtherThan(workspaceId, userId)) === 0) throw 'LAST_OWNER'
-  await db.workspaceMember.delete({ where: { userId_workspaceId: { userId, workspaceId } } })
-  await audit(byUserId, 'member.remove', { type: 'User', id: userId, workspaceId }, { role: m.role })
+  const before = await guardedOwnerChange(
+    workspaceId,
+    userId,
+    (tx) => tx.workspaceMember.delete({ where: { userId_workspaceId: { userId, workspaceId } } }).then(() => {}),
+    (current) => current === 'Owner',
+  )
+  await audit(byUserId, 'member.remove', { type: 'User', id: userId, workspaceId }, { role: before })
 }

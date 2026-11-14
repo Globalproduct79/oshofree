@@ -95,3 +95,37 @@ describe('invitations', () => {
     expect(await db.auditEvent.count({ where: { action: { in: ['member.role', 'member.remove'] } } })).toBe(3)
   })
 })
+
+describe('invitations: concurrency and audit', () => {
+  it('two concurrent accepts of one token give exactly one success', async () => {
+    const { owner, ws } = await setup()
+    const inv = await invite(ws.id, owner.id, 'n@x.test', 'Manager')
+    const u = await mkUser('n@x.test', 'Newbie')
+    const r = await Promise.allSettled([acceptInvite(inv.token, u), acceptInvite(inv.token, u)])
+    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1)
+    expect(await db.workspaceMember.count({ where: { userId: u.id } })).toBe(1)
+  })
+
+  it('two Owners demoting each other concurrently leave one Owner', async () => {
+    const { owner, ws } = await setup()
+    const two = await mkUser('t@x.test', 'Two')
+    await db.workspaceMember.create({ data: { userId: two.id, workspaceId: ws.id, role: 'Owner' } })
+    const r = await Promise.allSettled([
+      changeRole(ws.id, owner.id, 'Viewer', two.id),
+      changeRole(ws.id, two.id, 'Viewer', owner.id),
+    ])
+    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1)
+    expect(r.find((x) => x.status === 'rejected')).toMatchObject({ reason: 'LAST_OWNER' })
+    expect(await db.workspaceMember.count({ where: { workspaceId: ws.id, role: 'Owner' } })).toBe(1)
+  })
+
+  it('accepting audits member.join with both emails', async () => {
+    const { owner, ws } = await setup()
+    const inv = await invite(ws.id, owner.id, 'n@x.test', 'Viewer')
+    const u = await mkUser('other@x.test', 'Other')
+    await acceptInvite(inv.token, u)
+    const ev = await db.auditEvent.findFirstOrThrow({ where: { action: 'member.join' } })
+    expect(ev.actorId).toBe(u.id)
+    expect(ev.after).toEqual({ invitedEmail: 'n@x.test', acceptedEmail: 'other@x.test', role: 'Viewer' })
+  })
+})
