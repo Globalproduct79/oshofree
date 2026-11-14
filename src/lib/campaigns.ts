@@ -314,45 +314,54 @@ export async function endCampaign(
 
 // ---- The daily job's moves (spec §6.5, §6.7) ----
 
-// A campaign another change already moved is skipped, not an error.
-const unlessMoved = (e: unknown): null => {
-  if (e === 'INVALID_TRANSITION') return null
-  throw e
+// Per-campaign failures of a batch move: with a handler the batch reports them and carries on; without
+// one the first failure throws. A campaign another change already moved is skipped, not a failure.
+export type OnCampaignError = (campaignId: string, e: unknown) => void
+
+async function eachCampaign(
+  ids: string[], onError: OnCampaignError | undefined, step: (id: string) => Promise<Campaign | null>,
+): Promise<Campaign[]> {
+  const done: Campaign[] = []
+  for (const id of ids) {
+    try {
+      const c = await step(id)
+      if (c) done.push(c)
+    } catch (e) {
+      if (e === 'INVALID_TRANSITION') continue
+      if (!onError) throw e
+      onError(id, e)
+    }
+  }
+  return done
 }
 
 // A scheduled flight goes live once its start — stored as the market's midnight — has come, and its
 // workspace hears that it is live.
-export async function startScheduled(now = new Date()): Promise<Campaign[]> {
+export async function startScheduled(now = new Date(), onError?: OnCampaignError): Promise<Campaign[]> {
   const due = await db.campaign.findMany({
     where: { status: 'scheduled', startsAt: { lte: now } },
     select: { id: true },
     orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
   })
-  const started: Campaign[] = []
-  for (const { id } of due) {
-    const c = await move(id, ['scheduled'], { status: 'live' }).catch(unlessMoved)
-    if (!c) continue
-    started.push(c)
+  return eachCampaign(due.map((c) => c.id), onError, async (id) => {
+    const c = await move(id, ['scheduled'], { status: 'live' })
     const told = NOTIFY.live(c.name)
     await notifyWorkspace(c.workspaceId, 'approved', told.title, told.detail, campaignHref(c.id))
-  }
-  return started
+    return c
+  })
 }
 
 // Auto-pause: while a workspace's credit in use is over its limit, its live campaigns pause (pausedBy
 // 'credit'; Resume stays refused until it is back under) and its members hear why.
-export async function pauseOverCredit(workspaceId: string): Promise<Campaign[]> {
+export async function pauseOverCredit(workspaceId: string, onError?: OnCampaignError): Promise<Campaign[]> {
   if (!(await creditSummary(workspaceId)).overLimit) return []
   const live = await db.campaign.findMany({ where: { workspaceId, status: 'live' }, select: { id: true }, orderBy: { id: 'asc' } })
-  const paused: Campaign[] = []
-  for (const { id } of live) {
-    const c = await move(id, ['live'], { status: 'paused', pausedBy: 'credit' }).catch(unlessMoved)
-    if (!c) continue
-    paused.push(c)
+  return eachCampaign(live.map((c) => c.id), onError, async (id) => {
+    const c = await move(id, ['live'], { status: 'paused', pausedBy: 'credit' })
     const told = NOTIFY.pausedOverCredit(c.name)
     await notifyWorkspace(c.workspaceId, 'credit', told.title, told.detail, campaignHref(c.id))
-  }
-  return paused
+    return c
+  })
 }
 
 export type ChangeWithoutReview = { budgetUsd?: number; endsAt?: Date; rewardLocal?: number }

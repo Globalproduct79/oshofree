@@ -21,8 +21,8 @@ describe('effectiveStatus', () => {
 })
 
 describe('deliveringWhere', () => {
-  it('is exactly the live campaigns of approved workspaces', () => {
-    expect(deliveringWhere(now)).toEqual({ status: 'live', workspace: { status: 'approved' } })
+  it('is exactly the live campaigns of approved workspaces whose flight has not ended', () => {
+    expect(deliveringWhere(now)).toEqual({ status: 'live', endsAt: { gt: now }, workspace: { status: 'approved' } })
   })
 })
 

@@ -130,6 +130,15 @@ describe('GET /api/v1/offers', () => {
     expect(body.offers.map((o: { placement: string }) => o.placement)).toEqual(['card', 'card', 'featured', 'video', 'splash'])
   })
 
+  it('stops listing a live campaign once its flight has ended, before the daily job ends it', async () => {
+    await seedChannel()
+    const running = await seedCampaign()
+    const over = await seedCampaign({ startsAt: new Date(Date.now() - 8 * DAY), endsAt: new Date(Date.now() - 60_000) })
+    const body = await (await offers()).json()
+    expect(body.offers.map((o: { id: string }) => o.id)).toEqual([running.id])
+    expect(await db.campaign.findUniqueOrThrow({ where: { id: over.id }, select: { status: true } })).toEqual({ status: 'live' })
+  })
+
   it('accepts ?channel= naming the key\'s own channel and refuses another', async () => {
     await seedChannel()
     await seedCampaign()

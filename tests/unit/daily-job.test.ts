@@ -5,12 +5,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runDailyJobAction } from '@/app/admin/review/actions'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { endCampaign } from '@/lib/campaigns'
 import { runDaily } from '@/lib/jobs/daily'
+import { jobDay } from '../../scripts/daily'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-// The real payouts, unless a test switches the aggregator off.
+// The real payouts and ledger, unless a test switches the aggregator off or fails one campaign's line.
 const aggregator = vi.hoisted(() => ({ down: false }))
+const ledger = vi.hoisted(() => ({ failFor: null as string | null }))
+vi.mock('@/lib/money', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/money')>()
+  return {
+    ...real,
+    postLedger: async (...args: Parameters<typeof real.postLedger>) => {
+      if (args[1].campaignId && args[1].campaignId === ledger.failFor) throw new Error('ledger down')
+      return real.postLedger(...args)
+    },
+  }
+})
 vi.mock('@/lib/rewards', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/rewards')>()
   return {
@@ -57,6 +70,14 @@ const events = (channelId: string, campaignId: string, type: ChannelEventType, n
 const spent = (workspaceId: string, campaignId: string, cents: number, iso = '2026-11-05T12:00:00Z') =>
   db.ledgerEntry.create({ data: { workspaceId, campaignId, at: at(iso), amountCents: -cents, kind: 'delivery', description: 'earlier' } })
 
+async function queuedPayout(workspaceId: string, campaignId: string, channelId: string) {
+  const link = await db.shareLink.create({ data: { code: `ROOT${++seq}`, campaignId, channelId, depth: 0, sharerType: 'Root' } })
+  await db.aggregatorAccount.upsert({ where: { id: 'reloadly' }, create: { id: 'reloadly', balanceCents: 1000 }, update: {} })
+  return db.rewardPayout.create({
+    data: { campaignId, workspaceId, shareLinkId: link.id, claimEventKey: `claim-${seq}`, amountLocal: 50, amountCents: 3, status: 'queued' },
+  })
+}
+
 const deliveries = (campaignId: string) => db.ledgerEntry.findMany({ where: { campaignId, kind: 'delivery', description: { not: 'earlier' } } })
 const notes = (kind: NotificationKind) => db.notification.findMany({ where: { kind }, orderBy: { createdAt: 'asc' } })
 const statusOf = async (id: string) => (await db.campaign.findUniqueOrThrow({ where: { id } })).status
@@ -86,19 +107,45 @@ describe('runDaily — delivery charges', () => {
     expect(await db.jobRun.findMany({ where: { name: 'daily' }, select: { day: true } })).toEqual([{ day: at('2026-11-10T00:00:00Z') }])
   })
 
-  it('gives the day back when a run fails, and the re-run charges nothing twice', async () => {
+  it("lists one campaign's failed charge and carries on: the others are charged and the payouts sent", async () => {
     const { ws, phoenix } = await world()
-    const c = await campaign(ws.id)
+    const broken = await campaign(ws.id)
+    const fine = await campaign(ws.id, { name: 'Weekend cashback' })
+    await events(phoenix.id, broken.id, 'Impression', 1000, '2026-11-10T12:00:00Z')
+    await events(phoenix.id, fine.id, 'Impression', 1000, '2026-11-10T12:00:00Z')
+    const payout = await queuedPayout(ws.id, broken.id, phoenix.id)
+    ledger.failFor = broken.id
+    try {
+      const summary = await runDaily(at('2026-11-10T12:00:00Z'))
+      expect(summary).toMatchObject({ skipped: false, charged: 1, payouts: 1 })
+      expect(!summary.skipped && summary.errors).toEqual([{ duty: 'charge', campaignId: broken.id, message: 'ledger down' }])
+    } finally {
+      ledger.failFor = null
+    }
+    expect(await deliveries(broken.id)).toEqual([])
+    expect(await deliveries(fine.id)).toHaveLength(1)
+    expect(await db.rewardPayout.findUniqueOrThrow({ where: { id: payout.id } })).toMatchObject({ status: 'sent' })
+  })
+
+  it('keeps the day when a duty fails, runs the later duties, and a replay finishes it charging nothing twice', async () => {
+    const { ws, phoenix } = await world()
+    const c = await campaign(ws.id, { startsAt: at('2026-11-03T12:00:00Z'), endsAt: at('2026-11-17T12:00:00Z') })
+    await spent(ws.id, c.id, 24_000) // fast: pace runs after payouts
     await events(phoenix.id, c.id, 'Impression', 1000, '2026-11-10T12:00:00Z')
+    const payout = await queuedPayout(ws.id, c.id, phoenix.id)
     aggregator.down = true
     try {
-      await expect(runDaily(at('2026-11-10T12:00:00Z'))).rejects.toThrow('aggregator down')
+      const summary = await runDaily(at('2026-11-10T12:00:00Z'))
+      expect(summary).toMatchObject({ skipped: false, charged: 1, payouts: 0, pace: 1 })
+      expect(!summary.skipped && summary.errors).toEqual([{ duty: 'payouts', message: 'aggregator down' }])
     } finally {
       aggregator.down = false
     }
-    expect(await db.jobRun.count({ where: { name: 'daily' } })).toBe(0)
-    expect(await runDaily(at('2026-11-10T13:00:00Z'))).toMatchObject({ skipped: false })
+    expect(await db.jobRun.count({ where: { name: 'daily' } })).toBe(1)
+    expect(await runDaily(at('2026-11-10T13:00:00Z'))).toEqual({ skipped: true })
+    expect(await runDaily(at('2026-11-10T13:00:00Z'), undefined, { replay: true })).toMatchObject({ skipped: false, payouts: 1, errors: [] })
     expect(await deliveries(c.id)).toHaveLength(1)
+    expect(await db.rewardPayout.findUniqueOrThrow({ where: { id: payout.id } })).toMatchObject({ status: 'sent' })
   })
 
   it('dates a charge inside the day it charges when the job runs the next morning', async () => {
@@ -110,16 +157,39 @@ describe('runDaily — delivery charges', () => {
     expect(row).toMatchObject({ amountCents: -120, at: at('2026-11-10T22:59:59.999Z') })
   })
 
-  it('charges nothing without impressions, without a CPM snapshot, or for a campaign that is not live', async () => {
+  it('charges nothing without impressions or without a CPM snapshot', async () => {
     const { ws, phoenix } = await world()
     const quiet = await campaign(ws.id)
     const unpriced = await campaign(ws.id, { name: 'Unpriced', cpmCents: null })
-    const paused = await campaign(ws.id, { name: 'Paused', status: 'paused', pausedBy: 'user' })
     await events(phoenix.id, unpriced.id, 'Impression', 1000, '2026-11-10T12:00:00Z')
-    await events(phoenix.id, paused.id, 'Impression', 1000, '2026-11-10T12:00:00Z')
     expect(await runDaily(at('2026-11-10T12:00:00Z'))).toMatchObject({ charged: 0 })
     expect(await db.ledgerEntry.count()).toBe(0)
     expect(await statusOf(quiet.id)).toBe('live')
+  })
+
+  it("charges the day's impressions whatever the status now: paused by the advertiser or ended mid-day", async () => {
+    const { ws, owner, phoenix } = await world()
+    const paused = await campaign(ws.id, { name: 'Paused', status: 'paused', pausedBy: 'user' })
+    const ended = await campaign(ws.id, { name: 'Ended early' })
+    await events(phoenix.id, paused.id, 'Impression', 1000, '2026-11-10T09:00:00Z')
+    await events(phoenix.id, ended.id, 'Impression', 500, '2026-11-10T09:00:00Z')
+    await endCampaign(ended.id, owner.id, at('2026-11-10T15:00:00Z'))
+
+    expect(await runDaily(at('2026-11-10T12:00:00Z'), at('2026-11-11T02:00:00Z'))).toMatchObject({ charged: 2 })
+    expect((await deliveries(paused.id)).map((r) => r.amountCents)).toEqual([-120])
+    expect((await deliveries(ended.id)).map((r) => r.amountCents)).toEqual([-60])
+  })
+
+  it('charges a campaign the previous run paused over credit for the hours it ran that day', async () => {
+    const { ws, phoenix } = await world({ limitCents: 10_000 })
+    const c = await campaign(ws.id)
+    await events(phoenix.id, c.id, 'Impression', 1000, '2026-11-10T00:30:00Z') // 01:30 on 10 Nov in Lagos
+    // 02:00 UTC on 10 Nov: the run for 9 Nov pauses it.
+    expect(await runDaily(at('2026-11-09T12:00:00Z'), at('2026-11-10T02:00:00Z'))).toMatchObject({ charged: 0, paused: 1 })
+    expect(await statusOf(c.id)).toBe('paused')
+    // The next morning's run for 10 Nov charges the impressions it got before the pause.
+    expect(await runDaily(at('2026-11-10T12:00:00Z'), at('2026-11-11T02:00:00Z'))).toMatchObject({ charged: 1 })
+    expect((await deliveries(c.id)).map((r) => r.amountCents)).toEqual([-120])
   })
 })
 
@@ -211,11 +281,7 @@ describe('runDaily — credit, payouts', () => {
   it('sends queued payouts the aggregator balance covers', async () => {
     const { ws, phoenix } = await world()
     const c = await campaign(ws.id)
-    const link = await db.shareLink.create({ data: { code: 'ROOT0001', campaignId: c.id, channelId: phoenix.id, depth: 0, sharerType: 'Root' } })
-    await db.aggregatorAccount.create({ data: { id: 'reloadly', balanceCents: 1000 } })
-    const p = await db.rewardPayout.create({
-      data: { campaignId: c.id, workspaceId: ws.id, shareLinkId: link.id, claimEventKey: 'claim-1', amountLocal: 50, amountCents: 3, status: 'queued' },
-    })
+    const p = await queuedPayout(ws.id, c.id, phoenix.id)
     expect(await runDaily(at('2026-11-10T12:00:00Z'))).toMatchObject({ payouts: 1 })
     expect(await db.rewardPayout.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ status: 'sent', sentAt: at('2026-11-10T12:00:00Z') })
   })
@@ -348,6 +414,25 @@ describe('runDailyJobAction', () => {
     await signIn(true)
     expect(await runDailyJobAction()).toMatchObject({ ok: true, summary: { skipped: false } })
     expect(await db.jobRun.count({ where: { name: 'daily' } })).toBe(1)
+  })
+})
+
+describe('scripts/daily.ts — the day to run', () => {
+  const now = at('2026-11-14T02:00:00Z')
+
+  it('runs the day that just ended without an argument, under the guard', () => {
+    expect(jobDay(undefined, now)).toEqual({ day: at('2026-11-13T02:00:00Z'), replay: false })
+  })
+
+  it('replays a YYYY-MM-DD day past the guard, at noon UTC inside it', () => {
+    expect(jobDay('2026-11-10', now)).toEqual({ day: at('2026-11-10T12:00:00Z'), replay: true })
+    expect(jobDay('2026-11-13', now)).toEqual({ day: at('2026-11-13T12:00:00Z'), replay: true })
+  })
+
+  it('refuses anything but a real date, and a day not over in every market', () => {
+    for (const bad of ['2026-11-1', '10/11/2026', '2026-02-30', '2026-13-01', 'yesterday', ''])
+      expect(() => jobDay(bad, now)).toThrow('is not a date. Give the day as YYYY-MM-DD.')
+    expect(() => jobDay('2026-11-14', now)).toThrow('2026-11-14 is not over in every market yet.')
   })
 })
 
