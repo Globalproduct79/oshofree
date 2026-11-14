@@ -1,5 +1,7 @@
 import path from 'node:path'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
+import { rewardLabel } from '@/lib/campaign-schema'
+import { COPY } from '@/lib/copy'
 import { ADVERTISERS } from '@/lib/copy-advertisers'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { COMPONENTS, STATUS_LABEL } from '@/lib/copy-components'
@@ -100,6 +102,37 @@ async function attachReplaceRemoveReattach(page: Page): Promise<string> {
   return final
 }
 
+// The preview (Prompt 7): "On Phoenix", a tab per format. A Wall card's other placements are off, saying why.
+const P = PREVIEW_COPY
+const L = COPY.landing
+const REWARD = rewardLabel('NG', 50)
+const previewDialog = (page: Page) => page.getByRole('dialog', { name: P.title })
+async function expectWallCardTabs(dialog: Locator) {
+  await expect(dialog.getByRole('tab', { name: F.placements.card.name, exact: true })).toHaveAttribute('aria-selected', 'true')
+  for (const name of [F.placements.featured.name, F.placements.video.name, F.placements.splash.name]) {
+    const tab = dialog.getByRole('tab', { name: new RegExp(`^${name}`) })
+    await expect(tab).toBeDisabled()
+    await expect(tab).toContainText(P.notThisPlacement)
+  }
+}
+// The Landing page tab: the real page of this campaign in the phone, its headline, reward and image, inert.
+async function expectLandingPage(dialog: Locator, image: string) {
+  await dialog.getByRole('tab', { name: P.tabs.landing }).click()
+  await expect(dialog.getByRole('tab', { name: P.tabs.landing })).toHaveAttribute('aria-selected', 'true')
+  const page = dialog.frameLocator(`iframe[title="${P.landingFrame}"]`)
+  await expect(page.getByRole('heading', { name: HARMATTAN.headline })).toBeVisible()
+  // The reward line under the offer (Share and earn repeats it further down).
+  await expect(page.getByText(REWARD, { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(HARMATTAN.description, { exact: true })).toBeVisible()
+  await expect(page.getByText(L.preview, { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: L.showCode })).toBeDisabled()
+  await expect(page.getByRole('button', { name: L.getLink })).toBeDisabled()
+  // The uploaded file, loaded inside the sandboxed page.
+  const art = page.locator('img.art')
+  await expect(art).toHaveAttribute('src', image)
+  await expect.poll(() => art.evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0)
+}
+
 // Save draft keeps the half-filled form and goes home, where it waits as a Draft card with its image; the card opens
 // the form again with everything restored.
 async function saveDraftAndReopen(page: Page, image: string) {
@@ -120,6 +153,14 @@ async function saveDraftAndReopen(page: Page, image: string) {
 // edit returns to the form (focus on the button that opened the step), and the step opens again unconfirmed.
 async function reviewTheCreative(page: Page, image: string) {
   await expect(page.getByRole('img', { name: F.review.image })).toHaveAttribute('src', image)
+  // The preview, from the Review step: the card in the wall's grid carries the uploaded image, and the landing page is
+  // the real one with this campaign's words.
+  await page.getByRole('button', { name: F.buttons.preview }).click()
+  const preview = previewDialog(page)
+  await expect(preview.locator('.pc.mine .tl')).toHaveAttribute('style', coverOf(image))
+  await expectLandingPage(preview, image)
+  await preview.getByRole('button', { name: P.close }).click()
+  await expect(preview).toHaveCount(0)
   const confirm = page.getByRole('checkbox', { name: F.fields.terms })
   const submit = page.getByRole('button', { name: F.buttons.submit })
   await confirm.check()
@@ -145,8 +186,9 @@ test('F1: a brand previews and submits a Wall card, Global approves it, and it i
     await expect(preview.getByText(F.placements.card.pill, { exact: true })).toBeVisible()
     // "See it on Phoenix": the card among the offers live in Nigeria now.
     await tunde.getByRole('button', { name: F.buttons.preview }).click()
-    const phoenix = tunde.getByRole('dialog', { name: PREVIEW_COPY.title })
+    const phoenix = previewDialog(tunde)
     await expect(phoenix.getByText(HARMATTAN.headline).first()).toBeVisible()
+    await expectWallCardTabs(phoenix)
     await phoenix.getByRole('button', { name: PREVIEW_COPY.close }).click()
     await expect(phoenix).toHaveCount(0)
   })
@@ -188,6 +230,11 @@ test('F1: a brand previews and submits a Wall card, Global approves it, and it i
     const row = queueRow(admin, HARMATTAN.headline)
     await expect(row.getByText(REVIEW.queue.createdBy(TUNDE_NAME))).toBeVisible()
     await expect(row.locator('.cv')).toHaveAttribute('style', coverOf(image))
+    await row.getByRole('button', { name: REVIEW.queue.preview, exact: true }).click()
+    const preview = previewDialog(admin)
+    await expectWallCardTabs(preview)
+    await expectLandingPage(preview, image)
+    await preview.getByRole('button', { name: P.close }).click()
     await approveCampaign(admin, HARMATTAN.headline)
   })
 
@@ -225,6 +272,46 @@ test('F1: a brand previews and submits a Wall card, Global approves it, and it i
     await expect(tunde.getByRole('button', { name: HOME.pause, exact: true })).toBeVisible()
     await expect(metricValue(tunde, CAMPAIGN_COPY.kpi.impressions)).toHaveText('0')
     await expect(tunde.getByRole('img', { name: CAMPAIGN_COPY.offer.creative.image })).toHaveAttribute('src', image)
+  })
+
+  await test.step('its page opens the preview: the Landing page tab shows its headline and reward, inert; Share shows the message', async () => {
+    await tunde.goto(campaignPath)
+    await tunde.getByRole('button', { name: CAMPAIGN_COPY.seeOnPhoenix }).click()
+    const preview = previewDialog(tunde)
+    await expectWallCardTabs(preview)
+    await expectLandingPage(preview, image)
+    await preview.getByRole('tab', { name: P.tabs.share }).click()
+    const sheet = preview.frameLocator(`iframe[title="${P.shareFrame}"]`)
+    for (const name of [L.whatsapp, L.sms, L.x]) await expect(sheet.getByText(name, { exact: true })).toBeVisible()
+    const sample = new URL('/o/preview', tunde.url()).href
+    await expect(sheet.getByLabel(L.copyLabel)).toHaveValue(sample)
+    await expect(preview.getByText(`Kola Bright: ${HARMATTAN.headline} ${sample}`, { exact: true })).toBeVisible()
+    await preview.getByRole('button', { name: P.close }).click()
+    await expect(preview).toHaveCount(0)
+    // Nothing the preview's page could send is taken: Next serves /o/preview/* from the routes that refuse it.
+    for (const res of [
+      await tunde.request.post('/o/preview/claim', { form: {} }),
+      await tunde.request.post('/o/preview/details', { form: { phone: '0803 123 4567' } }),
+      await tunde.request.get('/o/preview/share?via=whatsapp', { maxRedirects: 0 }),
+      await tunde.request.get(sample),
+    ]) {
+      expect(res.status()).toBe(403)
+      expect(await res.text()).toContain(L.previewOnly.replace(/'/g, '&#39;'))
+    }
+  })
+
+  await test.step('on a phone the preview is a full-screen sheet with every tab in view', async () => {
+    await tunde.setViewportSize({ width: 390, height: 844 })
+    await tunde.goto(campaignPath)
+    await tunde.getByRole('button', { name: CAMPAIGN_COPY.seeOnPhoenix }).click()
+    const preview = previewDialog(tunde)
+    await expect(preview).toBeVisible()
+    expect(await preview.boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 844 })
+    for (const tab of await preview.getByRole('tab').all()) await expect(tab).toBeInViewport()
+    // Nothing in the sheet scrolls sideways.
+    expect(await preview.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+    await preview.getByRole('button', { name: P.close }).click()
+    await tunde.setViewportSize({ width: 1280, height: 720 })
   })
 
   await test.step("Global's page of the workspace names Tunde on the campaign's card", async () => {
