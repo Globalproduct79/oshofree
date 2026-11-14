@@ -6,6 +6,7 @@ import { runDailyJobAction } from '@/app/admin/review/actions'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { endCampaign } from '@/lib/campaigns'
+import { invoiceStatus } from '@/lib/money'
 import { runDaily } from '@/lib/jobs/daily'
 import { jobDay } from '../../scripts/daily'
 
@@ -105,6 +106,47 @@ describe('runDaily — delivery charges', () => {
       dedupeKey: `delivery:${c.id}:2026-11-10`, at: at('2026-11-10T12:00:00Z'),
     })
     expect(await db.jobRun.findMany({ where: { name: 'daily' }, select: { day: true } })).toEqual([{ day: at('2026-11-10T00:00:00Z') }])
+  })
+
+  it("raises a day's line to the day's total when more impressions arrive after it was charged", async () => {
+    const { ws, phoenix } = await world()
+    const c = await campaign(ws.id)
+    await events(phoenix.id, c.id, 'Impression', 1000, '2026-11-10T12:00:00Z')
+    await runDaily(at('2026-11-10T12:00:00Z'), at('2026-11-11T02:00:00Z'))
+    await events(phoenix.id, c.id, 'Impression', 500, '2026-11-10T15:00:00Z')
+
+    expect(await runDaily(at('2026-11-10T12:00:00Z'), at('2026-11-11T09:00:00Z'), { replay: true })).toMatchObject({ charged: 1 })
+    const rows = await deliveries(c.id)
+    expect(rows).toHaveLength(1)
+    // 1,500 impressions × 120 ¢ ÷ 1,000, on the day's one line.
+    expect(rows[0]).toMatchObject({ amountCents: -180, dedupeKey: `delivery:${c.id}:2026-11-10` })
+    // Nothing new: a replay changes nothing.
+    expect(await runDaily(at('2026-11-10T12:00:00Z'), at('2026-11-11T10:00:00Z'), { replay: true })).toMatchObject({ charged: 0 })
+    expect((await deliveries(c.id)).map((r) => r.amountCents)).toEqual([-180])
+  })
+
+  it("leaves an invoiced line as it was and charges the rest of that day on a line of its own", async () => {
+    const { ws, phoenix } = await world()
+    const c = await campaign(ws.id)
+    await events(phoenix.id, c.id, 'Impression', 1000, '2026-11-10T12:00:00Z')
+    await runDaily(at('2026-11-10T12:00:00Z'), at('2026-11-11T02:00:00Z'))
+    const invoice = await db.invoice.create({
+      data: {
+        workspaceId: ws.id, number: 'INV-0052', period: at('2026-10-31T23:00:00Z'), amountCents: 120, fxPerUsd: 1550, country: 'NG',
+        status: 'due', issuedAt: at('2026-12-01T02:00:00Z'), dueAt: at('2026-12-15T02:00:00Z'),
+      },
+    })
+    await db.ledgerEntry.updateMany({ where: { campaignId: c.id, kind: 'delivery' }, data: { invoiceId: invoice.id } })
+    await events(phoenix.id, c.id, 'Impression', 500, '2026-11-10T15:00:00Z')
+
+    await runDaily(at('2026-11-10T12:00:00Z'), at('2026-11-11T09:00:00Z'), { replay: true })
+    const rows = (await deliveries(c.id)).sort((a, b) => a.dedupeKey!.localeCompare(b.dedupeKey!))
+    expect(rows).toMatchObject([
+      { amountCents: -120, invoiceId: invoice.id, dedupeKey: `delivery:${c.id}:2026-11-10` },
+      { amountCents: -60, invoiceId: null, dedupeKey: `delivery:${c.id}:2026-11-10:1` },
+    ])
+    await runDaily(at('2026-11-10T12:00:00Z'), at('2026-11-11T10:00:00Z'), { replay: true })
+    expect(await deliveries(c.id)).toHaveLength(2)
   })
 
   it("lists one campaign's failed charge and carries on: the others are charged and the payouts sent", async () => {
@@ -370,20 +412,74 @@ describe('runDaily — pace and the weekly digest', () => {
     return w
   }
 
-  it('sends the weekly digest from 08:00 on Monday in the market, once', async () => {
+  it('sends the weekly digest at the 02:00 UTC run on Monday in the market, once', async () => {
     const { ws } = await week()
-    expect(await runDaily(at('2026-11-15T12:00:00Z'), at('2026-11-16T07:00:00Z'))).toMatchObject({ weekly: 1 })
+    // 03:00 on Monday in Lagos: the documented cron.
+    expect(await runDaily(at('2026-11-15T12:00:00Z'), at('2026-11-16T02:00:00Z'))).toMatchObject({ weekly: 1 })
     expect(await runDaily(at('2026-11-16T12:00:00Z'), at('2026-11-16T09:00:00Z'))).toMatchObject({ weekly: 0 })
     const told = await notes('weekly')
     expect(told).toHaveLength(1)
     expect(told[0]).toMatchObject({ workspaceId: ws.id, title: 'Your week on Phoenix', detail: '1 live · 1.5k impressions · $12 spent' })
   })
 
-  it('sends no digest before 08:00 on Monday or on another day', async () => {
+  it('sends no digest on another day of the week', async () => {
     await week()
-    expect(await runDaily(at('2026-11-16T06:59:00Z'))).toMatchObject({ weekly: 0 }) // 07:59 in Lagos
+    expect(await runDaily(at('2026-11-15T22:59:00Z'))).toMatchObject({ weekly: 0 }) // 23:59 on Sunday in Lagos
     expect(await runDaily(at('2026-11-17T09:00:00Z'))).toMatchObject({ weekly: 0 }) // Tuesday
     expect(await notes('weekly')).toEqual([])
+  })
+})
+
+// A $12 invoice issued on 1 Nov, due at 02:00 UTC on 15 Nov.
+const invoiceFor = (workspaceId: string, number: string, status: 'due' | 'paid' = 'due') =>
+  db.invoice.create({
+    data: {
+      workspaceId, number, period: at('2026-10-31T23:00:00Z'), amountCents: 1200, fxPerUsd: 1550, country: 'NG',
+      status, issuedAt: at('2026-11-01T02:00:00Z'), dueAt: at('2026-11-15T02:00:00Z'),
+    },
+  })
+
+async function unpaid() {
+  const w = await world()
+  return { ...w, invoice: await invoiceFor(w.ws.id, 'INV-0052') }
+}
+
+describe('runDaily — invoices', () => {
+  it('tells the workspace once, five days or less before an invoice is due', async () => {
+    const { ws, owner } = await unpaid()
+    expect(await runDaily(at('2026-11-08T12:00:00Z'), at('2026-11-09T02:00:00Z'))).toMatchObject({ invoices: 0 }) // six days
+    expect(await runDaily(at('2026-11-09T12:00:00Z'), at('2026-11-10T02:00:00Z'))).toMatchObject({ invoices: 1 })
+    expect(await runDaily(at('2026-11-10T12:00:00Z'), at('2026-11-11T02:00:00Z'))).toMatchObject({ invoices: 0 })
+    expect(await notes('credit')).toMatchObject([{
+      userId: owner.id, workspaceId: ws.id, title: 'INV-0052 is due in 5 days', detail: '$12 · pay by bank transfer', href: '/app/invoices',
+    }])
+  })
+
+  it('says once that an unpaid invoice is overdue from its due date, to members with the credit toggle on', async () => {
+    const { ws, owner, invoice } = await unpaid()
+    const viewer = await db.user.create({ data: { email: 'ada@x.test', name: 'Ada', passwordHash: 'x' } })
+    await db.workspaceMember.create({ data: { userId: viewer.id, workspaceId: ws.id, role: 'Viewer' } })
+    await db.notificationPref.create({ data: { userId: viewer.id, workspaceId: ws.id, kind: 'credit', enabled: false } })
+
+    expect(await runDaily(at('2026-11-14T12:00:00Z'), at('2026-11-15T02:00:00Z'))).toMatchObject({ invoices: 1 })
+    expect(await runDaily(at('2026-11-15T12:00:00Z'), at('2026-11-16T02:00:00Z'))).toMatchObject({ invoices: 0 })
+    const told = await notes('credit')
+    expect(told).toMatchObject([{ userId: owner.id, title: 'INV-0052 is overdue', detail: '$12 · was due 15 Nov', href: '/app/invoices' }])
+    // Overdue is a due invoice past its date (money.invoiceStatus): it still counts as outstanding.
+    expect(invoiceStatus(await db.invoice.findUniqueOrThrow({ where: { id: invoice.id } }), at('2026-11-16T02:00:00Z'))).toBe('overdue')
+  })
+
+  it('says nothing about a paid invoice, or to a workspace that is not approved', async () => {
+    const { ws } = await world()
+    await invoiceFor(ws.id, 'INV-0052', 'paid')
+    const other = await db.user.create({ data: { email: 'kofi@x.test', name: 'Kofi', passwordHash: 'x' } })
+    const declined = await db.workspace.create({
+      data: { name: 'SunFresh', type: 'Brand', country: 'NG', status: 'declined', members: { create: { userId: other.id, role: 'Owner' } } },
+    })
+    await invoiceFor(declined.id, 'INV-0053')
+    await runDaily(at('2026-11-12T12:00:00Z'), at('2026-11-13T02:00:00Z'))
+    await runDaily(at('2026-11-15T12:00:00Z'), at('2026-11-16T02:00:00Z'))
+    expect(await notes('credit')).toEqual([])
   })
 })
 

@@ -10,14 +10,23 @@ import { notifyWorkspace } from '@/lib/notifications'
 
 export type WorkspaceInput = { name: string; type: WorkspaceType; country: Country }
 
+// The Workspace page shows the approval status and decisions, so their notifications link there.
+const WORKSPACE_PAGE = '/app/workspace'
+
+// A new workspace waits for Global, and its owner is told so (ADV §12).
 export async function createWorkspace(userId: string, input: WorkspaceInput): Promise<Workspace> {
-  return db.$transaction(async (tx) => {
+  const ws = await db.$transaction(async (tx) => {
     const existing = await tx.workspaceMember.findFirst({ where: { userId, role: 'Owner' } })
     if (existing) throw 'ALREADY_HAS_WORKSPACE'
     return tx.workspace.create({
       data: { ...input, members: { create: { userId, role: 'Owner' } } },
     })
   })
+  if (ws.status === 'pending') {
+    const told = NOTIFY.awaitingApproval()
+    await notifyWorkspace(ws.id, 'system', told.title, told.detail, WORKSPACE_PAGE)
+  }
+  return ws
 }
 
 export async function workspaceForUser(userId: string): Promise<Workspace | null> {
@@ -43,9 +52,6 @@ async function decide(tx: Tx, id: string, from: WorkspaceStatus, data: Decision)
   if (count === 0) throw 'INVALID_TRANSITION'
   return tx.workspace.findUniqueOrThrow({ where: { id } })
 }
-
-// The Workspace page shows the decision, so its notification links there.
-const WORKSPACE_PAGE = '/app/workspace'
 
 async function approveFrom(from: 'pending' | 'declined', id: string, byUserId: string, now: Date): Promise<Workspace> {
   const ws = await db.$transaction(async (tx) => {

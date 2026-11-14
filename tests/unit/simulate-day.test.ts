@@ -14,6 +14,7 @@ import { db } from '@/lib/db'
 import { generateDay } from '@/lib/demo/generator'
 import { prng } from '@/lib/demo/prng'
 import { simulateDay } from '@/lib/demo/simulate-day'
+import { runDaily } from '@/lib/jobs/daily'
 import { EXPECTED_OPEN_RATE } from '@/lib/estimate'
 import { campaignMetrics } from '@/lib/reports'
 
@@ -216,6 +217,20 @@ describe('simulateDay', { timeout: 60_000 }, () => {
     const summary = await simulateDay(NOW, prng(7))
     expect(summary.job).toMatchObject({ skipped: false, charged: 1 })
     expect(await db.ledgerEntry.count({ where: { campaignId: c.id, kind: 'delivery' } })).toBe(1)
+  })
+
+  it("charges a day the job already charged up to the day's whole total, on its one line (a seeded yesterday)", async () => {
+    const { campaign: c, phoenix } = await world()
+    await db.channelEvent.createMany({
+      data: Array.from({ length: 1000 }, (_, i) => ({
+        channelId: phoenix.id, campaignId: c.id, type: 'Impression' as const, sessionId: `seed-${i}`, at: at('2026-11-13T12:00:00Z'), dedupeKey: `seed-${i}`,
+      })),
+    })
+    await runDaily(at('2026-11-13T12:00:00Z'), at('2026-11-14T02:00:00Z'))
+    const summary = await simulateDay(NOW, prng(7))
+    const delivery = await db.ledgerEntry.findMany({ where: { campaignId: c.id, kind: 'delivery' } })
+    expect(delivery).toHaveLength(1)
+    expect(delivery[0].amountCents).toBe(-Math.round(((1000 + summary.impressions) * 120) / 1000))
   })
 
   it('delivers only live campaigns of approved workspaces, from their start, and nothing past the budget', async () => {

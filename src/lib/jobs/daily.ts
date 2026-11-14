@@ -16,18 +16,20 @@ import { sendQueuedPayouts } from '@/lib/rewards'
 //
 // `day` picks the market-local day whose impressions are charged and keys the once-a-day guard; every
 // other duty acts at `now`. In order: (1) delivery charges, (2) ends, (3) starts, (4) credit pauses,
-// (5) payouts, (6) the month close on the 1st and 2nd, (7) pace warnings, (8) Monday's digest.
+// (5) payouts, (6) the month close on the 1st and 2nd, (7) invoice reminders, (8) pace warnings,
+// (9) Monday's digest.
 // A failure is caught per campaign (or workspace) and per duty and listed in `errors`; the rest of the run
 // goes on. Every duty is idempotent, so a replay of the day (`replay: true`, past the guard) is safe.
 
 const DAILY = 'daily'
 const DAY_MS = 86_400_000
-const DIGEST_HOUR = 8
+// An unpaid invoice is announced once when it is this close to its due date.
+const DUE_SOON_MS = 5 * DAY_MS
 const CHARGES: LedgerKind[] = ['delivery', 'reward']
 
 export type MonthClose = 'closed' | 'skipped' | 'not_over' | 'no_fx' | 'failed'
 
-export type DailyDuty = 'charge' | 'end' | 'start' | 'pause' | 'payouts' | 'monthClose' | 'pace' | 'weekly'
+export type DailyDuty = 'charge' | 'end' | 'start' | 'pause' | 'payouts' | 'monthClose' | 'invoices' | 'pace' | 'weekly'
 
 export type DailyError = { duty: DailyDuty; campaignId?: string; workspaceId?: string; message: string }
 
@@ -38,6 +40,7 @@ export type DailySummary = {
   paused: number
   payouts: number
   monthClose: MonthClose
+  invoices: number
   pace: number
   weekly: number
   errors: DailyError[]
@@ -87,9 +90,10 @@ export async function runDaily(day: Date, now: Date = day, opts: { replay?: bool
     const paused = await duty('pause', 0, (fail) => pauseOverLimit(fail))
     const payouts = await duty('payouts', 0, async () => (await sendQueuedPayouts(now)).sent)
     const monthClose = await duty<MonthClose>('monthClose', 'failed', () => closeLastMonth(now))
+    const invoices = await duty('invoices', 0, (fail) => remindInvoices(now, fail))
     const pace = await duty('pace', 0, (fail) => warnPace(now, fail))
     const weekly = await duty('weekly', 0, (fail) => weeklyDigests(now, fail))
-    return { skipped: false, charged, ended, started, paused, payouts, monthClose, pace, weekly, errors }
+    return { skipped: false, charged, ended, started, paused, payouts, monthClose, invoices, pace, weekly, errors }
   } catch (e) {
     // Only a throw outside the duties lands here: the day goes back to be run again.
     if (claimed) await db.jobRun.deleteMany({ where: { name: DAILY, day: key } }).catch(() => undefined)
@@ -99,7 +103,10 @@ export async function runDaily(day: Date, now: Date = day, opts: { replay?: bool
 
 // (1) Every campaign with impressions in its market's day is charged them × its CPM snapshot, whatever its
 // status now — paused, ended or credit-paused since — never past what is left of its budget. One grouped
-// count per market; the line is dated inside the day it charges.
+// count per market; the line is dated inside the day it charges. A day is charged up to its total: when more
+// impressions arrive for a day already charged (a replay, "Simulate a day" on a day the job has run), its one
+// line is raised to the new total while uninvoiced; once a line is invoiced, the rest of the day is a line of
+// its own (`delivery:<campaign>:<date>:<k>`).
 async function chargeDelivery(day: Date, now: Date, fail: Fail): Promise<number> {
   let charged = 0
   for (const country of COUNTRIES) {
@@ -120,12 +127,26 @@ async function chargeDelivery(day: Date, now: Date, fail: Fail): Promise<number>
     const date = ymd(day, country)
     for (const c of campaigns) {
       try {
+        const key = `delivery:${c.id}:${date}`
+        const lines = await db.ledgerEntry.findMany({
+          where: { campaignId: c.id, kind: 'delivery', OR: [{ dedupeKey: key }, { dedupeKey: { startsWith: `${key}:` } }] },
+          select: { id: true, amountCents: true, invoiceId: true },
+        })
+        const already = -lines.reduce((sum, l) => sum + l.amountCents, 0)
         const left = c.budgetUsd * 100 - (spend.get(c.id) ?? 0)
-        const cents = Math.min(Math.round(((impressions.get(c.id) ?? 0) * c.cpmCents!) / 1000), left)
-        if (cents <= 0) continue
+        const total = Math.min(Math.round(((impressions.get(c.id) ?? 0) * c.cpmCents!) / 1000), left + already)
+        if (total - already <= 0) continue
+        if (lines.length === 1 && lines[0].invoiceId === null) {
+          // Only while it is still uninvoiced: a close that took it meanwhile leaves it, and the rest gets its own line.
+          const { count } = await db.ledgerEntry.updateMany({ where: { id: lines[0].id, invoiceId: null }, data: { amountCents: -total } })
+          if (count) {
+            charged++
+            continue
+          }
+        }
         await postLedger(c.workspaceId, {
-          at, description: MONEY.deliveryLine(c.name), amountCents: -cents, kind: 'delivery', campaignId: c.id,
-          dedupeKey: `delivery:${c.id}:${date}`,
+          at, description: MONEY.deliveryLine(c.name), amountCents: already - total, kind: 'delivery', campaignId: c.id,
+          dedupeKey: lines.length ? `${key}:${lines.length}` : key,
         })
         charged++
       } catch (e) {
@@ -197,7 +218,33 @@ async function closeLastMonth(now: Date): Promise<MonthClose> {
   }
 }
 
-// (7) A live campaign off pace is flagged once per market day to members with the `pace` toggle on. At a
+// (7) Every unpaid invoice of an approved workspace is announced once when it is five days or less from its
+// due date, and once when the date has come. Overdue is a due invoice past its date (money.invoiceStatus), so
+// nothing is rewritten: the status stays `due` and every page reads it as overdue. The `credit` toggle governs both.
+async function remindInvoices(now: Date, fail: Fail): Promise<number> {
+  const unpaid = await db.invoice.findMany({
+    where: { status: 'due', workspace: { status: 'approved' }, dueAt: { lte: new Date(now.getTime() + DUE_SOON_MS) } },
+    orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
+  })
+  let told = 0
+  for (const inv of unpaid) {
+    try {
+      const left = inv.dueAt.getTime() - now.getTime()
+      const overdue = left <= 0
+      if (!(await claim(`${overdue ? 'invoice-overdue' : 'invoice-due'}:${inv.id}`, utcDate(inv.dueAt)))) continue
+      const item = overdue
+        ? NOTIFY.invoiceOverdue(inv.number, inv.amountCents, inv.dueAt, MARKETS[inv.country].timezone)
+        : NOTIFY.invoiceDue(inv.number, Math.ceil(left / DAY_MS), inv.amountCents)
+      await notifyWorkspace(inv.workspaceId, 'credit', item.title, item.detail, '/app/invoices')
+      told++
+    } catch (e) {
+      fail(e, { workspaceId: inv.workspaceId })
+    }
+  }
+  return told
+}
+
+// (8) A live campaign off pace is flagged once per market day to members with the `pace` toggle on. At a
 // steady rate the budget lasts flight ÷ pace, so it lands flight × |1 ÷ pace − 1| from the end. A campaign
 // with nothing charged yet has no rate to project.
 async function warnPace(now: Date, fail: Fail): Promise<number> {
@@ -223,16 +270,16 @@ async function warnPace(now: Date, fail: Fail): Promise<number> {
   return warned
 }
 
-// (8) From 08:00 on Monday in its market, each approved workspace with anything to report gets the last
-// Monday-to-Sunday — once a week, to members with the `weekly` toggle on.
+// (9) On Monday in its market — whatever the hour, so the 02:00 UTC cron sends it — each approved workspace
+// with anything to report gets the last Monday-to-Sunday, once a week, to members with the `weekly` toggle on.
 async function weeklyDigests(now: Date, fail: Fail): Promise<number> {
   const workspaces = await db.workspace.findMany({ where: { status: 'approved' }, select: { id: true, country: true } })
   let sent = 0
   for (const ws of workspaces) {
     const timeZone = MARKETS[ws.country].timezone
-    const { year, month, day, hour } = wallClock(timeZone, now)
+    const { year, month, day } = wallClock(timeZone, now)
     const monday = new Date(Date.UTC(year, month, day))
-    if (monday.getUTCDay() !== 1 || hour < DIGEST_HOUR) continue
+    if (monday.getUTCDay() !== 1) continue
     try {
       if (!(await claim(`weekly:${ws.id}`, monday))) continue
       const week = { gte: localMidnight(timeZone, year, month, day - 7), lt: localMidnight(timeZone, year, month, day) }

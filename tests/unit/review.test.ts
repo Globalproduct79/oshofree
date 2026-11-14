@@ -523,7 +523,7 @@ describe('Review page', () => {
 
   it('toasts what Run daily job did', async () => {
     const summary = {
-      skipped: false as const, charged: 2, ended: 0, started: 1, paused: 0, payouts: 0, monthClose: 'skipped' as const, pace: 0, weekly: 0,
+      skipped: false as const, charged: 2, ended: 0, started: 1, paused: 0, payouts: 0, monthClose: 'skipped' as const, invoices: 0, pace: 0, weekly: 0,
       errors: [],
     }
     await runAndSay(async () => ({ ok: true, summary }))

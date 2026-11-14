@@ -26,6 +26,15 @@ describe('workspaces', () => {
     expect(members[0]).toMatchObject({ userId: u.id, role: 'Owner' })
   })
 
+  it('tells the owner a new workspace is awaiting approval', async () => {
+    const u = await user()
+    const ws = await createWorkspace(u.id, input)
+    expect(await db.notification.findMany({ where: { workspaceId: ws.id } })).toMatchObject([{
+      userId: u.id, kind: 'system', title: 'Your workspace is awaiting approval',
+      detail: 'Global checks new advertisers within one working day', href: '/app/workspace',
+    }])
+  })
+
   it('finds the workspace for its user, and null for others', async () => {
     const u = await user()
     const other = await user('b@x.com')
