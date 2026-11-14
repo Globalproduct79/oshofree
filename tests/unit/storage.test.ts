@@ -1,7 +1,9 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { VIDEO_KEY_RE } from '@/lib/image-rules'
+import {
+  MAX_IMAGE_BYTES, MAX_SPLASH_BYTES, MAX_UPLOAD_BODY_BYTES, MAX_VIDEO_BYTES, UPLOAD_CAP, uploadKind, VIDEO_KEY_RE,
+} from '@/lib/image-rules'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { creativeUrl, imageUrl, putCreative, putImage } from '@/lib/storage'
 
@@ -62,8 +64,10 @@ describe('putCreative', () => {
     expect(out.kind).toBe('image')
   })
 
-  it('refuses one byte over 2 MB as too_large', async () => {
-    await expect(putCreative(new File([mp4(2_097_153)], 'v.mp4', { type: 'video/mp4' }))).rejects.toBe('too_large')
+  it('stores an MP4 of 25 MB and refuses one byte more as too_large', async () => {
+    const out = await putCreative(new File([mp4(MAX_VIDEO_BYTES)], 'v.mp4', { type: 'video/mp4' }))
+    expect(out.kind).toBe('video')
+    await expect(putCreative(new File([mp4(MAX_VIDEO_BYTES + 1)], 'v.mp4', { type: 'video/mp4' }))).rejects.toBe('too_large')
   })
 
   it('refuses a .mov and a gif as unsupported_type', async () => {
@@ -77,5 +81,53 @@ describe('putCreative', () => {
 
   it('putImage still refuses a video', async () => {
     await expect(putImage(new File([mp4(1024)], 'v.mp4', { type: 'video/mp4' }))).rejects.toBe('BAD_IMAGE')
+  })
+})
+
+describe('caps by kind', () => {
+  it('caps an image at 2 MB, a splash image at 4 MB and an MP4 at 25 MB', () => {
+    expect(UPLOAD_CAP).toEqual({ image: 2 * 1024 * 1024, splash: 4 * 1024 * 1024, video: 25 * 1024 * 1024 })
+    expect([MAX_IMAGE_BYTES, MAX_SPLASH_BYTES, MAX_VIDEO_BYTES]).toEqual([UPLOAD_CAP.image, UPLOAD_CAP.splash, UPLOAD_CAP.video])
+  })
+
+  it('lets the largest cap through the body check, with room for the multipart framing', () => {
+    expect(MAX_UPLOAD_BODY_BYTES).toBe(MAX_VIDEO_BYTES + 65_536)
+  })
+
+  it('names the kind from the type, and the placement only tells a splash image from a card one', () => {
+    expect(uploadKind('video/mp4')).toBe('video')
+    expect(uploadKind('video/mp4', 'card')).toBe('video')
+    expect(uploadKind('video/mp4', 'splash')).toBe('video')
+    expect(uploadKind('image/png')).toBe('image')
+    expect(uploadKind('image/jpeg', 'featured')).toBe('image')
+    expect(uploadKind('image/webp', 'splash')).toBe('splash')
+    expect(uploadKind('image/webp', 'SPLASH')).toBe('image')
+  })
+
+  it('stores a card image of exactly 2 MB and refuses one byte more', async () => {
+    expect((await putCreative(new File([png(MAX_IMAGE_BYTES)], 'c.png', { type: 'image/png' }))).kind).toBe('image')
+    await expect(putCreative(new File([png(MAX_IMAGE_BYTES + 1)], 'c.png', { type: 'image/png' }))).rejects.toBe('too_large')
+    await expect(
+      putCreative(new File([png(MAX_IMAGE_BYTES + 1)], 'c.png', { type: 'image/png' }), { placement: 'featured' }),
+    ).rejects.toBe('too_large')
+  })
+
+  it('stores a splash image up to 4 MB and refuses one byte more', async () => {
+    const splash = (n: number) => putCreative(new File([png(n)], 's.png', { type: 'image/png' }), { placement: 'splash' })
+    expect((await splash(MAX_IMAGE_BYTES + 1)).kind).toBe('image')
+    expect((await splash(MAX_SPLASH_BYTES)).kind).toBe('image')
+    await expect(splash(MAX_SPLASH_BYTES + 1)).rejects.toBe('too_large')
+  })
+
+  it('still checks the bytes of a splash image, and gives an MP4 on a splash the video cap', async () => {
+    await expect(
+      putCreative(new File([new Uint8Array(1024)], 's.png', { type: 'image/png' }), { placement: 'splash' }),
+    ).rejects.toBe('unsupported_type')
+    const out = await putCreative(new File([mp4(MAX_SPLASH_BYTES + 1)], 's.mp4', { type: 'video/mp4' }), { placement: 'splash' })
+    expect(out.kind).toBe('video')
+  })
+
+  it('putImage keeps the 2 MB card cap', async () => {
+    await expect(putImage(new File([png(MAX_IMAGE_BYTES + 1)], 'c.png', { type: 'image/png' }))).rejects.toBe('BAD_IMAGE')
   })
 })

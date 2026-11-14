@@ -6,15 +6,18 @@ const bad = (status: 400 | 413, error = 'BAD_IMAGE') => Response.json({ error },
 
 export async function POST(req: Request) {
   await requireUser()
-  // formData() buffers the whole body, and nothing upstream caps it, so refuse by declared size first.
+  // formData() buffers the whole body, and nothing upstream caps it, so refuse by declared size first (the
+  // largest cap, an MP4's). This route is outside middleware.ts's matcher, so Next never clips the body at its
+  // 10 MB middlewareClientMaxBodySize; widening the matcher to /api would cut videos short.
   const declared = Number(req.headers.get('content-length') ?? NaN)
   if (!Number.isInteger(declared) || declared < 0 || declared > MAX_UPLOAD_BODY_BYTES) return bad(413)
   const form = await req.formData().catch(() => null)
   const file = form?.get('file')
   if (!(file instanceof File)) return bad(400)
   try {
-    // The kind (image or video) is inferred from the file's type, never hinted by the client.
-    const { key, kind } = await putCreative(file)
+    // The kind (image or video) is inferred from the file's type, never hinted by the client. The placement the
+    // picker sends only chooses between the image caps (a splash image may be larger); anything else reads as a card.
+    const { key, kind } = await putCreative(file, { placement: form?.get('placement') })
     return Response.json({ key, kind, url: creativeUrl(key) })
   } catch (e) {
     if (e === 'too_large') return bad(413, 'too_large')

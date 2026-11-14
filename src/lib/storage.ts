@@ -4,7 +4,7 @@ import { createReadStream } from 'node:fs'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
-import { CREATIVE_KEY_RE, MAX_IMAGE_BYTES } from '@/lib/image-rules'
+import { CREATIVE_KEY_RE, UPLOAD_CAP, uploadKind } from '@/lib/image-rules'
 import { uploadDir } from '@/lib/upload-dir'
 
 // Local disk in slice 1; an S3-compatible bucket replaces the body of these three functions later.
@@ -25,13 +25,14 @@ function ascii(b: Uint8Array, from: number, to: number) {
 
 export type CreativeError = 'too_large' | 'unsupported_type'
 
-// Images and MP4 video, each up to 2 MB. The declared type must be one we accept AND the bytes must agree.
-// The 6-15 s video duration is checked in the browser (a <video> element's duration) by the campaign form;
-// the server checks type and size only.
-export async function putCreative(file: File): Promise<{ key: string; kind: 'image' | 'video' }> {
+// Images and MP4 video, each capped by its kind (image-rules: an image 2 MB, a splash image 4 MB, an MP4 25 MB).
+// The declared type must be one we accept AND the bytes must agree. The placement the caller names only tells a
+// splash image from a card one. The 6-15 s video duration is checked in the browser (a <video> element's
+// duration) by the campaign form; the server checks type and size only.
+export async function putCreative(file: File, opts: { placement?: unknown } = {}): Promise<{ key: string; kind: 'image' | 'video' }> {
   const type = TYPES[file.type as keyof typeof TYPES]
   if (!type || file.size === 0) throw 'unsupported_type' satisfies CreativeError
-  if (file.size > MAX_IMAGE_BYTES) throw 'too_large' satisfies CreativeError
+  if (file.size > UPLOAD_CAP[uploadKind(file.type, opts.placement)]) throw 'too_large' satisfies CreativeError
   const bytes = new Uint8Array(await file.arrayBuffer())
   if (!type.magic(bytes)) throw 'unsupported_type' satisfies CreativeError
   const key = `${randomUUID()}.${type.ext}`

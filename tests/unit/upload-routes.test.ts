@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { VIDEO_KEY_RE } from '@/lib/image-rules'
+import { MAX_IMAGE_BYTES, MAX_SPLASH_BYTES, MAX_VIDEO_BYTES, VIDEO_KEY_RE } from '@/lib/image-rules'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST } from '@/app/api/upload/route'
 import { GET } from '@/app/uploads/[key]/route'
@@ -9,14 +9,16 @@ import { GET } from '@/app/uploads/[key]/route'
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireUser: vi.fn().mockResolvedValue({ id: 'u1' }) }))
 
-const png = () => {
-  const b = new Uint8Array(2048)
+const png = (n = 2048) => {
+  const b = new Uint8Array(n)
   b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   return b
 }
-// A real browser request carries Content-Length; a Request built from FormData does not, so add it.
-async function upload(file: File) {
+// A real browser request carries Content-Length; a Request built from FormData does not, so add it. The
+// picker sends the placement beside the file.
+async function upload(file: File, placement?: string) {
   const form = new FormData()
+  if (placement !== undefined) form.set('placement', placement)
   form.set('file', file)
   const draft = new Request('http://localhost/api/upload', { method: 'POST', body: form })
   const body = await draft.arrayBuffer()
@@ -106,10 +108,18 @@ describe('POST /api/upload then GET /uploads/[key]', () => {
     expect((await part.arrayBuffer()).byteLength).toBe(10)
   })
 
-  it('answers too_large for a file over 2 MB and BAD_IMAGE for a type it will not store', async () => {
-    const big = await upload(new File([mp4(2_097_153)], 'v.mp4', { type: 'video/mp4' }))
+  it('answers too_large past the cap for the kind, and BAD_IMAGE for a type it will not store', async () => {
+    const big = await upload(new File([mp4(MAX_VIDEO_BYTES + 1)], 'v.mp4', { type: 'video/mp4' }))
     expect(big.status).toBe(413)
     expect(await big.json()).toEqual({ error: 'too_large' })
+    for (const placement of [undefined, 'card', 'featured', 'video']) {
+      const card = await upload(new File([png(MAX_IMAGE_BYTES + 1)], 'c.png', { type: 'image/png' }), placement)
+      expect(card.status).toBe(413)
+      expect(await card.json()).toEqual({ error: 'too_large' })
+    }
+    const splash = await upload(new File([png(MAX_SPLASH_BYTES + 1)], 's.png', { type: 'image/png' }), 'splash')
+    expect(splash.status).toBe(413)
+    expect(await splash.json()).toEqual({ error: 'too_large' })
     for (const f of [
       new File([mp4(1024)], 'v.mov', { type: 'video/quicktime' }),
       new File([new Uint8Array(1024)], 'a.gif', { type: 'image/gif' }),
@@ -118,5 +128,35 @@ describe('POST /api/upload then GET /uploads/[key]', () => {
       expect(res.status).toBe(400)
       expect(await res.json()).toEqual({ error: 'BAD_IMAGE' })
     }
+  })
+
+  it('stores a splash image over 2 MB and an MP4 over 2 MB', async () => {
+    const splash = await upload(new File([png(MAX_SPLASH_BYTES)], 's.png', { type: 'image/png' }), 'splash')
+    expect(splash.status).toBe(200)
+    expect((await splash.json()).kind).toBe('image')
+    const video = await upload(new File([mp4(3 * 1024 * 1024)], 'v.mp4', { type: 'video/mp4' }), 'video')
+    expect(video.status).toBe(200)
+    expect((await video.json()).kind).toBe('video')
+  })
+
+  it('serves a video by range: an open end, a suffix, and 416 past the end', async () => {
+    const { key } = await (await upload(new File([mp4(4096)], 'v.mp4', { type: 'video/mp4' }), 'video')).json()
+    const get = (range: string) =>
+      GET(new Request(`http://localhost/uploads/${key}`, { headers: { range } }), { params: Promise.resolve({ key }) })
+    const tail = await get('bytes=4000-')
+    expect(tail.status).toBe(206)
+    expect(tail.headers.get('content-range')).toBe('bytes 4000-4095/4096')
+    expect(tail.headers.get('content-length')).toBe('96')
+    expect((await tail.arrayBuffer()).byteLength).toBe(96)
+    const suffix = await get('bytes=-8')
+    expect(suffix.status).toBe(206)
+    expect(suffix.headers.get('content-range')).toBe('bytes 4088-4095/4096')
+    const past = await get('bytes=5000-')
+    expect(past.status).toBe(416)
+    expect(past.headers.get('content-range')).toBe('bytes */4096')
+    // A first request with bytes=0- is how Chrome starts a <video>: the whole file, as partial content.
+    const whole = await get('bytes=0-')
+    expect(whole.status).toBe(206)
+    expect(whole.headers.get('content-range')).toBe('bytes 0-4095/4096')
   })
 })
