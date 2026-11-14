@@ -63,6 +63,22 @@ export const MONEY = {
     pdf: 'PDF',
     markPaid: 'Mark paid',
     empty: 'No invoices yet.',
+    runningNumber: '—',
+  },
+
+  print: {
+    title: (number: string) => `Invoice ${number}`,
+    registration: (n: string) => `Registration ${n}`,
+    period: (label: string) => `Period ${label}`,
+    issued: (date: string) => `Issued ${date}`,
+    due: (date: string) => `Due ${date}`,
+    paid: (date: string) => `Paid ${date}`,
+    head: (currency: string) => ['Date', 'Description', 'USD', currency],
+    total: 'Total',
+    rate: (symbol: string, fx: string) => `1 USD = ${symbol}${fx}`,
+    pay: (number: string) => `Pay by bank transfer, quoting ${number}. Global shares the account details with your workspace owner.`,
+    action: 'Print',
+    noLines: 'No lines on this invoice.',
   },
 } as const
 

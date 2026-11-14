@@ -142,3 +142,9 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
 .hist{list-style:none;margin:0;padding:0}.hist li{padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink2)}.hist li:last-child{border:0}.hist-none{color:var(--ink3);font-size:13px;margin:0}
 .modal .in.narrow{width:min(440px,94vw)}.modal .in .row{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 .box .desc{font-size:13px;color:var(--ink2);margin:12px 0 10px;line-height:1.5}
+
+/* Printing an invoice: the page only, without the shell or the buttons. */
+@media print {
+  .side, .top, .no-print { display: none !important; }
+  .main { margin: 0; }
+}
