@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { isAdminInDb, requireUser } from '@/lib/session'
 import {
-  createWorkspace, requireWorkspace, setupChecklist, updateWorkspace, workspaceForUser,
+  createWorkspace, requireWorkspace, updateWorkspace, workspaceForUser,
 } from '@/lib/workspaces'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }))
@@ -46,42 +46,6 @@ describe('workspaces', () => {
     const ws = await createWorkspace(u.id, input)
     const next = await updateWorkspace(ws.id, { name: 'Acme Ltd', type: 'Agency', country: 'KE' })
     expect(next).toMatchObject({ name: 'Acme Ltd', type: 'Agency', country: 'KE' })
-  })
-
-  it('reports a fresh checklist, then each fact as it becomes true', async () => {
-    const u = await user()
-    const ws = await createWorkspace(u.id, input)
-    expect(await setupChecklist(ws.id)).toEqual({
-      workspace: true, firstCampaign: false, approvedCampaign: false, firstShare: false,
-    })
-  })
-
-  it('turns checklist facts true from campaigns and non-root shares', async () => {
-    const u = await user()
-    const ws = await createWorkspace(u.id, input)
-    const campaign = await db.campaign.create({
-      data: {
-        workspaceId: ws.id, name: 'C', brand: 'B', country: 'NG', category: 'Retail', headline: 'h',
-        description: 'd', placement: 'featured', redeemMethod: 'link', linkUrl: 'https://x.com',
-        budgetUsd: 100, startsAt: new Date(), endsAt: new Date(Date.now() + 86400000),
-        shareRewardLabel: 'r',
-      },
-    })
-    expect(await setupChecklist(ws.id)).toMatchObject({ firstCampaign: true, approvedCampaign: false })
-    // Approved with a start still ahead: stored as scheduled.
-    await db.campaign.update({ where: { id: campaign.id }, data: { status: 'scheduled' } })
-    expect(await setupChecklist(ws.id)).toMatchObject({ approvedCampaign: true })
-    await db.campaign.update({ where: { id: campaign.id }, data: { status: 'paused' } })
-    expect(await setupChecklist(ws.id)).toMatchObject({ approvedCampaign: true, firstShare: false })
-    const channel = await db.channel.create({ data: { key: 'k', name: 'K', apiKeyHash: 'h' } })
-    await db.shareLink.create({
-      data: { code: 'root1', campaignId: campaign.id, channelId: channel.id, depth: 0, sharerType: 'Root' },
-    })
-    expect((await setupChecklist(ws.id)).firstShare).toBe(false)
-    await db.shareLink.create({
-      data: { code: 'ch1', campaignId: campaign.id, channelId: channel.id, depth: 1, sharerType: 'Channel' },
-    })
-    expect((await setupChecklist(ws.id)).firstShare).toBe(true)
   })
 })
 

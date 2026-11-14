@@ -1,29 +1,37 @@
 'use client'
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { getServerToast, getToast, subscribeToasts } from './toast-store'
+import { getServerToast, getToast, subscribeToasts, takeToast, type ToastState } from './toast-store'
 
 export { toast } from './toast-store'
 
 export const TOAST_MS = 2200
 
-// Mounted once per layout. Shows the latest toast for 2.2 s, then fades it out (the text stays
-// during the fade so it does not blink empty).
+// Mounted once per layout. Takes each toast from the store, shows it for 2.2 s, then fades it out
+// (the text stays during the fade so it does not blink empty).
 export function Toaster() {
-  const current = useSyncExternalStore(subscribeToasts, getToast, getServerToast)
-  const [shownId, setShownId] = useState<number | null>(null)
+  const pending = useSyncExternalStore(subscribeToasts, getToast, getServerToast)
+  const [shown, setShown] = useState<ToastState>(null)
+  const [on, setOn] = useState(false)
 
   useEffect(() => {
-    if (!current) return
-    setShownId(current.id)
-    const t = setTimeout(() => setShownId(null), TOAST_MS)
-    return () => clearTimeout(t)
-  }, [current])
+    if (!pending) return
+    const t = takeToast()
+    if (t) {
+      setShown(t)
+      setOn(true)
+    }
+  }, [pending])
 
-  const on = current !== null && shownId === current.id
+  useEffect(() => {
+    if (!on) return
+    const t = setTimeout(() => setOn(false), TOAST_MS)
+    return () => clearTimeout(t)
+  }, [on, shown])
+
   return (
     <div className={on ? 'toast on' : 'toast'} role="status" aria-live="polite">
-      {current?.message}
+      {shown?.message}
     </div>
   )
 }

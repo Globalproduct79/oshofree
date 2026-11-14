@@ -26,9 +26,9 @@ a{color:var(--blu);text-decoration:none}
 .wsbtn{display:flex;align-items:center;gap:8px;background:var(--phx);color:#fff;border:0;border-radius:11px;padding:10px 16px;font-weight:700}
 .who{display:flex;align-items:center;gap:10px;border-left:1px solid var(--line);padding-left:14px;position:relative}
 .who .av{width:34px;height:34px;border-radius:50%;background:var(--pur2);color:var(--pur);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
-.who select{border:0;background:transparent;font-weight:600;padding:6px 0;max-width:190px}
+.who .wsname{font-weight:600}.who select{border:0;background:transparent;font-weight:600;padding:6px 0;max-width:190px}
 .banner{background:#FFF7F3;border-bottom:1px solid var(--phx3);padding:9px 28px;font-size:13px;color:#7A3412;display:flex;gap:8px;align-items:center}
-.banner b{color:var(--phx)}
+.banner b{color:var(--phx)}.banner a,.banner button{font-weight:700}
 /* ---- main ---- */
 .main{min-width:0}
 .wrap{padding:22px 32px 60px;max-width:1240px}

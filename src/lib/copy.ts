@@ -57,13 +57,6 @@ export const COPY = {
     impersonating: (name: string) => `You are viewing ${name} as Global.`,
     exit: 'Exit',
   },
-  setup: {
-    title: 'Set up OshoFree',
-    workspace: 'Create workspace',
-    firstCampaign: 'Add your first campaign',
-    approvedCampaign: 'Get it live on Phoenix',
-    firstShare: 'Share your first link',
-  },
   nav: {
     menu: 'Menu',
     signOut: 'Sign out',

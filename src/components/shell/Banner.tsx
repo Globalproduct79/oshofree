@@ -27,7 +27,7 @@ export function Banner({
       <b>{lead}</b> {text}
       {kind === 'globalInside' && (
         <form action={switchToPlatformAction} className="ml-auto">
-          <button type="submit" className="border-0 bg-transparent p-0 font-semibold text-inherit underline">
+          <button type="submit" className="border-0 bg-transparent p-0 text-inherit underline">
             {b.back}
           </button>
         </form>

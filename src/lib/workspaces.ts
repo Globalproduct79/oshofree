@@ -36,24 +36,6 @@ export async function updateWorkspace(id: string, input: WorkspaceUpdate): Promi
   return db.workspace.update({ where: { id }, data: input })
 }
 
-export async function setupChecklist(workspaceId: string) {
-  const [anyCampaign, approved, share] = await Promise.all([
-    db.campaign.findFirst({ where: { workspaceId }, select: { id: true } }),
-    // Every status Global's approval leads to: scheduled, live, paused and, once over, ended.
-    db.campaign.findFirst({ where: { workspaceId, status: { in: ['scheduled', 'live', 'paused', 'ended'] } }, select: { id: true } }),
-    db.shareLink.findFirst({
-      where: { sharerType: { not: 'Root' }, campaign: { workspaceId } },
-      select: { id: true },
-    }),
-  ])
-  return {
-    workspace: true as const,
-    firstCampaign: anyCampaign !== null,
-    approvedCampaign: approved !== null,
-    firstShare: share !== null,
-  }
-}
-
 // True when the user is looking at a workspace as Global rather than as a member.
 export async function isImpersonating(userId: string, workspaceId: string): Promise<boolean> {
   const m = await requireMember('view')

@@ -96,7 +96,7 @@ export function TopBar({
         </span>
         <button
           type="button"
-          className="flex min-w-0 max-w-[190px] items-center gap-1.5 border-0 bg-transparent px-0 py-1.5 font-semibold text-inherit"
+          className="wsname flex min-w-0 max-w-[190px] items-center gap-1.5 border-0 bg-transparent px-0 py-1.5 text-inherit"
           aria-label={SHELL.switcher.label(switcher.currentName)}
           {...trigger('switcher')}
         >

@@ -18,5 +18,16 @@ export const subscribeToasts = (l: () => void) => {
   }
 }
 
+// A Toaster takes the pending toast when it shows it, so a Toaster that mounts later (a layout
+// change) finds nothing to replay.
+export function takeToast(): ToastState {
+  const t = state
+  if (t) {
+    state = null
+    listeners.forEach((l) => l())
+  }
+  return t
+}
+
 export const getToast = (): ToastState => state
 export const getServerToast = (): ToastState => null
