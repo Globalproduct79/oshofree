@@ -33,6 +33,24 @@ export const pendingInvites = (workspaceId: string) =>
     orderBy: { expiresAt: 'asc' },
   })
 
+export type OpenInvite = { id: string; email: string; role: Role; invitedBy: string | null; expiresAt: Date }
+
+// Invites not yet accepted or revoked, expired ones included (Resend revives them), with who sent each. The token
+// is never read: a page that lists invites carries no link; only an invite's or a resend's own response does.
+export async function openInvites(workspaceId: string): Promise<OpenInvite[]> {
+  const rows = await db.invitation.findMany({
+    where: { workspaceId, acceptedAt: null, revokedAt: null },
+    select: { id: true, email: true, role: true, invitedById: true, expiresAt: true },
+    orderBy: { expiresAt: 'asc' },
+  })
+  const inviters = await db.user.findMany({
+    where: { id: { in: [...new Set(rows.map((r) => r.invitedById))] } },
+    select: { id: true, name: true },
+  })
+  const name = new Map(inviters.map((u) => [u.id, u.name]))
+  return rows.map(({ invitedById, ...r }) => ({ ...r, invitedBy: name.get(invitedById) ?? null }))
+}
+
 export async function invite(workspaceId: string, byUserId: string, rawEmail: string, role: Role): Promise<Invitation> {
   const email = rawEmail.trim().toLowerCase()
   if (!EMAIL.test(email)) throw 'INVALID_EMAIL'
@@ -66,6 +84,23 @@ export async function revokeInvite(id: string, byUserId: string, workspaceId?: s
   if (inv.acceptedAt || inv.revokedAt) return
   await db.invitation.update({ where: { id }, data: { revokedAt: new Date() } })
   await audit(byUserId, 'invite.revoke', { type: 'Invitation', id, workspaceId: inv.workspaceId }, { email: inv.email })
+}
+
+// A new link for an invite not yet accepted or revoked (an expired one too): a new token, so the old link stops
+// working, valid for another week. One guarded write, so an accept or a revoke that lands first wins. The audit row
+// names the address and role, never a token.
+export async function resendInvite(id: string, byUserId: string, workspaceId: string): Promise<Invitation> {
+  const done = await db.invitation.updateMany({
+    where: { id, workspaceId, acceptedAt: null, revokedAt: null },
+    data: { token: randomBytes(16).toString('hex'), expiresAt: new Date(Date.now() + WEEK) },
+  })
+  if (done.count !== 1) {
+    const inv = await db.invitation.findUnique({ where: { id }, select: { workspaceId: true } })
+    throw inv?.workspaceId === workspaceId ? 'NOT_PENDING' : 'NOT_FOUND'
+  }
+  const inv = await db.invitation.findUniqueOrThrow({ where: { id } })
+  await audit(byUserId, 'invite.resend', { type: 'Invitation', id, workspaceId }, undefined, { email: inv.email, role: inv.role })
+  return inv
 }
 
 export async function findInvite(token: string) {

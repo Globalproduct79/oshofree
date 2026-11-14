@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
-import { acceptInvite, changeRole, invite, inviteUrl, members, pendingInvites, removeMember, revokeInvite } from '@/lib/invitations'
+import {
+  acceptInvite, changeRole, findInvite, invite, inviteUrl, members, openInvites, pendingInvites, removeMember, resendInvite, revokeInvite,
+} from '@/lib/invitations'
 
 const mkUser = (email: string, name = email) => db.user.create({ data: { email, name, passwordHash: 'x' } })
 async function setup() {
@@ -129,5 +131,89 @@ describe('invitations: concurrency and audit', () => {
     const ev = await db.auditEvent.findFirstOrThrow({ where: { action: 'member.join' } })
     expect(ev.actorId).toBe(u.id)
     expect(ev.after).toEqual({ invitedEmail: 'n@x.test', acceptedEmail: 'other@x.test', role: 'Viewer' })
+  })
+})
+
+describe('resendInvite', () => {
+  const days = (d: Date) => (d.getTime() - Date.now()) / 86_400_000
+
+  it('gives the invite a new link for another 7 days; the old link stops working and the new one joins', async () => {
+    const { owner, ws } = await setup()
+    const inv = await invite(ws.id, owner.id, 'n@x.test', 'Manager')
+    await db.invitation.update({ where: { id: inv.id }, data: { expiresAt: new Date(Date.now() + 86_400_000) } })
+    const again = await resendInvite(inv.id, owner.id, ws.id)
+    expect(again.id).toBe(inv.id)
+    expect(again.token).toMatch(/^[0-9a-f]{32}$/)
+    expect(again.token).not.toBe(inv.token)
+    expect(days(again.expiresAt)).toBeGreaterThan(6.99)
+    expect(days(again.expiresAt)).toBeLessThanOrEqual(7)
+    expect(await findInvite(inv.token)).toBeNull()
+    await expect(acceptInvite(inv.token, { id: 'u', email: 'n@x.test' })).rejects.toBe('INVALID')
+    const u = await mkUser('n@x.test', 'Newbie')
+    expect(await acceptInvite(again.token, u)).toEqual({ workspaceId: ws.id, role: 'Manager' })
+  })
+
+  it('revives an expired invite', async () => {
+    const { owner, ws } = await setup()
+    const inv = await invite(ws.id, owner.id, 'n@x.test', 'Viewer')
+    await db.invitation.update({ where: { id: inv.id }, data: { expiresAt: new Date(Date.now() - 1000) } })
+    await expect(acceptInvite(inv.token, { id: 'u', email: 'n@x.test' })).rejects.toBe('EXPIRED')
+    const again = await resendInvite(inv.id, owner.id, ws.id)
+    expect(days(again.expiresAt)).toBeGreaterThan(6.99)
+    expect((await pendingInvites(ws.id)).map((p) => p.id)).toEqual([inv.id])
+    const u = await mkUser('n@x.test', 'Newbie')
+    expect(await acceptInvite(again.token, u)).toEqual({ workspaceId: ws.id, role: 'Viewer' })
+  })
+
+  it('refuses an accepted or revoked invite, and one from another workspace, leaving the token alone', async () => {
+    const { owner, ws } = await setup()
+    const accepted = await invite(ws.id, owner.id, 'a@x.test', 'Viewer')
+    await acceptInvite(accepted.token, await mkUser('a@x.test'))
+    await expect(resendInvite(accepted.id, owner.id, ws.id)).rejects.toBe('NOT_PENDING')
+    const revoked = await invite(ws.id, owner.id, 'r@x.test', 'Viewer')
+    await revokeInvite(revoked.id, owner.id, ws.id)
+    await expect(resendInvite(revoked.id, owner.id, ws.id)).rejects.toBe('NOT_PENDING')
+    const open = await invite(ws.id, owner.id, 'o2@x.test', 'Viewer')
+    await expect(resendInvite(open.id, owner.id, 'other-ws')).rejects.toBe('NOT_FOUND')
+    await expect(resendInvite('missing', owner.id, ws.id)).rejects.toBe('NOT_FOUND')
+    for (const i of [accepted, revoked, open]) {
+      expect((await db.invitation.findUniqueOrThrow({ where: { id: i.id } })).token).toBe(i.token)
+    }
+    expect(await db.auditEvent.count({ where: { action: 'invite.resend' } })).toBe(0)
+  })
+
+  it('audits invite.resend with the address and role, never a token', async () => {
+    const { owner, ws } = await setup()
+    const inv = await invite(ws.id, owner.id, 'n@x.test', 'Manager')
+    const again = await resendInvite(inv.id, owner.id, ws.id)
+    const ev = await db.auditEvent.findFirstOrThrow({ where: { action: 'invite.resend' } })
+    expect(ev).toMatchObject({ actorId: owner.id, targetType: 'Invitation', targetId: inv.id, workspaceId: ws.id })
+    expect(ev.after).toEqual({ email: 'n@x.test', role: 'Manager' })
+    expect(ev.before).toBeNull()
+    const row = JSON.stringify(ev)
+    expect(row).not.toContain(inv.token)
+    expect(row).not.toContain(again.token)
+  })
+})
+
+describe('openInvites', () => {
+  it('lists invites not yet accepted or revoked, expired ones too, with who sent each and no token', async () => {
+    const { owner, ws } = await setup()
+    const live = await invite(ws.id, owner.id, 'live@x.test', 'Manager')
+    const old = await invite(ws.id, owner.id, 'old@x.test', 'Viewer')
+    await db.invitation.update({ where: { id: old.id }, data: { expiresAt: new Date(Date.now() - 1000) } })
+    const gone = await invite(ws.id, owner.id, 'gone@x.test', 'Viewer')
+    await revokeInvite(gone.id, owner.id, ws.id)
+    const joined = await invite(ws.id, owner.id, 'joined@x.test', 'Viewer')
+    await acceptInvite(joined.token, await mkUser('joined@x.test'))
+    const other = await db.workspace.create({ data: { name: 'Other', type: 'Brand', country: 'NG' } })
+    await invite(other.id, owner.id, 'elsewhere@x.test', 'Viewer')
+
+    const rows = await openInvites(ws.id)
+    expect(rows).toEqual([
+      { id: old.id, email: 'old@x.test', role: 'Viewer', invitedBy: 'Owner One', expiresAt: expect.any(Date) },
+      { id: live.id, email: 'live@x.test', role: 'Manager', invitedBy: 'Owner One', expiresAt: live.expiresAt },
+    ])
+    expect(JSON.stringify(rows)).not.toContain(live.token)
   })
 })
