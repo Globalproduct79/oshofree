@@ -191,8 +191,9 @@ const decisionReason = (code: RejectReason, note: string | null) => (note ? `${c
 
 // ---- Drafts ----
 
-export function createCampaign(workspaceId: string, i: CampaignInput): Promise<Campaign> {
-  return db.campaign.create({ data: { workspaceId, status: 'draft', ...fields(i) } })
+// A new campaign names who created it, and when (the seed replays its history, so it passes the moment).
+export function createCampaign(workspaceId: string, i: CampaignInput, createdById: string, now = new Date()): Promise<Campaign> {
+  return db.campaign.create({ data: { workspaceId, status: 'draft', createdById, createdAt: now, ...fields(i) } })
 }
 
 export function updateCampaign(id: string, i: CampaignInput): Promise<Campaign> {

@@ -58,7 +58,7 @@ async function setup(wsStatus: 'pending' | 'approved' = 'approved') {
   await db.channel.create({ data: { key: 'other', name: 'Other', apiKeyHash: 'h2', isLive: false } })
   await db.rateCard.create({ data: { channelId: phoenix.id, country: 'NG', placement: 'card', cpmCents: 120, effectiveFrom: RATES_FROM } })
   await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1550, effectiveFrom: RATES_FROM } })
-  const c = await submitCampaign((await createCampaign(ws.id, input)).id, admin.id, SUBMITTED)
+  const c = await submitCampaign((await createCampaign(ws.id, input, admin.id)).id, admin.id, SUBMITTED)
   return { admin, ws, c }
 }
 

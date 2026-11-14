@@ -30,6 +30,19 @@ const STATUSES = {
   'KSh 50 cashback on first top-up': 'live',
 }
 
+// Who submits each seed campaign (prisma/seed/campaigns.ts `by`), and so created it.
+const CREATORS = {
+  'Buy 2 get 1 — November': 'Ada Eze',
+  'August multipack 15% off': 'Tunde Okafor',
+  'December draw teaser': 'Tunde Okafor',
+  'Supa10 Jackpot — Kenya': 'Chidi Nwosu',
+  'Foot Gabal-Lena — Senegal': 'Chidi Nwosu',
+  'Weekend cashback — Tanzania': 'Dolapo Adeyemi',
+  'Kwik ₦1m draw': 'Chidi Nwosu',
+  'Jackpot 10 — Guinea-Bissau': 'Dolapo Adeyemi',
+  'KSh 50 cashback on first top-up': 'Wanjiru Kamau',
+}
+
 const workspace = (name: string) => db.workspace.findFirstOrThrow({ where: { name } })
 
 async function impressionsByCampaign(): Promise<Record<string, number>> {
@@ -83,6 +96,15 @@ describe('seed', () => {
     }
     const jackpot = campaigns.find((c) => c.name === 'Jackpot 10 — Guinea-Bissau')!
     expect(jackpot.country).toBe('SN')
+
+    // Each campaign names the person who submitted it as its creator, created at that moment, a member of its own
+    // workspace: the Owner, or the Manager the inventory has submitting it.
+    const made = await db.campaign.findMany({ include: { createdBy: { include: { memberships: true } } } })
+    expect(Object.fromEntries(made.map((c) => [c.name, c.createdBy?.name]))).toEqual(CREATORS)
+    for (const c of made) {
+      expect(c.createdAt, c.name).toEqual(c.submittedAt)
+      expect(c.createdBy?.memberships.map((m) => m.workspaceId), c.name).toContain(c.workspaceId)
+    }
 
     // Events sit inside each flight and before now; ended campaigns have nothing today; review has nothing.
     const today = (tz: string) => {

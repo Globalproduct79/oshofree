@@ -75,7 +75,8 @@ export async function submitAction(input: unknown): Promise<{ id: string } | Fai
   const checked = checkCampaign(raw, ruleContext(ws.type, await creditSummary(ws.id), country))
   if (!checked.ok) return { error: checked.message }
   if (await creativeOverCap(checked.input)) return { error: F.validation.creativeTooLarge }
-  const created = await createCampaign(ws.id, checked.input)
+  // The signed-in member is its creator (Global too, when acting inside the workspace).
+  const created = await createCampaign(ws.id, checked.input, user.id)
   try {
     await submitCampaign(created.id, user.id)
   } catch (e) {

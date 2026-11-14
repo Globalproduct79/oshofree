@@ -198,8 +198,10 @@ export function planCampaigns(timeline: Timeline, workspaces: Workspaces, people
   const made: Made = {}
   for (const s of CAMPAIGNS) {
     timeline.add(momentOf(clock, s, s.submitted), `submit ${s.offer.name}`, async () => {
-      const draft = await createCampaign(workspaces[s.workspace].id, input(s, clock))
-      made[s.key] = await submitCampaign(draft.id, people[s.by].id, momentOf(clock, s, s.submitted))
+      const at = momentOf(clock, s, s.submitted)
+      // Its creator is whoever submits it, created at that moment (the real form creates and submits in one go).
+      const draft = await createCampaign(workspaces[s.workspace].id, input(s, clock), people[s.by].id, at)
+      made[s.key] = await submitCampaign(draft.id, people[s.by].id, at)
     })
     const approved = s.approved
     if (!approved) continue

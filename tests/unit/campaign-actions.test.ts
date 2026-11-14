@@ -13,6 +13,7 @@ import type { CampaignInput } from '@/lib/campaigns'
 import { db } from '@/lib/db'
 import { clearDraft, draftKey, loadDraft, parseDraft, saveDraft, serialiseDraft, startOver } from '@/lib/draft-store'
 import { tokens } from '@/lib/tokens'
+import { resetDb } from '../../scripts/db-truncate'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
@@ -134,6 +135,17 @@ describe('submitAction', () => {
     })
     expect(Number(row.fxPerUsd)).toBe(1550)
     expect(await db.auditEvent.count()).toBe(0)
+  })
+
+  it('names the member who submitted it as its creator: the Owner, a Manager, or Global inside the workspace', async () => {
+    for (const role of ['Owner', 'Manager', 'Global'] as const) {
+      await resetDb()
+      const { actor } = await setup(role)
+      const res = (await submitAction(input())) as { id: string }
+      const row = await db.campaign.findUniqueOrThrow({ where: { id: res.id }, include: { createdBy: { select: { name: true } } } })
+      expect(row.createdById, role).toBe(actor.id)
+      expect(row.createdBy?.name, role).toBe(actor.name)
+    }
   })
 
   it('writes an audit row when Global submits inside the workspace', async () => {

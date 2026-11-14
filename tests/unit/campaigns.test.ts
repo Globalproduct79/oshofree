@@ -55,7 +55,7 @@ async function world(opts: { rates?: boolean; limitCents?: number } = {}) {
 
 async function makeCampaign() {
   const { owner, ws } = await world()
-  return { ...(await createCampaign(ws.id, valid)), ownerId: owner.id }
+  return { ...(await createCampaign(ws.id, valid, owner.id)), ownerId: owner.id }
 }
 
 describe('campaignInput', () => {
@@ -118,8 +118,8 @@ describe('campaign lifecycle', () => {
     expect(after.submittedAt).toEqual(first.submittedAt)
   })
   it('stores an empty link as null', async () => {
-    const ws = await db.workspace.create({ data: { name: 'Acme', type: 'Brand', country: 'NG' } })
-    expect((await createCampaign(ws.id, { ...valid, linkUrl: '  ' })).linkUrl).toBeNull()
+    const { owner, ws } = await world({ rates: false })
+    expect((await createCampaign(ws.id, { ...valid, linkUrl: '  ' }, owner.id)).linkUrl).toBeNull()
   })
   it('refuses to pause a campaign in review', async () => {
     const c = await makeCampaign()
@@ -151,7 +151,7 @@ describe('submitCampaign', () => {
 
   it('tells the workspace it is in review and Global that it needs review', async () => {
     const { admin, owner, ws } = await world()
-    const c = await createCampaign(ws.id, valid)
+    const c = await createCampaign(ws.id, valid, owner.id)
     await submitCampaign(c.id, owner.id, NOW)
     const pick = { kind: true, title: true, detail: true, href: true } as const
     expect(await db.notification.findMany({ where: { userId: owner.id }, select: pick })).toEqual([
@@ -165,7 +165,7 @@ describe('submitCampaign', () => {
 
   it('refuses when Phoenix has no rate for the market and placement, and leaves the draft', async () => {
     const { owner, ws } = await world({ rates: false })
-    const c = await createCampaign(ws.id, valid)
+    const c = await createCampaign(ws.id, valid, owner.id)
     await expect(submitCampaign(c.id, owner.id, NOW)).rejects.toBe('NO_RATE')
     expect((await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).status).toBe('draft')
     expect(await db.notification.count()).toBe(0)
@@ -173,7 +173,7 @@ describe('submitCampaign', () => {
 
   it('refuses a budget over the credit available, carrying the limit and the excess', async () => {
     const { owner, ws } = await world({ limitCents: 4000 })
-    const c = await createCampaign(ws.id, valid)
+    const c = await createCampaign(ws.id, valid, owner.id)
     const refused = submitCampaign(c.id, owner.id, NOW)
     await expect(refused).rejects.toThrow('CREDIT_LIMIT')
     await expect(refused).rejects.toMatchObject({ limitCents: 4000, excessCents: 1000 })
@@ -187,7 +187,7 @@ describe('submitCampaign', () => {
     for (const [limitCents, ok] of [[4999, false], [5000, true]] as const) {
       await resetDb()
       const { owner, ws } = await world({ limitCents })
-      const c = await createCampaign(ws.id, valid)
+      const c = await createCampaign(ws.id, valid, owner.id)
       await db.campaign.update({ where: { id: c.id }, data: { status: 'ended', endedAt: NOW } })
       await db.ledgerEntry.create({
         data: { workspaceId: ws.id, campaignId: c.id, at: NOW, amountCents: -4000, description: 'delivery', kind: 'delivery' },
