@@ -3,6 +3,8 @@
 import { AuthError } from 'next-auth'
 import { signIn } from '@/lib/auth'
 import { COPY } from '@/lib/copy'
+import { joinFromInvite } from '@/lib/invite-join'
+import { verifyCredentials } from '@/lib/users'
 
 // Auth.js hands us an absolute callbackUrl; keep only same-origin paths (no open redirect).
 function safeRedirect(raw: string): string {
@@ -19,8 +21,13 @@ function safeRedirect(raw: string): string {
 }
 
 export async function signInAction(_prev: string | null, formData: FormData): Promise<string | null> {
-  const redirectTo = safeRedirect(String(formData.get('callbackUrl') ?? ''))
+  const invite = String(formData.get('invite') ?? '')
+  const redirectTo = invite ? '/app' : safeRedirect(String(formData.get('callbackUrl') ?? ''))
   try {
+    if (invite) {
+      const user = await verifyCredentials(String(formData.get('email') ?? ''), String(formData.get('password') ?? ''))
+      if (user) await joinFromInvite(invite, user)
+    }
     await signIn('credentials', {
       email: String(formData.get('email') ?? ''),
       password: String(formData.get('password') ?? ''),

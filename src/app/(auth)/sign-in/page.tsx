@@ -11,11 +11,14 @@ import { COPY } from '@/lib/copy'
 import { signInAction } from './actions'
 
 function SignInForm() {
-  const callbackUrl = useSearchParams().get('callbackUrl') ?? ''
+  const params = useSearchParams()
+  const callbackUrl = params.get('callbackUrl') ?? ''
+  const invite = params.get('invite') ?? ''
   const [error, action, pending] = useActionState(signInAction, null)
   return (
     <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="callbackUrl" value={callbackUrl} />
+      <input type="hidden" name="invite" value={invite} />
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="email">{COPY.auth.emailLabel}</Label>
         <Input id="email" name="email" type="email" autoComplete="email" required />
@@ -26,7 +29,7 @@ function SignInForm() {
       </div>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <Button type="submit" disabled={pending}>{COPY.auth.signInAction}</Button>
-      <Link href="/sign-up" className="text-sm text-muted-foreground underline">{COPY.auth.toSignUp}</Link>
+      <Link href={invite ? `/sign-up?invite=${invite}` : '/sign-up'} className="text-sm text-muted-foreground underline">{COPY.auth.toSignUp}</Link>
     </form>
   )
 }

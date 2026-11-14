@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { signIn } from '@/lib/auth'
 import { COPY } from '@/lib/copy'
+import { joinFromInvite } from '@/lib/invite-join'
 import { createUser } from '@/lib/users'
 
 const schema = z.object({
@@ -14,8 +15,10 @@ const schema = z.object({
 export async function signUpAction(_prev: string | null, formData: FormData): Promise<string | null> {
   const parsed = schema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return COPY.auth.invalidSignUp
+  const invite = String(formData.get('invite') ?? '')
   try {
-    await createUser(parsed.data)
+    const user = await createUser(parsed.data)
+    if (invite) await joinFromInvite(invite, user)
   } catch (e) {
     if (e === 'EMAIL_TAKEN') return COPY.auth.emailTaken
     throw e
