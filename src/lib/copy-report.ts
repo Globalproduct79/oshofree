@@ -85,3 +85,17 @@ export const PREVIEW_COPY = {
   failed: "The live offers didn't load, so your card is shown on its own.",
   close: 'Close',
 } as const
+
+// The words lib/reports.ts builds into its data: the campaign card's main row (ADV §1 "CampaignCard
+// anatomy"), the medium labels and a sharer Phoenix gave no phone for (spec §6.14.1).
+export const REPORT_COPY = {
+  card: {
+    awaiting: 'Awaiting approval',
+    starts: (date: string) => `Starts ${date}`,
+    notApproved: 'Not approved',
+    impressions: (n: string) => `${n} impressions`,
+    openRate: (rate: string) => `${rate} open rate`,
+  },
+  via: { whatsapp: 'WhatsApp', facebook: 'Facebook', x: 'X', sms: 'SMS' },
+  phoenixUser: (sessionTail: string) => `Phoenix user · ••${sessionTail}`,
+} as const

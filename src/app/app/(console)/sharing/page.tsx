@@ -8,7 +8,7 @@ import { effectiveStatus } from '@/lib/campaign-status'
 import { COPY } from '@/lib/copy'
 import { db } from '@/lib/db'
 import { num } from '@/lib/format'
-import { workspaceCampaignShares, workspaceSharing } from '@/lib/reports'
+import { workspaceCampaignShares, workspaceSharingLegacy } from '@/lib/reports'
 import { tokens } from '@/lib/tokens'
 import { requireWorkspace } from '@/lib/workspaces'
 
@@ -18,7 +18,7 @@ export default async function SharingPage() {
   const ws = await requireWorkspace()
   const now = new Date()
   const [sharing, counts, campaigns] = await Promise.all([
-    workspaceSharing(ws.id),
+    workspaceSharingLegacy(ws.id),
     workspaceCampaignShares(ws.id),
     db.campaign.findMany({ where: { workspaceId: ws.id } }),
   ])
