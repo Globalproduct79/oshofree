@@ -296,10 +296,22 @@ describe('changeWithoutReview', () => {
     const c = await campaign(ws.id, { status: 'draft' })
     // The credit limit's ceiling: 2,147,483,647 cents.
     for (const budgetUsd of [21_474_837, 3_000_000_000]) {
-      await expect(changeWithoutReview(c.id, owner.id, { budgetUsd }, NOW)).rejects.toBe('TOO_LARGE')
+      await expect(changeWithoutReview(c.id, owner.id, { budgetUsd }, NOW)).rejects.toBe('BUDGET_TOO_LARGE')
     }
     expect((await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).budgetUsd).toBe(300)
     expect((await changeWithoutReview(c.id, owner.id, { budgetUsd: 21_474_836 }, NOW)).budgetUsd).toBe(21_474_836)
+  })
+
+  it('refuses a reward past the same ceiling, on a draft and a live campaign alike', async () => {
+    const { owner, ws } = await world()
+    for (const status of ['draft', 'live'] as const) {
+      const c = await campaign(ws.id, { status, rewardLocal: 50 })
+      for (const rewardLocal of [21_474_837, 3_000_000_000]) {
+        await expect(changeWithoutReview(c.id, owner.id, { rewardLocal }, NOW)).rejects.toBe('REWARD_TOO_LARGE')
+      }
+      expect(await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).toMatchObject({ rewardLocal: 50, shareRewardLabel: 'Earn ₦50 airtime' })
+      expect((await changeWithoutReview(c.id, owner.id, { rewardLocal: 21_474_836 }, NOW)).rewardLocal).toBe(21_474_836)
+    }
   })
 
   it('refuses a negative reward', async () => {
@@ -497,6 +509,8 @@ describe('editOffer', () => {
     await expect(editOffer(c.id, owner.id, { ...edit, endsAt: days(2) }, NOW)).rejects.toBe('END_BEFORE_START')
     await expect(editOffer(c.id, owner.id, { ...edit, budgetUsd: 200 }, NOW)).rejects.toBe('BUDGET_BELOW_SPEND')
     await expect(editOffer(c.id, owner.id, { ...offer, budgetUsd: 300 } as never, NOW)).rejects.toBe('INVALID')
+    await expect(editOffer(c.id, owner.id, { ...edit, rewardLocal: 21_474_837 }, NOW)).rejects.toBe('REWARD_TOO_LARGE')
+    expect(await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).toMatchObject({ status: 'ended', rewardLocal: 0 })
     // $250 unbilled + $100 still to spend is over the $300 limit; $250 + $50 fits.
     await expect(editOffer(c.id, owner.id, { ...edit, budgetUsd: 350 }, NOW)).rejects.toMatchObject({ message: 'CREDIT_LIMIT', excessCents: 5000 })
     expect((await editOffer(c.id, owner.id, edit, NOW)).campaign.status).toBe('review')

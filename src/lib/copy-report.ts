@@ -1,4 +1,5 @@
 import type { RedeemMethod } from '@prisma/client'
+import { CAMPAIGN_FORM_COPY } from '@/lib/copy-campaign-form'
 
 // The campaign page and the Phoenix preview, split out of copy.ts. Reached through COPY.campaign/preview.
 
@@ -80,6 +81,7 @@ export const CAMPAIGN_COPY = {
     invalid: 'Use whole numbers for the budget and reward, and a real end date.',
     // The credit limit's sibling (ADVERTISERS.errors.tooLarge): past the largest limit a workspace can have.
     budgetTooLarge: 'That budget is too large.',
+    rewardTooLarge: CAMPAIGN_FORM_COPY.validation.rewardTooLarge,
   },
   offer: {
     title: 'The offer',

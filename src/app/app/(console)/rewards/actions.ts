@@ -15,6 +15,7 @@ export async function setRewardAction(campaignId: unknown, rewardLocal: unknown)
   try {
     await setCampaignReward(workspace.id, user.id, campaignId, rewardLocal, role === 'Global')
   } catch (e) {
+    if (e === 'REWARD_TOO_LARGE') return { error: REWARDS.rewardTooLarge }
     return { error: typeof e === 'string' ? e : REWARDS.invalid }
   }
   revalidatePath('/app/rewards')

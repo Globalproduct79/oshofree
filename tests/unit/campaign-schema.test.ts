@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ageGated, campaignDates, campaignDraftInput, campaignInput, flightDays, validateCampaign,
+  ageGated, campaignDates, campaignDraftInput, campaignInput, flightDays, MAX_REWARD_LOCAL, validateCampaign,
   type CampaignInput, type ValidationContext,
 } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY } from '@/lib/copy-campaign-form'
+import { MAX_LIMIT_CENTS } from '@/lib/money'
 
 const valid: CampaignInput = {
   name: 'Harmattan Sale',
@@ -112,6 +113,14 @@ describe('validateCampaign', () => {
     expect(check({ ...custom, endsAt: '2026-12-02' }, { creditLimitCents: 0 })).toMatch(/^Over your credit limit/)
   })
 
+  it('refuses a reward past the ceiling the credit limit and budget share, after the budget rule', () => {
+    expect(MAX_REWARD_LOCAL).toBe(Math.floor(MAX_LIMIT_CENTS / 100))
+    expect(check({ rewardLocal: MAX_REWARD_LOCAL + 1 })).toBe('That reward is too large.')
+    expect(check({ rewardLocal: 3_000_000_000 })).toBe('That reward is too large.')
+    expect(check({ rewardLocal: MAX_REWARD_LOCAL })).toBeNull()
+    expect(check({ rewardLocal: MAX_REWARD_LOCAL + 1, budgetUsd: 10 })).toBe('Minimum budget is $50.')
+  })
+
   it('keeps the copy file in step', () => {
     expect(CAMPAIGN_FORM_COPY.validation.name).toBe('Give the campaign a name.')
   })
@@ -166,6 +175,9 @@ describe('campaignInput', () => {
     expect(campaignInput.safeParse(noColour).success).toBe(false)
     expect(campaignInput.safeParse({ ...valid, rewardLocal: -1 }).success).toBe(false)
     expect(campaignInput.safeParse({ ...valid, rewardLocal: 0 }).success).toBe(true)
+    expect(campaignInput.safeParse({ ...valid, rewardLocal: MAX_REWARD_LOCAL }).success).toBe(true)
+    expect(campaignInput.safeParse({ ...valid, rewardLocal: MAX_REWARD_LOCAL + 1 }).success).toBe(false)
+    expect(campaignDraftInput.safeParse({ ...valid, rewardLocal: MAX_REWARD_LOCAL + 1 }).success).toBe(false)
   })
   it('a draft may be saved with the confirmation unticked; a submission may not', () => {
     expect(campaignDraftInput.safeParse({ ...valid, termsAccepted: false }).success).toBe(true)

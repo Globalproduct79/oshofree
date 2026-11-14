@@ -6,6 +6,7 @@ import RewardsPage from '@/app/app/(console)/rewards/page'
 import { auth } from '@/lib/auth'
 import { REWARDS } from '@/lib/copy-rewards'
 import { db } from '@/lib/db'
+import { setCampaignReward } from '@/lib/rewards-settings'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
@@ -68,6 +69,16 @@ describe('Rewards', () => {
     expect(await setRewardAction(mine.id, 2.5)).toHaveProperty('error')
     expect(await setRewardAction(theirs.id, 10)).toHaveProperty('error')
     expect((await db.campaign.findUniqueOrThrow({ where: { id: theirs.id } })).rewardLocal).toBe(50)
+  })
+
+  it('refuses a reward too large to store, saying so, and changes nothing', async () => {
+    const { ws, user } = await setup()
+    const c = await mkCampaign(ws.id, 'Buy 2')
+    for (const reward of [21_474_837, 3_000_000_000]) {
+      expect(await setRewardAction(c.id, reward)).toEqual({ error: 'That reward is too large.' })
+      await expect(setCampaignReward(ws.id, user.id, c.id, reward, false)).rejects.toBe('REWARD_TOO_LARGE')
+    }
+    expect((await db.campaign.findUniqueOrThrow({ where: { id: c.id } })).rewardLocal).toBe(50)
   })
 
   it('refuses a Viewer on both actions; a Manager succeeds', async () => {

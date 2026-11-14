@@ -26,6 +26,11 @@ export const isRealDay = (s: string) => {
 }
 const calendarDay = z.string().regex(YMD).refine(isRealDay)
 
+// The largest share reward, in whole local units: the credit limit's ceiling (2,147,483,647 cents) in whole
+// units, the bound a budget has too. A reward this size fits its 32-bit column, and so does the payout it becomes
+// in cents at any exchange rate of 1 or more to the dollar. money.ts holds the cents (it is server-only).
+export const MAX_REWARD_LOCAL = 21_474_836
+
 const base = z.object({
   name: z.string().trim().min(2).max(80),
   brand: z.string().trim().min(1).max(80),
@@ -41,7 +46,7 @@ const base = z.object({
   claimCode: z.string().trim().min(1).max(24).optional(),
   linkUrl: z.string().trim().transform(normaliseUrl).optional(),
   budgetUsd: z.number().int().min(50),
-  rewardLocal: z.number().int().min(0),
+  rewardLocal: z.number().int().min(0).max(MAX_REWARD_LOCAL),
   startsAt: calendarDay,
   // A preset flight, or a custom one that ends on a date: exactly one of the two.
   runsForDays: z.union([z.literal(7), z.literal(14), z.literal(30)]).optional(),
@@ -110,6 +115,7 @@ export function validateCampaign(i: CampaignInput, ctx: ValidationContext): stri
   if (i.placement === 'video' && !i.creativeVideoKey) return V.creative
   if (i.placement === 'splash' && !i.creativeImageKey && !i.creativeVideoKey) return V.creative
   if (!(i.budgetUsd >= 50)) return V.budget
+  if (i.rewardLocal > MAX_REWARD_LOCAL) return V.rewardTooLarge
   if (!ctx.isEdit && ctx.today && i.startsAt < ctx.today) return V.startPast
   if (i.endsAt !== undefined) {
     const days = flightDays(i.startsAt, i.endsAt)

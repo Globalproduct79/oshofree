@@ -90,6 +90,9 @@ export const CAMPAIGN_FORM_COPY = {
     credit: (limit: string, excess: string) =>
       `Over your credit limit of ${limit} by ${excess}. Pay an open invoice or ask Global to raise it.`,
     terms: 'Confirm the offer is genuine.',
+    // Ours: past the largest reward a campaign can store (MAX_REWARD_LOCAL). The campaign page's Change without
+    // review and the Rewards page say the same.
+    rewardTooLarge: 'That reward is too large.',
   },
   previewBox: {
     title: 'Card preview',

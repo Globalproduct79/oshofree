@@ -2,7 +2,7 @@ import type {
   Campaign, CampaignRevision, CampaignStatus, Placement, Prisma, RedeemMethod, RejectReason,
 } from '@prisma/client'
 import { audit } from '@/lib/audit'
-import { ageGated, campaignDates, rewardLabel, type CampaignInput } from '@/lib/campaign-schema'
+import { ageGated, campaignDates, MAX_REWARD_LOCAL, rewardLabel, type CampaignInput } from '@/lib/campaign-schema'
 import { isRejectReason, PACE, rejectReasonText } from '@/lib/copy-campaign'
 import { NOTIFY } from '@/lib/copy-notifications'
 import { db, type Tx } from '@/lib/db'
@@ -108,6 +108,7 @@ const hasTerms = (i: OfferFields | CampaignEdit): i is CampaignEdit =>
 function termsOf(i: CampaignEdit): Terms {
   const { budgetUsd, startsAt, endsAt, rewardLocal, name, country } = i
   if (!isCount(budgetUsd) || !isCount(rewardLocal) || !isDate(startsAt) || !isDate(endsAt)) throw 'INVALID'
+  if (rewardLocal > MAX_REWARD_LOCAL) throw 'REWARD_TOO_LARGE'
   if (name !== undefined && (typeof name !== 'string' || !name.trim())) throw 'INVALID'
   if (country !== undefined && !isCountry(country)) throw 'INVALID'
   if (endsAt <= startsAt) throw 'END_BEFORE_START'
@@ -369,15 +370,17 @@ export type ChangeWithoutReview = { budgetUsd?: number; endsAt?: Date; rewardLoc
 // Money and timing (ADV §2 "Change without review"), applied at once whatever the status, except
 // ended and rejected. The budget cannot drop below spend; an increase must fit under the credit limit
 // (a draft's budget is not in use yet); the end must be after the start and not already past.
-// No budget may be larger than the largest credit limit ('TOO_LARGE'): a draft's is held against no
-// credit, so that ceiling is what keeps it inside its column instead of overflowing into an error.
+// No budget may be larger than the largest credit limit ('BUDGET_TOO_LARGE'): a draft's is held against no
+// credit, so that ceiling is what keeps it inside its column instead of overflowing into an error. A
+// reward has the same ceiling in local units ('REWARD_TOO_LARGE', MAX_REWARD_LOCAL), whatever the status.
 export async function changeWithoutReview(
   id: string, byUserId: string, change: ChangeWithoutReview, now = new Date(),
 ): Promise<Campaign> {
   const { budgetUsd, endsAt, rewardLocal } = change
   if (budgetUsd !== undefined && !isCount(budgetUsd)) throw 'INVALID'
-  if (budgetUsd !== undefined && toCents(budgetUsd) > MAX_LIMIT_CENTS) throw 'TOO_LARGE'
+  if (budgetUsd !== undefined && toCents(budgetUsd) > MAX_LIMIT_CENTS) throw 'BUDGET_TOO_LARGE'
   if (rewardLocal !== undefined && !isCount(rewardLocal)) throw 'INVALID'
+  if (rewardLocal !== undefined && rewardLocal > MAX_REWARD_LOCAL) throw 'REWARD_TOO_LARGE'
   if (endsAt !== undefined && !isDate(endsAt)) throw 'INVALID'
   const { campaign: c } = await load(id)
   if (!CHANGEABLE.includes(c.status)) throw 'INVALID_TRANSITION'

@@ -48,6 +48,7 @@ function refusal(e: unknown, country: Country): string {
   if (e === 'FLIGHT_ENDED') return F.errors.flightEnded
   if (e === 'INVALID_TRANSITION') return F.errors.invalidTransition
   if (e === 'BUDGET_BELOW_SPEND') return CAMPAIGN.budgetBelowSpend
+  if (e === 'REWARD_TOO_LARGE') return F.validation.rewardTooLarge
   if (e === 'END_BEFORE_START') return F.validation.flight
   if (e === 'INVALID') return F.invalid.other
   throw e
@@ -192,7 +193,8 @@ const numberOf = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'stri
 
 function changeRefusal(e: unknown): string {
   if (e === 'BUDGET_BELOW_SPEND') return CAMPAIGN.budgetBelowSpend
-  if (e === 'TOO_LARGE') return C.budgetTooLarge
+  if (e === 'BUDGET_TOO_LARGE') return C.budgetTooLarge
+  if (e === 'REWARD_TOO_LARGE') return C.rewardTooLarge
   if (isCreditLimit(e)) return CAMPAIGN.overCredit(e.limitCents)
   if (e === 'END_BEFORE_START') return C.endBeforeStart
   if (e === 'INVALID') return C.invalid

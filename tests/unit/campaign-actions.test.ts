@@ -149,6 +149,14 @@ describe('submitAction', () => {
     expect(await db.campaign.count()).toBe(0)
   })
 
+  it('refuses a reward too large to store, and creates nothing', async () => {
+    await setup('Owner')
+    for (const rewardLocal of [21_474_837, 3_000_000_000]) {
+      expect(await submitAction({ ...input(), rewardLocal })).toEqual({ error: 'That reward is too large.' })
+    }
+    expect(await db.campaign.count()).toBe(0)
+  })
+
   it('re-runs the form rules on the server, the credit limit included', async () => {
     await setup('Owner', { creditLimitCents: 20_000 })
     expect(await submitAction({ ...input(), redeemMethod: 'link', linkUrl: 'http://kolabright.example' })).toEqual({
@@ -252,6 +260,13 @@ describe('editOfferAction', () => {
     })
     expect(Number(row.fxPerUsd)).toBe(129)
     expect(await db.auditEvent.count({ where: { action: 'campaign.edit', actorId: actor.id } })).toBe(1)
+  })
+
+  it('refuses an in-place edit whose reward is too large to store, and changes nothing', async () => {
+    await setup('Owner')
+    const rejected = await campaign(mine.id, 'rejected', { rejectReasonCode: 'not_available', rewardLocal: 50 })
+    expect(await editOfferAction(rejected.id, { ...input(), rewardLocal: 21_474_837 })).toEqual({ error: 'That reward is too large.' })
+    expect(await reload(rejected.id)).toMatchObject({ status: 'rejected', rewardLocal: 50, name: 'Buy 2 get 1' })
   })
 
   it('counts only the budget increase of a campaign already in review', async () => {

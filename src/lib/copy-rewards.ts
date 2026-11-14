@@ -1,4 +1,6 @@
-// The Rewards page's words (ADV §6), verbatim.
+import { CAMPAIGN_FORM_COPY } from '@/lib/copy-campaign-form'
+
+// The Rewards page's words (ADV §6), verbatim; rewardTooLarge is ours (the campaign form's sentence).
 export const REWARDS = {
   crumb: 'Rewards',
   growth: 'Growth',
@@ -24,4 +26,5 @@ export const REWARDS = {
     text: 'Airtime and data are sent by Reloadly within minutes of a successful share. Global tops up the aggregator and recharges you through your invoice.',
   },
   invalid: 'Enter a whole number in range.',
+  rewardTooLarge: CAMPAIGN_FORM_COPY.validation.rewardTooLarge,
 } as const

@@ -1,5 +1,6 @@
 import 'server-only'
 import { audit } from '@/lib/audit'
+import { MAX_REWARD_LOCAL } from '@/lib/campaign-schema'
 import { changeWithoutReview } from '@/lib/campaigns'
 import { db } from '@/lib/db'
 
@@ -33,11 +34,13 @@ export async function saveCaps(workspaceId: string, byUserId: string, caps: Caps
   })
 }
 
-// One campaign's airtime per share; the campaign must belong to the workspace.
+// One campaign's airtime per share, up to MAX_REWARD_LOCAL ('REWARD_TOO_LARGE'); the campaign must belong to
+// the workspace.
 export async function setCampaignReward(
   workspaceId: string, byUserId: string, campaignId: string, rewardLocal: number, isGlobal: boolean, now = new Date(),
 ): Promise<void> {
   if (!int(rewardLocal, 0)) throw 'INVALID'
+  if (rewardLocal > MAX_REWARD_LOCAL) throw 'REWARD_TOO_LARGE'
   const c = await db.campaign.findFirst({ where: { id: campaignId, workspaceId } })
   if (!c) throw 'NOT_FOUND'
   await changeWithoutReview(campaignId, byUserId, { rewardLocal }, now)
