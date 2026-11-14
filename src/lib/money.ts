@@ -7,6 +7,7 @@ import { MONEY } from '@/lib/copy-money'
 import { NOTIFY } from '@/lib/copy-notifications'
 import { db, type Tx } from '@/lib/db'
 import { COUNTRIES, MARKETS, type Country } from '@/lib/markets'
+import { localMidnight, wallClock } from '@/lib/market-clock'
 import { notifyWorkspace } from '@/lib/notifications'
 import { currentFx, currentShare } from '@/lib/rates'
 
@@ -31,31 +32,8 @@ const charged = (sum: number | null) => (sum ? -sum : 0)
 
 // ---- Months in a market's time zone ----
 
-const clocks = new Map<string, Intl.DateTimeFormat>()
-
-function wallClock(timeZone: string, at: Date) {
-  let clock = clocks.get(timeZone)
-  if (!clock) {
-    clock = new Intl.DateTimeFormat('en-US', {
-      timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
-    })
-    clocks.set(timeZone, clock)
-  }
-  const p = Object.fromEntries(clock.formatToParts(at).map((x) => [x.type, Number(x.value)]))
-  return { year: p.year, month: p.month - 1, day: p.day, hour: p.hour, minute: p.minute, second: p.second }
-}
-
 // The UTC instant of local midnight on the 1st of (year, month) — month is 0-based and may overflow.
-function localMonthStart(timeZone: string, year: number, month: number): Date {
-  const wall = Date.UTC(year, month, 1)
-  let t = wall
-  for (let i = 0; i < 2; i++) {
-    const w = wallClock(timeZone, new Date(t))
-    const offset = Date.UTC(w.year, w.month, w.day, w.hour, w.minute, w.second) - Math.floor(t / 1000) * 1000
-    t = wall - offset
-  }
-  return new Date(t)
-}
+const localMonthStart = (timeZone: string, year: number, month: number): Date => localMidnight(timeZone, year, month, 1)
 
 const localMonth = (timeZone: string, year: number, month: number) => ({
   start: localMonthStart(timeZone, year, month),

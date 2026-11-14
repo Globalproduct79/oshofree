@@ -1,5 +1,6 @@
 import type { LinkEventType } from '@prisma/client'
 import { db, type Tx } from '@/lib/db'
+import { onSuccessfulShare } from '@/lib/rewards'
 
 export function startOfUtcDay(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
@@ -34,8 +35,41 @@ export async function recordOpen(
   return { deduped }
 }
 
-export async function recordClaim(linkId: string, visitorId: string, ipHash: string, userAgent: string): Promise<void> {
-  await write('Claim', linkId, visitorId, ipHash, userAgent)
+// The number this browser left on the landing page, if it ever did: its newest own link carries it.
+async function phoneOfVisitor(tx: Tx, visitorId: string): Promise<string | null> {
+  const mine = await tx.shareLink.findFirst({
+    where: { sharerType: 'Consumer', sharerSessionId: visitorId },
+    orderBy: { createdAt: 'desc' },
+    select: { consumer: { select: { phone: true } } },
+  })
+  return mine?.consumer?.phone ?? null
+}
+
+// The raw row is always written. A visitor's first Claim on a sharer's link is a successful share
+// (spec §6.14.2): its payout is made in the same transaction, keyed by the Claim's id, so a claim and its
+// reward stand or fall together. A Root link has no sharer. Serialised per (link, visitor), so concurrent
+// claims cannot both count as first.
+export async function recordClaim(
+  linkId: string,
+  visitorId: string,
+  ipHash: string,
+  userAgent: string,
+  now: Date = new Date(),
+): Promise<{ first: boolean }> {
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${linkId} || ':claim:' || ${visitorId}))`
+    const earlier = await tx.linkEvent.count({ where: { linkId, visitorId, type: 'Claim' } })
+    const event = await tx.linkEvent.create({ data: { linkId, type: 'Claim', visitorId, ipHash, userAgent, at: now } })
+    if (earlier) return { first: false }
+    const link = await tx.shareLink.findUniqueOrThrow({ where: { id: linkId }, select: { campaignId: true, sharerType: true } })
+    if (link.sharerType !== 'Root') {
+      await onSuccessfulShare({
+        campaignId: link.campaignId, shareLinkId: linkId, claimEventKey: event.id,
+        friendVisitorId: visitorId, friendPhone: await phoneOfVisitor(tx, visitorId), now,
+      }, tx)
+    }
+    return { first: true }
+  })
 }
 
 export async function recordDetails(

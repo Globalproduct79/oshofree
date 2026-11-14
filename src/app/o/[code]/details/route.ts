@@ -23,7 +23,7 @@ export const POST = landingRoute(async (req, code) => {
   const write = () =>
     db.$transaction(async (tx) => {
       const consumer = await upsertConsumer(phone, country, field('name').slice(0, 80), tx)
-      const mine = await ensureConsumerLink(link.id, consumer.id, tx)
+      const mine = await ensureConsumerLink(link.id, consumer.id, tx, v.id)
       if (mine.created) await recordDetails(link.id, v.id, v.ipHash, v.userAgent, tx)
       return mine.link
     })

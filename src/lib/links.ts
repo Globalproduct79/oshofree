@@ -82,10 +82,13 @@ export async function mintChannelLink(
 // A consumer's link, one level under whichever link brought them in: one per (parent, consumer),
 // so asking again returns the link they already hold. In a transaction, a per-pair advisory lock
 // makes a concurrent second ask wait and then find the first; the unique index is the backstop.
+// `visitorId` is the og_v cookie of the browser that asked: stored as the link's sharerSessionId, it is
+// how a claim from the sharer's own browser is recognised (spec §6.14.2).
 export async function ensureConsumerLink(
   parentId: string,
   consumerId: string,
   client: Tx = db,
+  visitorId?: string,
 ): Promise<{ link: ShareLink; created: boolean }> {
   await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${parentId} || ':consumer:' || ${consumerId}))`
   const existing = await client.shareLink.findFirst({ where: { parentId, consumerId }, orderBy: { createdAt: 'asc' } })
@@ -93,14 +96,14 @@ export async function ensureConsumerLink(
   const parent = await client.shareLink.findUniqueOrThrow({ where: { id: parentId } })
   const link = await createLink({
     campaignId: parent.campaignId, channelId: parent.channelId, parentId: parent.id,
-    depth: parent.depth + 1, sharerType: 'Consumer', consumerId, via: null,
+    depth: parent.depth + 1, sharerType: 'Consumer', consumerId, sharerSessionId: visitorId ?? null, via: null,
   }, client)
   return { link, created: true }
 }
 
-export async function mintConsumerLink(parentId: string, consumerId: string, client: Tx = db): Promise<ShareLink> {
+export async function mintConsumerLink(parentId: string, consumerId: string, client: Tx = db, visitorId?: string): Promise<ShareLink> {
   try {
-    return (await ensureConsumerLink(parentId, consumerId, client)).link
+    return (await ensureConsumerLink(parentId, consumerId, client, visitorId)).link
   } catch (e) {
     // Outside a transaction a concurrent mint can win the race; theirs is the link.
     if (!isUniqueViolation(e)) throw e

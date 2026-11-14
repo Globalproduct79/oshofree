@@ -303,6 +303,9 @@ model ShareLink {
   @@unique([parentId, consumerId])
   @@index([campaignId, channelId])
   @@index([parentId])
+  // A browser's own links (the friend's number at claim time) and a number's links (phone reuse).
+  @@index([sharerSessionId])
+  @@index([consumerId])
 }
 
 model Consumer {
@@ -326,6 +329,8 @@ model LinkEvent {
   link      ShareLink     @relation(fields: [linkId], references: [id])
 
   @@index([linkId, type])
+  // A browser's claims (phone reuse).
+  @@index([visitorId])
 }
 
 model ChannelEvent {
@@ -537,6 +542,8 @@ model RewardPayout {
   shareLink        ShareLink    @relation(fields: [shareLinkId], references: [id])
 
   @@index([campaignId, status])
+  // A sharer's payouts today (the per-sharer caps).
+  @@index([sharerConsumerId, createdAt])
 }
 
 model PointsLedger {
