@@ -5,7 +5,7 @@ import { approveCampaign, approveRevision, rejectCampaign, rejectRevision } from
 import { isRejectReason } from '@/lib/copy-campaign'
 import { REVIEW } from '@/lib/copy-review'
 import { simulateDayAs, type SimulateDayResult } from '@/lib/demo/controls'
-import { runDaily, type DailyResult } from '@/lib/jobs/daily'
+import { previousMarketDay, runDaily, type DailyResult } from '@/lib/jobs/daily'
 import { isCountry } from '@/lib/markets'
 import { previewOffersFor } from '@/lib/offers'
 import type { PreviewOffer } from '@/lib/preview-merge'
@@ -90,12 +90,15 @@ export async function previewOffersAction(country: unknown): Promise<PreviewOffe
   return isCountry(country) ? previewOffersFor(country, new Date()) : []
 }
 
-// "Run daily job" (Review, non-production): Global only, and only with DEMO_CONTROLS=1. It runs today's job;
-// a second click the same UTC day is a no-op ({ skipped: true }).
+// "Run daily job" (Review, non-production): Global only, and only with DEMO_CONTROLS=1. The cron's run (spec
+// §6.7): the market day that has just finished, every other duty at now — replayed past the once-a-day guard, so
+// each click runs. A replay is always safe: every duty is idempotent and a day's delivery line is raised to the
+// day's total, never charged twice. Before the 02:00 UTC run, a click is that run, which then finds its day done.
 export async function runDailyJobAction(): Promise<{ ok: true; summary: DailyResult } | { error: 'FORBIDDEN' }> {
   const user = await requireUser()
   if (process.env.DEMO_CONTROLS !== '1' || !(await isAdminInDb(user.id))) return { error: 'FORBIDDEN' }
-  const summary = await runDaily(new Date())
+  const now = new Date()
+  const summary = await runDaily(previousMarketDay(now), now, { replay: true })
   revalidatePath('/', 'layout')
   return { ok: true, summary }
 }

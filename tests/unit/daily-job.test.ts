@@ -7,7 +7,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { endCampaign } from '@/lib/campaigns'
 import { INVOICE_LOCK, invoiceStatus } from '@/lib/money'
-import { chargeDay, runDaily } from '@/lib/jobs/daily'
+import { chargeDay, previousMarketDay, runDaily } from '@/lib/jobs/daily'
 import { jobDay } from '../../scripts/daily'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
@@ -543,7 +543,10 @@ describe('runDaily — invoices', () => {
 })
 
 describe('runDailyJobAction', () => {
-  afterEach(() => vi.unstubAllEnvs())
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.useRealTimers()
+  })
 
   async function signIn(isGlobalAdmin: boolean) {
     const user = await db.user.create({ data: { email: `${isGlobalAdmin ? 'admin' : 'tunde'}@x.test`, name: 'U', passwordHash: 'x', isGlobalAdmin } })
@@ -564,11 +567,26 @@ describe('runDailyJobAction', () => {
     expect(await db.jobRun.count()).toBe(0)
   })
 
-  it("runs today's job for Global with DEMO_CONTROLS", async () => {
+  it('is the cron run: the market day that has just finished, replayed past the guard on every click', async () => {
     vi.stubEnv('DEMO_CONTROLS', '1')
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(at('2026-11-11T14:00:00Z'))
     await signIn(true)
-    expect(await runDailyJobAction()).toMatchObject({ ok: true, summary: { skipped: false } })
-    expect(await db.jobRun.count({ where: { name: 'daily' } })).toBe(1)
+    const { ws, phoenix } = await world()
+    const c = await campaign(ws.id)
+    await events(phoenix.id, c.id, 'Impression', 1000, '2026-11-10T12:00:00Z')
+    // The 02:00 UTC cron already ran the day.
+    expect(await runDaily(previousMarketDay(at('2026-11-11T02:00:00Z')), at('2026-11-11T02:00:00Z'))).toMatchObject({ charged: 1 })
+    // A late batch for 10 Nov, and today's impressions, which no run charges until today is over.
+    await events(phoenix.id, c.id, 'Impression', 500, '2026-11-10T20:00:00Z')
+    await events(phoenix.id, c.id, 'Impression', 400, '2026-11-11T09:00:00Z')
+
+    expect(await runDailyJobAction()).toMatchObject({ ok: true, summary: { skipped: false, charged: 1, errors: [] } })
+    // 1,500 impressions × 120 ¢ ÷ 1,000: the day's one line, raised to its total.
+    expect(await deliveries(c.id)).toMatchObject([{ amountCents: -180, dedupeKey: `delivery:${c.id}:2026-11-10` }])
+    expect(await runDailyJobAction()).toMatchObject({ ok: true, summary: { skipped: false, charged: 0 } })
+    expect(await deliveries(c.id)).toHaveLength(1)
+    expect(await db.jobRun.findMany({ where: { name: 'daily' }, select: { day: true } })).toEqual([{ day: at('2026-11-10T00:00:00Z') }])
   })
 })
 

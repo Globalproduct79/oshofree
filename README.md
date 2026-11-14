@@ -83,10 +83,10 @@ both the setting and the user again. Leave `DEMO_CONTROLS` unset in production.
   previous market day, so it is charged like any other: the campaign's delivery line for that day is raised
   to the day's new total, never charged twice. It works once per UTC day ("Already simulated today.") and
   needs Phoenix live. The calendar does not move.
-- **Run daily job** (Review). It runs the daily job now, as cron would, and says how many errors it hit. It
-  works once per UTC day ("The daily job already ran today."). Unlike the cron run, it charges today's
-  impressions so far, and it takes the slot of the next day's 02:00 UTC run. On a machine that also runs the
-  cron job, replay the day the next morning so the rest of it is charged: `npm run job:daily -- YYYY-MM-DD`.
+- **Run daily job** (Review). It is the cron's run: it charges the market day that has just finished, does every
+  other duty as of now, and says how many errors it hit. Every click runs it, past the once-a-day check, and
+  that is always safe (see below). A click between midnight and 02:00 UTC counts as that night's run, so the
+  cron then finds the day done.
 
 ## The daily job
 
@@ -118,8 +118,10 @@ In order, it:
 9. Sends Monday's weekly digest.
 
 One failing campaign or duty is listed in the output and the rest of the run goes on; the script exits 1
-when anything is listed. A second run the same day does nothing. Every duty is idempotent and charges dedupe
-per campaign and market day, so a replay is safe. A replayed day must be over in every market.
+when anything is listed. A second cron run for the same day does nothing; a replay (a date argument, "Run
+daily job" or "Simulate a day") runs anyway. A replay is always safe: every duty is idempotent, and a day's
+delivery line is raised to the day's total rather than charged again. A replayed day must be over in every
+market.
 
 **Closing a month.** The close issues each workspace an invoice for its charges up to the end of its own
 market's month, then Phoenix's settlement statement. Global can also close by hand from Platform ›

@@ -48,6 +48,10 @@ export type DailySummary = {
 
 export type DailyResult = ({ skipped: false } & DailySummary) | { skipped: true }
 
+// The market day a run charges: the one containing now − 24 h. Every market (UTC+0 to UTC+3) has finished it
+// by `now`, so a run never charges part of a day. The cron script and Review's "Run daily job" both use it.
+export const previousMarketDay = (now: Date): Date => new Date(now.getTime() - DAY_MS)
+
 // Records one failure of the duty it was handed to.
 type Fail = (e: unknown, where?: { campaignId?: string; workspaceId?: string }) => void
 

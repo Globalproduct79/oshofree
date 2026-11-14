@@ -1,19 +1,17 @@
 import { pathToFileURL } from 'node:url'
 import { db } from '@/lib/db'
-import { runDaily } from '@/lib/jobs/daily'
+import { previousMarketDay, runDaily } from '@/lib/jobs/daily'
 
-// `npm run job:daily`, once a day from cron. It charges the market day that has just finished — the one
-// containing now − 24 h, which is over in every market by now — and moves campaigns, payouts, the month
-// close and notifications at the real time. Charging today instead would bill only the hours since
-// midnight, and the rest of the day would never be charged.
+// `npm run job:daily`, once a day from cron. It charges the market day that has just finished
+// (previousMarketDay: the one containing now − 24 h, over in every market by now) and moves campaigns, payouts,
+// the month close and notifications at the real time. Charging today instead would bill only the hours since
+// midnight, and the rest of the day would never be charged. Review's "Run daily job" is the same run.
 //
 // `npm run job:daily -- 2026-11-10` replays that day past the once-a-day guard, after a run that listed
 // errors: every duty is idempotent and charges dedupe per campaign and market day. The day must be over in
 // every market, so a replay never charges part of a day. Exits 1 when the run lists errors.
-const DAY_MS = 86_400_000
-
 export function jobDay(arg: string | undefined, now: Date): { day: Date; replay: boolean } {
-  if (arg === undefined) return { day: new Date(now.getTime() - DAY_MS), replay: false }
+  if (arg === undefined) return { day: previousMarketDay(now), replay: false }
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(arg)
   const [year, month, date] = m ? [Number(m[1]), Number(m[2]) - 1, Number(m[3])] : [NaN, NaN, NaN]
   // Noon UTC is inside that calendar day in every market (UTC+0 to UTC+3).
