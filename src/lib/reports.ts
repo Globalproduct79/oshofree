@@ -31,7 +31,7 @@ type Split = (typeof SPLIT)[number]
 const SHARE: Prisma.ShareLinkWhereInput = { sharerType: { in: ['Channel', 'Consumer'] }, via: { not: null } }
 const SUCCESSFUL: Prisma.RewardPayoutWhereInput = { status: { notIn: ['blocked', 'rejected'] } }
 // List order (ADV §1): newest submission first ("newest submissions are prepended"), never-submitted last.
-const LIST_ORDER: Prisma.CampaignOrderByWithRelationInput[] = [
+export const LIST_ORDER: Prisma.CampaignOrderByWithRelationInput[] = [
   { submittedAt: { sort: 'desc', nulls: 'last' } },
   { createdAt: 'desc' },
   { id: 'desc' },
@@ -79,7 +79,7 @@ async function successfulBy(where: Prisma.RewardPayoutWhereInput) {
   return new Map(rows.map((r) => [r.campaignId, { n: r._count._all, cents: r._sum.amountCents ?? 0 }]))
 }
 
-async function chargedBy(ids: string[], kinds: LedgerKind[]): Promise<Map<string, number>> {
+export async function chargedBy(ids: string[], kinds: LedgerKind[]): Promise<Map<string, number>> {
   const rows = await db.ledgerEntry.groupBy({
     by: ['campaignId'],
     where: { campaignId: { in: ids }, kind: { in: kinds } },
