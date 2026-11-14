@@ -27,7 +27,7 @@ export function WallClient({
 }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [links, setLinks] = useState<Record<string, string>>({});
-  const [claimed, setClaimed] = useState<Set<string>>(new Set());
+  const [codes, setCodes] = useState<Record<string, string>>({});
   const [shareFailed, setShareFailed] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const posted = useRef<string | null>(null);
@@ -71,8 +71,11 @@ export function WallClient({
   const claim = (o: OfferDto) => {
     if (o.cta.type === "link" && o.cta.url)
       return void window.open(o.cta.url, "_blank", "noopener");
-    setClaimed((c) => new Set(c).add(o.id));
-    fire(wallClaim(o.id, country));
+    fire(
+      wallClaim(o.id, country).then(({ code }) =>
+        setCodes((c) => ({ ...c, [o.id]: code })),
+      ),
+    );
   };
 
   const chips = offers.map((o) => ({
@@ -110,7 +113,7 @@ export function WallClient({
             {openId === o.id && (
               <OfferPanel
                 offer={o}
-                claimed={claimed.has(o.id)}
+                code={codes[o.id]}
                 link={links[o.id]}
                 shareFailed={shareFailed === o.id}
                 onClaim={() => claim(o)}

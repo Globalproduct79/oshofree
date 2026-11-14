@@ -47,6 +47,21 @@ export const pct = (a: number, b: number): string => (b === 0 ? '0%' : ((a / b) 
 export const fd = (d: Date, tz: string): string =>
   new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: tz }).format(d)
 
+// An instant as ISO 8601 on the wall clock of `tz`, with that zone's offset: 2026-11-17T00:00:00+03:00.
+// Whole seconds; the instant is unchanged, so new Date() of the result is the same moment.
+export function isoInZone(d: Date, tz: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(d)
+  const p = (t: Intl.DateTimeFormatPartTypes) => parts.find((x) => x.type === t)!.value
+  const wall = Date.UTC(+p('year'), +p('month') - 1, +p('day'), +p('hour'), +p('minute'), +p('second'))
+  const offset = Math.round((wall - Math.floor(d.getTime() / 1000) * 1000) / 60_000)
+  const abs = Math.abs(offset)
+  const hhmm = `${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`
+  return `${p('year')}-${p('month')}-${p('day')}T${p('hour')}:${p('minute')}:${p('second')}${offset < 0 ? '-' : '+'}${hhmm}`
+}
+
 // The hour of the day (0–23) on the wall clock in `tz`.
 export const hourIn = (d: Date, tz: string): number =>
   Number(

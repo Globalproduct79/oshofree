@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { COPY } from "@/lib/copy";
 import type { OfferDto } from "@/lib/offers";
 
-// The demo wall's three calls to the channel API, made as Phoenix will: bearer key, JSON, v1 paths.
+// The demo wall's four calls to the channel API, made as Phoenix will: bearer key, JSON, v1 paths.
 // The key and base URL are read per call so the page and the server actions never cache them.
 export const WALL_COUNTRIES = ["NG", "KE", "GH", "TZ", "SN"] as const;
 
@@ -13,7 +13,8 @@ export type WallEvent = {
   placement?: string;
   country?: string;
   session_id: string;
-  link_code?: string;
+  token?: string;
+  claim_code?: string;
   ts: string;
 };
 
@@ -81,6 +82,23 @@ export async function postShare(
     fetchImpl,
   );
   return json<{ code: string; url: string }>(res);
+}
+
+// A code offer's code is the session's own, asked for at claim time.
+export async function postClaim(
+  offerId: string,
+  sessionId: string,
+  fetchImpl: typeof fetch = fetch,
+) {
+  const res = await call(
+    "/claims",
+    {
+      method: "POST",
+      body: JSON.stringify({ offer_id: offerId, session_id: sessionId }),
+    },
+    fetchImpl,
+  );
+  return json<{ code: string; valid_until: string }>(res);
 }
 
 // The page's read: an unreachable API leaves the wall up with no offers and a note, not an error page.

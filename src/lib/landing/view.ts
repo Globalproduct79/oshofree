@@ -30,8 +30,7 @@ export function viewFor(link: LinkWithCampaign, state: LandingView['state'], ext
     rewardLabel: c.shareRewardLabel,
     endsAtText: endsAtText(c),
     redeemMethod: c.redeemMethod,
-    // The code reaches the page only once the visitor has asked for it.
-    claimCode: state === 'code' ? (c.claimCode ?? undefined) : undefined,
+    // The claim code is the visitor's own (issueClaimCode), passed in only once they have asked for it.
     ...extras,
   }
 }

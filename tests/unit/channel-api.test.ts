@@ -5,7 +5,7 @@ import { POST as postShare } from '@/app/api/v1/share/route'
 import { POST as postEvents } from '@/app/api/v1/events/route'
 import { GET as getStats } from '@/app/api/v1/links/[code]/stats/route'
 import { withChannel } from '@/lib/api-responses'
-import { hashKey } from '@/lib/channels'
+import { channelFromRequest, hashKey, rotateKey } from '@/lib/channels'
 import { db } from '@/lib/db'
 import { type EventInput, ingestEvents } from '@/lib/events'
 import { recordOpen } from '@/lib/link-events'
@@ -102,15 +102,23 @@ describe('GET /api/v1/offers', () => {
       await expectError(await offers(q), 400, 'bad_country')
   })
 
-  it('lists only live campaigns in that country, earliest start first', async () => {
+  it('lists only live campaigns of approved workspaces in that country, by placement then remaining budget', async () => {
     await seedChannel()
-    const later = await seedCampaign({ startsAt: new Date(Date.now() - DAY / 2) })
-    const live = await seedCampaign()
+    const fuller = await seedCampaign({ budgetUsd: 100 })
+    const emptier = await seedCampaign({ budgetUsd: 200 })
+    await db.ledgerEntry.create({
+      data: { workspaceId: emptier.workspaceId, campaignId: emptier.id, kind: 'delivery', amountCents: -15_000, description: 'delivery' },
+    })
+    const splash = await seedCampaign({ placement: 'splash' })
+    const featured = await seedCampaign({ placement: 'featured' })
+    const video = await seedCampaign({ placement: 'video' })
     await seedCampaign({ country: 'KE' })
     await seedCampaign({ status: 'ended', startsAt: new Date(Date.now() - 8 * DAY), endsAt: new Date(Date.now() - DAY) })
     await seedCampaign({ status: 'scheduled', startsAt: new Date(Date.now() + DAY) })
     await seedCampaign({ status: 'review' }, 'pending')
     await seedCampaign({ status: 'paused' })
+    // Declined after approval: its campaigns stop delivering even though they are still stored live.
+    await seedCampaign({}, 'declined')
     const res = await offers()
     expect(res.status).toBe(200)
     expect(res.headers.get('cache-control')).toBe('no-store')
@@ -118,21 +126,35 @@ describe('GET /api/v1/offers', () => {
     const body = await res.json()
     expect(body).toMatchObject({ country: 'NG', ttl_seconds: 900 })
     expect(new Date(body.generated_at).toISOString()).toBe(body.generated_at)
-    expect(body.offers.map((o: { id: string }) => o.id)).toEqual([live.id, later.id])
+    expect(body.offers.map((o: { id: string }) => o.id)).toEqual([fuller.id, emptier.id, featured.id, video.id, splash.id])
+    expect(body.offers.map((o: { placement: string }) => o.placement)).toEqual(['card', 'card', 'featured', 'video', 'splash'])
   })
 
-  it('gives a code offer its code as the label and no url, and mints nothing', async () => {
+  it('accepts ?channel= naming the key\'s own channel and refuses another', async () => {
     await seedChannel()
-    const c = await seedCampaign({ creativeImageKey: 'card.png', tileColor: 'sunrise' })
+    await seedCampaign()
+    expect((await offers('country=NG&channel=phoenix')).status).toBe(200)
+    await expectError(await offers('country=NG&channel=boomplay'), 400, 'channel_mismatch')
+  })
+
+  it('serves the prototype\'s wire shape: a code offer gets no code and no url, and mints nothing', async () => {
+    await seedChannel()
+    const c = await seedCampaign({
+      placement: 'video', creativeImageKey: 'card.png', creativeVideoKey: 'clip.mp4', tileColor: '#2B5FD9',
+      ageGated: true, endsAt: new Date('2030-11-17T23:00:00Z'),
+    })
     const { offers: [offer] } = await (await offers()).json()
     expect(offer).toEqual({
-      id: c.id, placement: 'card', brand: 'Kola Bright', headline: 'Buy 2 Kola Bright, get 1 free',
+      id: c.id, placement: 'video', brand: 'Kola Bright', headline: 'Buy 2 Kola Bright, get 1 free',
       description: 'At any Kola Bright stockist.', category: 'Food & drink',
-      creative: { image: `${process.env.APP_URL}/uploads/card.png`, color: 'sunrise' },
-      cta: { label: 'KOLA2X1', type: 'code', url: null },
+      creative: { image: `${process.env.APP_URL}/uploads/card.png`, video: `${process.env.APP_URL}/uploads/clip.mp4`, color: '#2B5FD9' },
+      cta: { label: 'Get this offer', type: 'code', url: null },
+      flags: { sponsored: true, age_18: true },
       share: { enabled: true, reward_label: '₦50 airtime' },
-      ends_at: c.endsAt.toISOString(),
+      // The exclusive end instant, written in the market's zone (Lagos is UTC+1).
+      ends_at: '2030-11-18T00:00:00+01:00',
     })
+    expect(new Date(offer.ends_at)).toEqual(c.endsAt)
     expect(await db.shareLink.count()).toBe(0)
   })
 
@@ -146,10 +168,11 @@ describe('GET /api/v1/offers', () => {
     const roots = await db.shareLink.findMany({ where: { campaignId: c.id, channelId: channel.id } })
     expect(roots).toHaveLength(1)
     expect(roots[0]).toMatchObject({ sharerType: 'Root', depth: 0 })
-    expect(first.cta).toEqual({ label: 'Open offer', type: 'link', url: `${linkUrl(roots[0].code)}?go=claim` })
+    expect(first.cta).toEqual({ label: 'Get this offer', type: 'link', url: `${linkUrl(roots[0].code)}?go=claim` })
     expect(first.cta.url).toMatch(/\?go=claim$/)
     expect(second.cta).toEqual(first.cta)
-    expect(first.creative).toEqual({ image: null, color: null })
+    expect(first.creative).toEqual({ image: null, video: null, color: null })
+    expect(first.flags).toEqual({ sponsored: true, age_18: false })
     expect(first.share).toEqual({ enabled: true, reward_label: '₦50 airtime' })
   })
 })
@@ -186,6 +209,41 @@ describe('POST /api/v1/share', () => {
     await expectError(await share({ offer_id: c.id, session_id: 's', via: 'telegram' }), 400, 'bad_request')
     await expectError(await share({ offer_id: c.id, via: 'sms' }), 400, 'bad_request')
     await expectError(await share('not json'), 400, 'bad_request')
+  })
+
+  it('links the sharer\'s number to a Consumer on the Channel link, and hands the same link back next time', async () => {
+    const channel = await seedChannel()
+    const c = await seedCampaign()
+    const res = await share({ offer_id: c.id, session_id: 'sess-9', via: 'whatsapp', msisdn: '+2348031234567' })
+    expect(res.status).toBe(201)
+    const { code } = await res.json()
+    const consumer = await db.consumer.findUniqueOrThrow({ where: { phone: '+2348031234567' } })
+    expect(consumer.country).toBe('NG')
+    const link = await db.shareLink.findUniqueOrThrow({ where: { code } })
+    expect(link).toMatchObject({ sharerType: 'Channel', consumerId: consumer.id, sharerSessionId: 'sess-9', channelId: channel.id })
+    const again = await share({ offer_id: c.id, session_id: 'sess-9', via: 'sms', msisdn: '+234 803 123 4567' })
+    expect(again.status).toBe(201)
+    expect((await again.json()).code).toBe(code)
+    const both = await Promise.all([1, 2].map(() => share({ offer_id: c.id, session_id: 's', via: 'x', msisdn: '+2348031234568' })))
+    const codes = await Promise.all(both.map(async (r) => (await r.json()).code))
+    expect(codes[0]).toBe(codes[1])
+    expect(await db.shareLink.count({ where: { sharerType: 'Channel' } })).toBe(2)
+    expect(await db.consumer.count()).toBe(2)
+  })
+
+  it('answers 400 bad_request for a number that is not the offer\'s country, saving nothing', async () => {
+    await seedChannel()
+    const c = await seedCampaign()
+    for (const msisdn of ['+447700900123', '+2348031', 'not a number', ''])
+      await expectError(await share({ offer_id: c.id, session_id: 's', via: 'sms', msisdn }), 400, 'bad_request')
+    expect(await db.shareLink.count()).toBe(0)
+    expect(await db.consumer.count()).toBe(0)
+  })
+
+  it('answers 409 for a live campaign in a declined workspace', async () => {
+    await seedChannel()
+    const c = await seedCampaign({}, 'declined')
+    await expectError(await share({ offer_id: c.id, session_id: 's', via: 'sms' }), 409, 'not_delivering')
   })
 })
 
@@ -250,12 +308,46 @@ describe('POST /api/v1/events', () => {
     await expectError(await events(ok, null), 400, 'missing_idempotency_key')
     await expectError(await events({ channel: 'phoenix', events: Array(501).fill(ev(c.id)) }), 400, 'too_many_events')
     await expectError(await events({ channel: 'boomplay', events: [ev(c.id)] }), 400, 'channel_mismatch')
-    await expectError(await events({ channel: 'phoenix', events: [ev(c.id, { type: 'view' })] }), 400, 'bad_request')
+    await expectError(await events({ channel: 'phoenix', events: [ev(c.id, { type: 'share_open' })] }), 400, 'bad_request')
+    await expectError(await events({ channel: 'phoenix', events: [ev(c.id, { type: 'impression', offer_id: undefined })] }), 400, 'bad_request')
     await expectError(await events({ channel: 'phoenix', events: [ev(c.id, { ts: 'yesterday' })] }), 400, 'bad_request')
     await expectError(await events('not json'), 400, 'bad_request')
     expect(await db.channelBatch.count()).toBe(0)
     const full = await events({ channel: 'phoenix', events: Array(500).fill(ev(c.id)) })
     expect(await full.json()).toEqual({ accepted: 1, deduped: 499, ignored: 0 })
+  })
+
+  it('ignores an event type it does not know, and stores the rest', async () => {
+    await seedChannel()
+    const c = await seedCampaign()
+    const res = await events({ channel: 'phoenix', events: [ev(c.id, { type: 'view' }), ev(c.id, { type: 'claim', claim_code: 'PHX-3F9K' })] })
+    expect(await res.json()).toEqual({ accepted: 1, deduped: 0, ignored: 1 })
+    expect((await db.channelEvent.findMany()).map((r) => r.type)).toEqual(['Claim'])
+  })
+
+  it('stores share, share_open and share_claim against the token\'s link, and only for this channel\'s links', async () => {
+    const channel = await seedChannel()
+    const other = await seedChannel('boomplay', 'other_key')
+    const c = await seedCampaign()
+    const mine = await mintChannelLink(c.id, channel.id, 'sharer', 'whatsapp')
+    const theirs = await mintChannelLink(c.id, other.id, 'sharer', 'whatsapp')
+    const friend = { session_id: 'anon_friend', ts: '2026-11-13T10:07:00Z' }
+    const res = await events({ channel: 'phoenix', events: [
+      ev(c.id, { type: 'share', token: mine.code, via: 'whatsapp', msisdn_hash: 'ab12', placement: 'featured' }),
+      { type: 'share_open', token: mine.code, ...friend },
+      { type: 'share_claim', token: mine.code, ...friend },
+      { type: 'share_claim', token: theirs.code, ...friend, session_id: 'anon_2' },
+      { type: 'share_open', token: 'NOPE0000', ...friend, session_id: 'anon_3' },
+      { type: 'share_open', token: mine.code, offer_id: 'another-offer', ...friend, session_id: 'anon_4' },
+    ] })
+    expect(await res.json()).toEqual({ accepted: 3, deduped: 0, ignored: 3 })
+    const rows = await db.channelEvent.findMany({ orderBy: { type: 'asc' } })
+    expect(rows.map((r) => [r.type, r.linkCode, r.campaignId, r.sessionId])).toEqual([
+      ['Share', mine.code, c.id, 's1'],
+      ['ShareOpen', mine.code, c.id, 'anon_friend'],
+      ['ShareClaim', mine.code, c.id, 'anon_friend'],
+    ])
+    expect(await (await stats(mine.code)).json()).toMatchObject({ share_opens: 1, share_claims: 1 })
   })
 })
 
@@ -268,7 +360,9 @@ describe('GET /api/v1/links/{code}/stats', () => {
     const res = await stats(link.code)
     expect(res.status).toBe(200)
     expect(res.headers.get('cache-control')).toBe('no-store')
-    expect(await res.json()).toEqual({ opens_unique: 1, opens_all: 1, details_left: 0, claims: 0, children: 0 })
+    expect(await res.json()).toEqual({
+      opens_unique: 1, opens_all: 1, details_left: 0, claims: 0, children: 0, share_opens: 0, share_claims: 0,
+    })
     await expectError(await stats('NOPE0000'), 404, 'unknown_link')
   })
 
@@ -279,5 +373,60 @@ describe('GET /api/v1/links/{code}/stats', () => {
     const link = await mintChannelLink(c.id, other.id, 's', 'copy')
     await expectError(await stats(link.code), 404, 'unknown_link')
     expect((await stats(link.code, { authorization: 'Bearer other_key' })).status).toBe(200)
+  })
+})
+
+describe('rotateKey', () => {
+  const reqWith = (key: string) => new Request('http://localhost/api/v1/offers?country=NG', { headers: { authorization: `Bearer ${key}` } })
+
+  it('returns a new live key once, keeps the old one for 24 hours, then refuses it', async () => {
+    const channel = await seedChannel()
+    const admin = await db.user.create({ data: { email: 'g@x.test', name: 'G', passwordHash: 'x', isGlobalAdmin: true } })
+    const now = new Date('2026-11-13T10:00:00Z')
+    const fresh = await rotateKey(channel.id, admin.id, now)
+    expect(fresh).toMatch(/^phx_live_[0-9A-Za-z]{24}$/)
+    const stored = await db.channel.findUniqueOrThrow({ where: { id: channel.id } })
+    expect(stored).toMatchObject({
+      apiKeyHash: hashKey(fresh), previousKeyHash: hashKey(KEY), keyCreatedAt: now,
+      previousKeyValidUntil: new Date(now.getTime() + DAY),
+    })
+    expect(JSON.stringify(stored)).not.toContain(fresh)
+    const at = (ms: number) => new Date(now.getTime() + ms)
+    expect((await channelFromRequest(reqWith(fresh), at(0)))?.id).toBe(channel.id)
+    expect((await channelFromRequest(reqWith(KEY), at(DAY - 1)))?.id).toBe(channel.id)
+    expect(await channelFromRequest(reqWith(KEY), at(DAY))).toBeNull()
+    expect((await channelFromRequest(reqWith(fresh), at(2 * DAY)))?.id).toBe(channel.id)
+    const audit = await db.auditEvent.findFirstOrThrow({ where: { action: 'channel.key.rotate' } })
+    expect(audit).toMatchObject({ actorId: admin.id, targetType: 'Channel', targetId: channel.id })
+    expect(JSON.stringify(audit)).not.toContain(fresh)
+  })
+
+  it('lets both keys call the API right after a rotation, and only the newest two after a second one', async () => {
+    const channel = await seedChannel()
+    const admin = await db.user.create({ data: { email: 'g@x.test', name: 'G', passwordHash: 'x', isGlobalAdmin: true } })
+    const first = await rotateKey(channel.id, admin.id)
+    expect((await offers('country=NG')).status).toBe(200)
+    expect((await offers('country=NG', { authorization: `Bearer ${first}` })).status).toBe(200)
+    const second = await rotateKey(channel.id, admin.id)
+    expect(second).not.toBe(first)
+    await expectError(await offers('country=NG'), 401, 'unauthorized')
+    expect((await offers('country=NG', { authorization: `Bearer ${first}` })).status).toBe(200)
+    expect((await offers('country=NG', { authorization: `Bearer ${second}` })).status).toBe(200)
+  })
+
+  it('never lets an expired previous key in, nor a previous key of a channel that is not live', async () => {
+    const live = await seedChannel()
+    await db.channel.update({
+      where: { id: live.id },
+      data: { apiKeyHash: hashKey('current'), previousKeyHash: hashKey('old'), previousKeyValidUntil: new Date(Date.now() - 1000) },
+    })
+    await seedChannel('boomplay', 'dark_current', false)
+    await db.channel.update({
+      where: { key: 'boomplay' },
+      data: { previousKeyHash: hashKey('dark_old'), previousKeyValidUntil: new Date(Date.now() + DAY) },
+    })
+    expect(await channelFromRequest(reqWith('old'))).toBeNull()
+    expect(await channelFromRequest(reqWith('dark_old'))).toBeNull()
+    expect((await channelFromRequest(reqWith('current')))?.id).toBe(live.id)
   })
 })

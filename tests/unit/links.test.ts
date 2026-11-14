@@ -95,7 +95,7 @@ describe('events', () => {
     await mintConsumerLink(link.id, ada.id)
     await mintConsumerLink(link.id, bola.id)
     expect(await linkStats(link.code)).toEqual({
-      opens_unique: 3, opens_all: 4, details_left: 1, claims: 1, children: 2,
+      opens_unique: 3, opens_all: 4, details_left: 1, claims: 1, children: 2, share_opens: 0, share_claims: 0,
     })
     expect(await linkStats('NOPE0000')).toBeNull()
   })

@@ -1,7 +1,12 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { postEvents, postShare, type WallEvent } from "@/lib/wall-api";
+import {
+  postClaim,
+  postEvents,
+  postShare,
+  type WallEvent,
+} from "@/lib/wall-api";
 
 // Server-side only: the channel key stays here. Every action refuses unless the wall is switched on.
 async function session() {
@@ -15,6 +20,7 @@ const send = async (
   type: WallEvent["type"],
   ids: string[],
   country: string,
+  extra: Partial<WallEvent> = {},
 ) => {
   const session_id = await session();
   const ts = new Date().toISOString();
@@ -26,6 +32,7 @@ const send = async (
       country,
       session_id,
       ts,
+      ...extra,
     })),
   );
 };
@@ -38,8 +45,14 @@ export async function wallOpen(id: string, country = "NG") {
   await send("open", [id], country);
 }
 
-export async function wallClaim(id: string, country = "NG") {
-  await send("claim", [id], country);
+// A code offer: ask POST /claims for this session's code, then post the claim with it.
+export async function wallClaim(
+  id: string,
+  country = "NG",
+): Promise<{ code: string }> {
+  const { code } = await postClaim(id, await session());
+  await send("claim", [id], country, { claim_code: code });
+  return { code };
 }
 
 export async function wallShare(

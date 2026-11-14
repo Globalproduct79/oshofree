@@ -69,20 +69,6 @@ export const COPY = {
     open: 'Open workspace',
     empty: 'No advertisers yet.',
   },
-  api: {
-    devKey: 'Development key',
-    devKeyNote: 'Local and test environments only. Never shown in production.',
-    errors: 'Errors',
-    errorColumns: ['Status', 'Error', 'When'],
-    rulesTitle: 'Rules Phoenix must follow',
-    rules: [
-      'Call POST /share at share time to get the sharer\'s own link. Never share a root URL.',
-      'Post Claim events only for code offers. OshoFree counts link click-throughs itself.',
-      'Batch events at most every 60 seconds, with a new Idempotency-Key per batch.',
-      'Post an Impression only once the card has been at least 50% in view for 1 second.',
-      'Poll offers per country every ttl_seconds (900).',
-    ],
-  },
   review: {
     advertisersTitle: 'New advertisers',
     campaignsTitle: 'Campaigns waiting',
@@ -173,10 +159,6 @@ export const COPY = {
     advertisers: {
       title: 'Advertisers',
       subtitle: 'Every workspace on OshoFree, its status and what it is running.',
-    },
-    api: {
-      title: 'Phoenix API',
-      subtitle: 'What Phoenix pulls, what it posts back, and how often.',
     },
   },
 } as const

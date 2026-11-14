@@ -106,7 +106,8 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
     await friend.goto(sharedUrl)
     await expect(friend.getByRole('heading', { name: HEADLINE })).toBeVisible()
     await friend.getByRole('button', { name: 'Show my code' }).click()
-    await expect(friend.getByText('E2E123')).toBeVisible()
+    // The friend's own claim code (spec 6.7), not the campaign's.
+    await expect(friend.getByText(/PHX-[0-9A-Z]{4}/)).toBeVisible()
     await friend.getByLabel('Mobile number').fill('0803 123 4567')
     await friend.getByRole('button', { name: 'Get my link' }).click()
     const mine = friend.getByRole('textbox', { name: 'Or copy your link' })

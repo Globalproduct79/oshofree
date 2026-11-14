@@ -13,6 +13,10 @@ export function lastDay(endsAt: Date): Date {
   return new Date(endsAt.getTime() - 1)
 }
 
-// What Phoenix delivers and the offers feed lists: live campaigns. A campaign is approved only inside
-// an approved workspace, and the daily job ends it at the end of its flight.
-export const deliveringWhere: (now?: Date) => Prisma.CampaignWhereInput = () => ({ status: 'live' })
+// What Phoenix delivers and the offers feed lists: live campaigns of approved workspaces. A campaign is
+// approved only inside an approved workspace, but a workspace declined later stops delivering at once;
+// the daily job ends a campaign at the end of its flight.
+export const deliveringWhere: (now?: Date) => Prisma.CampaignWhereInput = () => ({
+  status: 'live',
+  workspace: { status: 'approved' },
+})

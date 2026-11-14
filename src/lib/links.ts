@@ -48,18 +48,35 @@ async function createLink(data: Omit<Prisma.ShareLinkUncheckedCreateInput, 'code
   }
 }
 
-// A sharer's own link, one level under the Root for the (campaign, channel).
+// A sharer's own link, one level under the Root for the (campaign, channel). Each share mints a new one,
+// except for a sharer whose number Phoenix sent: they hold one link per (campaign, channel), and asking
+// again hands it back (the (parent, consumer) pair is unique, as for a landing-page sharer).
 export async function mintChannelLink(
   campaignId: string,
   channelId: string,
   sessionId: string,
   via: ShareVia,
+  consumerId?: string,
 ): Promise<ShareLink> {
   const root = await mintRootLink(campaignId, channelId)
-  return createLink({
+  const data = {
     campaignId, channelId, parentId: root.id, depth: root.depth + 1,
-    sharerType: 'Channel', sharerSessionId: sessionId, via,
-  })
+    sharerType: 'Channel' as const, sharerSessionId: sessionId, via,
+  }
+  if (!consumerId) return createLink(data)
+  const held = () => db.shareLink.findFirst({ where: { parentId: root.id, consumerId }, orderBy: { createdAt: 'asc' } })
+  try {
+    return await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${root.id} || ':consumer:' || ${consumerId}))`
+      const existing = await tx.shareLink.findFirst({ where: { parentId: root.id, consumerId }, orderBy: { createdAt: 'asc' } })
+      return existing ?? createLink({ ...data, consumerId }, tx)
+    })
+  } catch (e) {
+    // The unique index is the backstop: whoever won the race holds the link.
+    const existing = isUniqueViolation(e) ? await held() : null
+    if (existing) return existing
+    throw e
+  }
 }
 
 // A consumer's link, one level under whichever link brought them in: one per (parent, consumer),

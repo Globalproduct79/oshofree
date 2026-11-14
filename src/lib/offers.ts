@@ -1,22 +1,31 @@
-import type { Campaign, Country, ShareVia } from '@prisma/client'
+import type { Campaign, Country, Placement, ShareVia } from '@prisma/client'
 import { deliveringWhere } from '@/lib/campaign-status'
+import { normalisePhone, upsertConsumer } from '@/lib/consumers'
+import { API_COPY } from '@/lib/copy-api'
 import { db } from '@/lib/db'
+import { isoInZone } from '@/lib/format'
 import { linkUrl, mintChannelLink, mintRootLink } from '@/lib/links'
+import { MARKETS } from '@/lib/markets'
 import type { PreviewOffer } from '@/lib/preview-merge'
 import { imageUrl } from '@/lib/storage'
 
+// The prototype's offer on the wire (GLB §2.6 box 1).
 export type OfferDto = {
   id: string
-  placement: 'card'
+  placement: Placement
   brand: string
   headline: string
   description: string
   category: string
-  creative: { image: string | null; color: string | null }
+  creative: { image: string | null; video: string | null; color: string | null }
   cta: { label: string; type: 'code' | 'link'; url: string | null }
+  flags: { sponsored: true; age_18: boolean }
   share: { enabled: true; reward_label: string }
   ends_at: string
 }
+
+// The prototype's placement order (GLB §2.7).
+const PLACEMENT_ORDER: readonly Placement[] = ['card', 'featured', 'video', 'splash']
 
 // This channel's Root link code per campaign: one read, then a mint only where one is missing.
 async function rootCodes(campaignIds: string[], channelId: string): Promise<Map<string, string>> {
@@ -32,37 +41,56 @@ async function rootCodes(campaignIds: string[], channelId: string): Promise<Map<
   return codes
 }
 
-// Link offers click through the Root link, which logs the Claim; no share URL is ever handed out here.
+// Budget left per campaign in USD cents: budget − (delivery + reward charges), one grouped read.
+async function remainingCents(campaigns: Campaign[]): Promise<Map<string, number>> {
+  const spent = campaigns.length
+    ? await db.ledgerEntry.groupBy({
+        by: ['campaignId'],
+        where: { campaignId: { in: campaigns.map((c) => c.id) }, kind: { in: ['delivery', 'reward'] } },
+        _sum: { amountCents: true },
+      })
+    : []
+  const charged = new Map(spent.map((s) => [s.campaignId, -(s._sum.amountCents ?? 0)]))
+  return new Map(campaigns.map((c) => [c.id, c.budgetUsd * 100 - (charged.get(c.id) ?? 0)]))
+}
+
+const absolute = (key: string | null) => (key ? `${process.env.APP_URL}${imageUrl(key)}` : null)
+
+// Code offers carry no code: Phoenix asks POST /claims for the session's own at claim time. Link offers
+// click through the Root link, which logs the Claim; no share URL is ever handed out here.
 function cta(c: Campaign, rootCode: string | undefined): OfferDto['cta'] {
-  if (c.redeemMethod === 'code') return { label: c.claimCode ?? '', type: 'code', url: null }
+  if (c.redeemMethod === 'code') return { label: API_COPY.ctaLabel, type: 'code', url: null }
   if (!rootCode) throw new Error(`No Root link for campaign ${c.id}`)
-  return { label: 'Open offer', type: 'link', url: `${linkUrl(rootCode)}?go=claim` }
+  return { label: API_COPY.ctaLabel, type: 'link', url: `${linkUrl(rootCode)}?go=claim` }
 }
 
 function toDto(c: Campaign, rootCode: string | undefined): OfferDto {
   return {
     id: c.id,
-    placement: 'card',
+    placement: c.placement,
     brand: c.brand,
     headline: c.headline,
     description: c.description,
     category: c.category,
-    creative: {
-      image: c.creativeImageKey ? `${process.env.APP_URL}${imageUrl(c.creativeImageKey)}` : null,
-      color: c.tileColor ?? null,
-    },
+    creative: { image: absolute(c.creativeImageKey), video: absolute(c.creativeVideoKey), color: c.tileColor ?? null },
     cta: cta(c, rootCode),
+    flags: { sponsored: true, age_18: c.ageGated },
     share: { enabled: true, reward_label: c.shareRewardLabel },
-    ends_at: c.endsAt.toISOString(),
+    // The exclusive end instant, on the market's clock.
+    ends_at: isoInZone(c.endsAt, MARKETS[c.country].timezone),
   }
 }
 
-// v1 serves card offers only, so the DTO's placement is always 'card'.
+// Delivering campaigns in the country, ordered by placement then remaining budget (most left first).
 export async function offersFor(country: Country, channelId: string, now: Date): Promise<OfferDto[]> {
-  const campaigns = await db.campaign.findMany({
-    where: { ...deliveringWhere(now), country, placement: 'card' },
-    orderBy: [{ placement: 'asc' }, { startsAt: 'asc' }, { id: 'asc' }],
-  })
+  const campaigns = await db.campaign.findMany({ where: { ...deliveringWhere(now), country } })
+  const left = await remainingCents(campaigns)
+  campaigns.sort(
+    (a, b) =>
+      PLACEMENT_ORDER.indexOf(a.placement) - PLACEMENT_ORDER.indexOf(b.placement) ||
+      left.get(b.id)! - left.get(a.id)! ||
+      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  )
   const linkIds = campaigns.filter((c) => c.redeemMethod === 'link').map((c) => c.id)
   const roots = await rootCodes(linkIds, channelId)
   return campaigns.map((c) => toDto(c, roots.get(c.id)))
@@ -98,19 +126,29 @@ export async function previewOffersFor(country: Country, now: Date): Promise<Pre
   }))
 }
 
-export type ShareResult = { code: string; url: string } | 'unknown_offer' | 'not_delivering'
+export type ShareResult = { code: string; url: string } | 'unknown_offer' | 'not_delivering' | 'bad_msisdn'
 
-// A sharer's own link for an offer that is delivering now.
+// A sharer's own link for an offer that is delivering now. With the sharer's number (verified by
+// Phoenix's OTP), the link carries their Consumer, so a Phoenix sharer and a landing-page sharer are
+// the same kind of record (spec §6.14.1); the number must be the offer's country's.
 export async function shareOffer(
   offerId: string,
   channelId: string,
   sessionId: string,
   via: ShareVia,
   now: Date,
+  msisdn?: string,
 ): Promise<ShareResult> {
-  if (!(await db.campaign.findUnique({ where: { id: offerId }, select: { id: true } }))) return 'unknown_offer'
+  const offer = await db.campaign.findUnique({ where: { id: offerId }, select: { country: true } })
+  if (!offer) return 'unknown_offer'
   const delivering = await db.campaign.findFirst({ where: { id: offerId, ...deliveringWhere(now) }, select: { id: true } })
   if (!delivering) return 'not_delivering'
-  const link = await mintChannelLink(offerId, channelId, sessionId, via)
+  let consumerId: string | undefined
+  if (msisdn !== undefined) {
+    const phone = normalisePhone(msisdn, offer.country)
+    if (!phone) return 'bad_msisdn'
+    consumerId = (await upsertConsumer(phone, offer.country)).id
+  }
+  const link = await mintChannelLink(offerId, channelId, sessionId, via, consumerId)
   return { code: link.code, url: linkUrl(link.code) }
 }

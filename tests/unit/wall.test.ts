@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET as getOffers } from "@/app/api/v1/offers/route";
 import { POST as postShareRoute } from "@/app/api/v1/share/route";
 import { POST as postEventsRoute } from "@/app/api/v1/events/route";
+import { POST as postClaimsRoute } from "@/app/api/v1/claims/route";
 import {
   wallClaim,
   wallImpressions,
@@ -14,6 +15,7 @@ import { db } from "@/lib/db";
 import {
   fetchOffers,
   loadWallOffers,
+  postClaim,
   postEvents,
   postShare,
 } from "@/lib/wall-api";
@@ -28,6 +30,7 @@ const fetchImpl = (async (input: string, init?: RequestInit) => {
   seen.push(req.clone());
   const { pathname } = new URL(req.url);
   if (pathname.endsWith("/offers")) return getOffers(req);
+  if (pathname.endsWith("/claims")) return postClaimsRoute(req);
   return pathname.endsWith("/share")
     ? postShareRoute(req)
     : postEventsRoute(req);
@@ -106,6 +109,19 @@ describe("wall-api", () => {
 
     const link = await postShare(campaign.id, "s1", "whatsapp", fetchImpl);
     expect(link.url).toContain(link.code);
+  });
+
+  it("asks POST /claims for the session's own code on a code offer", async () => {
+    vi.stubEnv("DEMO_CHANNEL_KEY", KEY);
+    vi.stubEnv("APP_URL", "http://localhost:3100");
+    const campaign = await seedLive();
+    const { offers } = await fetchOffers("NG", fetchImpl);
+    expect(offers[0].cta).toEqual({ label: "Get this offer", type: "code", url: null });
+    const first = await postClaim(campaign.id, "s1", fetchImpl);
+    expect(first.code).toMatch(/^PHX-[0-9A-Z]{4}$/);
+    expect(first.valid_until).toBe(campaign.endsAt.toISOString());
+    expect((await postClaim(campaign.id, "s1", fetchImpl)).code).toBe(first.code);
+    expect(seen.at(-1)?.url).toBe("http://localhost:3100/api/v1/claims");
   });
 });
 

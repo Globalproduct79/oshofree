@@ -292,16 +292,42 @@ describe('landingRoute', () => {
 })
 
 describe('POST /o/[code]/claim', () => {
-  it('reveals the code on a code offer and redirects a link offer, logging a Claim each time', async () => {
+  it("reveals this visitor's own PHX code on a code offer and redirects a link offer, logging a Claim each time", async () => {
     const code = await seed()
     const shown = await submit(postClaim, code.code, 'claim')
     expect(shown.status).toBe(200)
-    expect(await shown.text()).toContain('KOLA2X1')
+    const html = await shown.text()
+    const issued = /PHX-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{4}/.exec(html)?.[0]
+    expect(issued).toBeDefined()
+    expect(html).not.toContain('KOLA2X1')
+    const visitorId = (shown.headers.get('set-cookie') ?? '').slice(5, 41)
+    expect(await db.claimCode.findFirstOrThrow()).toMatchObject({
+      code: issued, campaignId: code.campaignId, channelId: code.channelId, sessionId: visitorId,
+    })
     const link = await seed(linkOffer)
     const sent = await submit(postClaim, link.code, 'claim')
     expect(sent.status).toBe(302)
     expect(sent.headers.get('location')).toBe(BRAND_URL)
     expect((await events('Claim')).map((e) => e.linkId)).toEqual([code.id, link.id])
+    expect(await db.claimCode.count()).toBe(1)
+  })
+
+  it('shows the same visitor the same code again that day, and another visitor a code of their own', async () => {
+    const link = await seed()
+    const cookie = 'og_v=6f1d4c1e-9a55-4f1b-8f7c-9d100b5c8a4e'
+    const ask = (c?: string) =>
+      postClaim(new Request(`http://localhost/o/${link.code}/claim`, {
+        method: 'POST', body: new URLSearchParams(), headers: c ? { cookie: c } : {},
+      }), params(link.code))
+    const shown = async (res: Response) => /PHX-[0-9A-Z]{4}/.exec(await res.text())?.[0]
+    const first = await shown(await ask(cookie))
+    const again = await shown(await ask(cookie))
+    const stranger = await shown(await ask())
+    expect(first).toBeDefined()
+    expect(again).toBe(first)
+    expect(stranger).not.toBe(first)
+    expect(await db.claimCode.count()).toBe(2)
+    expect(await events('Claim')).toHaveLength(3)
   })
 })
 

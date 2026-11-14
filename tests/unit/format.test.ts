@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageLabel, daysLeft, fd, fmt, initials, loc, maskPhone, pct, usd, usdFromDollars } from '@/lib/format'
+import { ageLabel, daysLeft, fd, fmt, initials, isoInZone, loc, maskPhone, pct, usd, usdFromDollars } from '@/lib/format'
 
 describe('prototype formatting', () => {
   it('fmt abbreviates counts', () => {
@@ -57,4 +57,14 @@ describe('ageLabel', () => {
     expect(ageLabel(ago(9 * 86_400_000), now)).toBe('9d ago')
   })
   it('treats a future date as now', () => expect(ageLabel(new Date(now.getTime() + 5_000), now)).toBe('now'))
+})
+
+describe('isoInZone', () => {
+  it("writes the instant on the market's wall clock with its offset", () => {
+    const at = new Date('2026-11-16T21:00:00Z')
+    expect(isoInZone(at, 'Africa/Nairobi')).toBe('2026-11-17T00:00:00+03:00')
+    expect(isoInZone(at, 'Africa/Lagos')).toBe('2026-11-16T22:00:00+01:00')
+    expect(isoInZone(at, 'Africa/Accra')).toBe('2026-11-16T21:00:00+00:00')
+    for (const tz of ['Africa/Nairobi', 'Africa/Lagos', 'Africa/Dakar']) expect(new Date(isoInZone(at, tz))).toEqual(at)
+  })
 })

@@ -8,17 +8,17 @@ const btn = "rounded-md px-3 py-1.5 text-xs font-medium";
 
 type Props = {
   offer: OfferDto;
-  claimed: boolean;
+  code: string | undefined;
   link: string | undefined;
   shareFailed: boolean;
   onClaim: () => void;
   onShare: () => void;
 };
 
-// The expanded card: description, reward, Claim and Share, then the claimed code or the minted link.
+// The expanded card: description, reward, Claim and Share, then the session's claim code or the minted link.
 export function OfferPanel({
   offer: o,
-  claimed,
+  code,
   link,
   shareFailed,
   onClaim,
@@ -61,13 +61,13 @@ export function OfferPanel({
           </button>
         )}
       </div>
-      {claimed && o.cta.type === "code" && (
+      {code && o.cta.type === "code" && (
         <p
           className="rounded-md px-3 py-2 text-center text-base font-bold tracking-widest"
           style={{ backgroundColor: tokens.bg, color: tokens.ink }}
           aria-label={W.code}
         >
-          {o.cta.label}
+          {code}
         </p>
       )}
       {shareFailed ? (

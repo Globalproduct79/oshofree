@@ -48,16 +48,23 @@ export async function recordDetails(
   await write('DetailsLeft', linkId, visitorId, ipHash, userAgent, client)
 }
 
+// What a link has earned: the landing page's own events, plus the share_open / share_claim events the
+// link's channel posted for it as a token (those are the channel's to read and count nowhere else).
 export async function linkStats(code: string) {
-  const link = await db.shareLink.findUnique({ where: { code }, select: { id: true } })
+  const link = await db.shareLink.findUnique({ where: { code }, select: { id: true, channelId: true, campaignId: true } })
   if (!link) return null
   const linkId = link.id
-  const [opens_unique, opens_all, details_left, claims, children] = await Promise.all([
+  const reported = (type: 'ShareOpen' | 'ShareClaim') =>
+    // campaignId + type is the indexed path into ChannelEvent; the code narrows it to this link.
+    db.channelEvent.count({ where: { campaignId: link.campaignId, type, channelId: link.channelId, linkCode: code } })
+  const [opens_unique, opens_all, details_left, claims, children, share_opens, share_claims] = await Promise.all([
     db.linkEvent.count({ where: { linkId, type: 'Open', deduped: false } }),
     db.linkEvent.count({ where: { linkId, type: 'Open' } }),
     db.linkEvent.count({ where: { linkId, type: 'DetailsLeft' } }),
     db.linkEvent.count({ where: { linkId, type: 'Claim' } }),
     db.shareLink.count({ where: { parentId: linkId } }),
+    reported('ShareOpen'),
+    reported('ShareClaim'),
   ])
-  return { opens_unique, opens_all, details_left, claims, children }
+  return { opens_unique, opens_all, details_left, claims, children, share_opens, share_claims }
 }
