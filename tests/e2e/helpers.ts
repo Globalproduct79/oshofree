@@ -39,9 +39,8 @@ export async function expectToast(page: Page, text: string) {
 export const box = (page: Page, title: string): Locator =>
   page.locator('.box').filter({ has: page.getByRole('heading', { name: title, exact: true }) })
 
-// A KPI tile's value: the tile titled `title`, then its big number.
-export function metricValue(scope: Page | Locator, title: string): Locator {
-  const page = 'goto' in scope ? scope : scope.page()
+// A KPI tile's value: the tile titled `title` (inside `scope`, the whole page by default), then its big number.
+export function metricValue(page: Page, title: string, scope: Page | Locator = page): Locator {
   return scope.locator('.mc').filter({ has: page.getByText(title, { exact: true }) }).locator('.v')
 }
 

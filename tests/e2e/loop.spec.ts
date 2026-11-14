@@ -104,10 +104,13 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
     // They pass it on: the WhatsApp button hands off to WhatsApp with their own link in the message. The
     // hand-off is followed only as far as WhatsApp's address, so the test never leaves this machine.
     const whatsapp = await friend.getByRole('link', { name: L.whatsapp, exact: true }).getAttribute('href')
+    expect(whatsapp).toBeTruthy()
     const handOff = await friend.request.get(whatsapp!, { maxRedirects: 0 })
     expect(handOff.status()).toBeGreaterThanOrEqual(300)
     expect(handOff.status()).toBeLessThan(400)
-    const target = new URL(handOff.headers()['location'])
+    const location = handOff.headers()['location']
+    expect(location).toBeDefined()
+    const target = new URL(location)
     expect(target.host).toBe('wa.me')
     expect(target.searchParams.get('text')).toContain(myUrl)
     await friendContext.close()
@@ -120,9 +123,9 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
     await expect(brand.getByRole('heading', { name: OFFER.headline })).toBeVisible()
     const sharing = box(brand, S.title)
     // A share counts once it goes out on a medium (spec §6.14.2): the wall's share and the friend's own WhatsApp.
-    await expect(metricValue(sharing, S.shares)).toHaveText('2')
-    await expect(metricValue(sharing, S.friendsOpened)).toHaveText('1')
-    await expect(metricValue(sharing, S.friendsClaimed)).toHaveText('1')
+    await expect(metricValue(brand, S.shares, sharing)).toHaveText('2')
+    await expect(metricValue(brand, S.friendsOpened, sharing)).toHaveText('1')
+    await expect(metricValue(brand, S.friendsClaimed, sharing)).toHaveText('1')
   })
 
   await test.step('an unknown link answers 410 Gone', async () => {

@@ -34,10 +34,13 @@ test.beforeAll(async ({ browser }) => {
 })
 
 test.afterAll(async () => {
-  // Put the seeded limit back even when a step failed half-way.
-  await setLimit(KOLA, SEEDED_LIMIT).catch(() => undefined)
-  await admin.context().close()
-  await tunde.context().close()
+  // Put the seeded limit back even when a step failed half-way; a failed restore fails the spec.
+  try {
+    if (admin) await setLimit(KOLA, SEEDED_LIMIT)
+  } finally {
+    await admin?.context().close()
+    await tunde?.context().close()
+  }
 })
 
 // Global opens the workspace's page from Platform › Advertisers.
@@ -117,7 +120,8 @@ test("F4: Global marks MediaSpec's open invoice paid and Dolapo's credit in use 
   await expect(row.getByText(STATUS_LABEL.due, { exact: true })).toBeVisible()
   // The invoice's columns: number, period, status, due, USD, local, action.
   const amount = dollars(await row.getByRole('cell').nth(4).textContent())
-  expect(amount).toBeGreaterThan(0)
+  // Large enough that a drop of nothing cannot pass for it within the rounding allowance below.
+  expect(amount).toBeGreaterThanOrEqual(5)
   await row.getByRole('button', { name: D.markPaid }).click()
   await expectToast(admin, D.paid(INVOICE))
   await expect(row.getByText(STATUS_LABEL.paid, { exact: true })).toBeVisible()

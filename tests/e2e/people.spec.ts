@@ -9,7 +9,7 @@ import { box, expectToast, KOLA, PASSWORD, signIn, TUNDE } from './helpers'
 
 const INVITEE = { name: 'Adaeze Obi', email: 'ada2@kolabright.demo' }
 
-test('F5: an invite link brings a new Manager into the workspace', async ({ browser }) => {
+test('F5: an invite link brings a new Manager into the workspace', async ({ browser, baseURL }) => {
   const ownerContext = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] })
   const tunde = await ownerContext.newPage()
   await signIn(tunde, TUNDE)
@@ -35,7 +35,10 @@ test('F5: an invite link brings a new Manager into the workspace', async ({ brow
     await pending.getByRole('button', { name: PEOPLE.copyLink }).click()
     await expectToast(tunde, PEOPLE.linkCopied)
     link = await tunde.evaluate(() => navigator.clipboard.readText())
-    expect(link).toMatch(/^http:\/\/localhost:3101\/invite\/\S+$/)
+    // The link points at this app (the config's baseURL), on an invite page.
+    expect(baseURL).toBeTruthy()
+    expect(new URL(link).origin).toBe(new URL(baseURL!).origin)
+    expect(new URL(link).pathname).toMatch(/^\/invite\/\S+$/)
   })
 
   await test.step('the invitee opens the link in a fresh browser, creates an account and lands in Kola Bright', async () => {
