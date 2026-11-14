@@ -3,7 +3,11 @@ export const PEOPLE = {
   crumb: 'People',
   title: 'People',
   lead: 'Owners manage billing and people. Managers create and submit campaigns. Viewers see reports.',
+  // The head's primary: the invite form has its own page.
+  inviteSomeone: 'Invite someone',
   members: 'Members',
+  openInvites: 'Open invites',
+  noOpenInvites: 'No open invites.',
   invite: 'Invite',
   emailLabel: 'Email',
   emailPlaceholder: 'name@company.com',
@@ -26,6 +30,14 @@ export const PEOPLE = {
   invited: (role: string) => `Invited · ${role}`,
   lastOwner: "The last Owner can't be demoted.",
   lastOwnerRemove: "The last Owner can't be removed.",
+  // People › Invite someone (/app/people/invite). After sending, the link shows on the page, never in a toast.
+  invitePage: {
+    crumb: 'Invite',
+    title: 'Invite someone',
+    lead: 'Choose their role and send the invite. You get a link to pass on; they join when they open it and sign in.',
+    sent: (email: string) => `Invite sent to ${email}. Copy the link and send it to them.`,
+    back: 'Back to People',
+  },
   rolesBox: 'What each role can do',
   roleDescriptions: [
     ['Owner', 'Everything, including invoices, credit and people'],
