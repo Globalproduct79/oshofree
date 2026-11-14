@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { CAMPAIGN_FORM_COPY as COPY } from '@/lib/copy-campaign-form'
 import { usd } from '@/lib/format'
 import { CATEGORIES, COUNTRIES, MARKETS, type Country } from '@/lib/markets'
-import { IMAGE_KEY_RE } from '@/lib/image-rules'
+import { IMAGE_KEY_RE, VIDEO_KEY_RE } from '@/lib/image-rules'
 import { tokens } from '@/lib/tokens'
 
 // No database here: the campaign form imports this in the browser.
@@ -28,7 +28,7 @@ const base = z.object({
   description: z.string().trim().max(240),
   tileColor: z.string().refine((c) => (tokens.tileColors as readonly string[]).includes(c)),
   creativeImageKey: z.string().regex(IMAGE_KEY_RE).optional(),
-  creativeVideoKey: z.string().regex(IMAGE_KEY_RE).optional(),
+  creativeVideoKey: z.string().regex(VIDEO_KEY_RE).optional(),
   placement: z.enum(['card', 'featured', 'video', 'splash']),
   redeemMethod: z.enum(['code', 'link']),
   claimCode: z.string().trim().min(1).max(24).optional(),

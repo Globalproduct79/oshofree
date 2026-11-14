@@ -1,8 +1,8 @@
 import { MAX_UPLOAD_BODY_BYTES } from '@/lib/image-rules'
 import { requireUser } from '@/lib/session'
-import { imageUrl, putImage } from '@/lib/storage'
+import { creativeUrl, putCreative } from '@/lib/storage'
 
-const bad = (status: 400 | 413) => Response.json({ error: 'BAD_IMAGE' }, { status })
+const bad = (status: 400 | 413, error = 'BAD_IMAGE') => Response.json({ error }, { status })
 
 export async function POST(req: Request) {
   await requireUser()
@@ -13,10 +13,12 @@ export async function POST(req: Request) {
   const file = form?.get('file')
   if (!(file instanceof File)) return bad(400)
   try {
-    const key = await putImage(file)
-    return Response.json({ key, url: imageUrl(key) })
+    // The kind (image or video) is inferred from the file's type, never hinted by the client.
+    const { key, kind } = await putCreative(file)
+    return Response.json({ key, kind, url: creativeUrl(key) })
   } catch (e) {
-    if (e === 'BAD_IMAGE') return bad(400)
+    if (e === 'too_large') return bad(413, 'too_large')
+    if (e === 'unsupported_type') return bad(400)
     throw e
   }
 }

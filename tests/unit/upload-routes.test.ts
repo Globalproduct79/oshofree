@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { VIDEO_KEY_RE } from '@/lib/image-rules'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST } from '@/app/api/upload/route'
 import { GET } from '@/app/uploads/[key]/route'
@@ -79,6 +80,43 @@ describe('POST /api/upload then GET /uploads/[key]', () => {
     await writeFile(path.join(dir, 'secret.txt'), 'x')
     for (const key of ['../.env', 'secret.txt', '..%2F.env', '00000000-0000-0000-0000-000000000000.png']) {
       expect((await fetchImage(key)).status).toBe(404)
+    }
+  })
+
+  const mp4 = (n: number) => {
+    const b = new Uint8Array(n)
+    b.set([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70])
+    return b
+  }
+
+  it('stores an MP4 as a video and serves it as video/mp4 with range support', async () => {
+    const res = await upload(new File([mp4(4096)], 'v.mp4', { type: 'video/mp4' }))
+    expect(res.status).toBe(200)
+    const { key, kind } = await res.json()
+    expect(kind).toBe('video')
+    expect(key).toMatch(VIDEO_KEY_RE)
+    const vid = await fetchImage(key)
+    expect(vid.headers.get('content-type')).toBe('video/mp4')
+    expect(vid.headers.get('accept-ranges')).toBe('bytes')
+    const part = await GET(new Request(`http://localhost/uploads/${key}`, { headers: { range: 'bytes=0-9' } }), {
+      params: Promise.resolve({ key }),
+    })
+    expect(part.status).toBe(206)
+    expect(part.headers.get('content-range')).toBe('bytes 0-9/4096')
+    expect((await part.arrayBuffer()).byteLength).toBe(10)
+  })
+
+  it('answers too_large for a file over 2 MB and BAD_IMAGE for a type it will not store', async () => {
+    const big = await upload(new File([mp4(2_097_153)], 'v.mp4', { type: 'video/mp4' }))
+    expect(big.status).toBe(413)
+    expect(await big.json()).toEqual({ error: 'too_large' })
+    for (const f of [
+      new File([mp4(1024)], 'v.mov', { type: 'video/quicktime' }),
+      new File([new Uint8Array(1024)], 'a.gif', { type: 'image/gif' }),
+    ]) {
+      const res = await upload(f)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'BAD_IMAGE' })
     }
   })
 })
