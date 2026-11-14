@@ -1,64 +1,52 @@
 import { describe, expect, it } from 'vitest'
-import { mergeMine, type Mine, type PreviewOffer } from '@/lib/preview-merge'
+import { previewWall, type PreviewOffer } from '@/lib/preview-merge'
 
-const offer = (id: string, headline = `Offer ${id}`): PreviewOffer => ({
+const offer = (id: string, placement: PreviewOffer['placement'] = 'card'): PreviewOffer => ({
   id,
-  brand: 'Other Brand',
-  headline,
-  description: 'Something good.',
+  brand: `Brand ${id}`,
+  headline: `Offer ${id}`,
   category: 'Retail',
-  creative: { image: 'http://localhost:3100/uploads/a.png', color: null },
-  share: { reward_label: '₦50 airtime' },
-  ends_at: '2026-12-04T00:00:00.000Z',
+  placement,
+  ageGated: false,
+  creative: { image: null, video: null, color: '#0F766E' },
 })
 
-const mine: Mine = {
-  brand: 'Kola Bright',
-  headline: 'Buy 2 get 1',
-  description: 'At any stockist.',
-  color: '#0F766E',
-  rewardLabel: 'Share with 10 friends',
-  endsAt: new Date('2026-12-04T00:00:00Z'),
-}
+const ids = (list: PreviewOffer[]) => list.map((o) => o.id)
 
-describe('mergeMine', () => {
-  it('puts my card first, outlined, when it is not among the offers', () => {
-    const cards = mergeMine([offer('a'), offer('b')], { ...mine, id: 'c' })
-    expect(cards.map((c) => c.key)).toEqual(['c', 'a', 'b'])
-    expect(cards[0]).toMatchObject({ headline: 'Buy 2 get 1', outlined: true })
-    expect(cards.slice(1).every((c) => !c.outlined)).toBe(true)
+describe('previewWall', () => {
+  it.each(['featured', 'video', 'splash'] as const)('a %s campaign previewed is the featured slot', (placement) => {
+    const mine = offer('m', placement)
+    const wall = previewWall(mine, [offer('a'), offer('f', 'featured')])
+    expect(wall.featured?.id).toBe('m')
+    expect(ids(wall.tiles)).toEqual(['a', 'f'])
   })
 
-  it('puts my card first when it has no id yet', () => {
-    const cards = mergeMine([offer('a')], mine)
-    expect(cards).toHaveLength(2)
-    expect(cards[0]).toMatchObject({ brand: 'Kola Bright', outlined: true })
-    expect(cards[1].key).toBe('a')
+  it('a card previewed shows the first other live featured or video offer', () => {
+    const wall = previewWall(offer('m'), [offer('s', 'splash'), offer('a'), offer('v', 'video'), offer('f', 'featured')])
+    expect(wall.featured?.id).toBe('v')
+    expect(ids(wall.tiles)).toEqual(['m', 's', 'a', 'f'])
   })
 
-  it('replaces the live offer with the same id where it sits, never duplicating it', () => {
-    const cards = mergeMine([offer('a'), offer('b', 'Old headline'), offer('c')], { ...mine, id: 'b' })
-    expect(cards.map((c) => c.key)).toEqual(['a', 'b', 'c'])
-    expect(cards[1]).toMatchObject({ headline: 'Buy 2 get 1', outlined: true })
-    expect(cards.filter((c) => c.outlined)).toHaveLength(1)
+  it('shows no featured tile when none is live', () => {
+    const wall = previewWall(offer('m'), [offer('a'), offer('s', 'splash')])
+    expect(wall.featured).toBeUndefined()
+    expect(ids(wall.tiles)).toEqual(['m', 'a', 's'])
   })
 
-  it('shows just my card when there are no live offers', () => {
-    expect(mergeMine([], mine)).toEqual([expect.objectContaining({ brand: 'Kola Bright', outlined: true })])
+  it('lists the previewed card first, then at most five others', () => {
+    const live = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id) => offer(id))
+    expect(ids(previewWall(offer('m'), live).tiles)).toEqual(['m', 'a', 'b', 'c', 'd', 'e'])
   })
 
-  it('maps an offer to the card the wall shows', () => {
-    const [, card] = mergeMine([offer('a', 'Free data')], mine)
-    expect(card).toEqual({
-      key: 'a',
-      brand: 'Other Brand',
-      headline: 'Free data',
-      description: 'Something good.',
-      category: 'Retail',
-      imageUrl: 'http://localhost:3100/uploads/a.png',
-      color: null,
-      rewardLabel: '₦50 airtime',
-      endsAt: new Date('2026-12-04T00:00:00.000Z'),
-    })
+  it('counts the previewed campaign once when it is live itself', () => {
+    const mine = offer('m')
+    const wall = previewWall(mine, [offer('a'), { ...mine, headline: 'Stale' }, offer('b')])
+    expect(ids(wall.tiles)).toEqual(['m', 'a', 'b'])
+    expect(wall.tiles[0]).toBe(mine)
+  })
+
+  it('does not offer the previewed featured campaign again among the tiles', () => {
+    const mine = offer('m', 'featured')
+    expect(ids(previewWall(mine, [mine, offer('a')]).tiles)).toEqual(['a'])
   })
 })

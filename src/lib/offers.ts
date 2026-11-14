@@ -74,18 +74,27 @@ export async function phoenixOffers(country: Country, now: Date): Promise<OfferD
   return phoenix ? offersFor(country, phoenix.id, now) : []
 }
 
-// What the preview dialog draws, and nothing more: no claim code, no Root link URL.
+// What the preview draws, and nothing more: no claim code, no Root link URL. Every placement, since the
+// wall shows featured, video and splash offers too; nothing when the Phoenix channel is not set up or not live.
 export async function previewOffersFor(country: Country, now: Date): Promise<PreviewOffer[]> {
-  const offers = await phoenixOffers(country, now)
-  return offers.map((o) => ({
-    id: o.id,
-    brand: o.brand,
-    headline: o.headline,
-    description: o.description,
-    category: o.category,
-    creative: o.creative,
-    share: { reward_label: o.share.reward_label },
-    ends_at: o.ends_at,
+  const phoenix = await db.channel.findFirst({ where: { key: 'phoenix', isLive: true }, select: { id: true } })
+  if (!phoenix) return []
+  const campaigns = await db.campaign.findMany({
+    where: { ...deliveringWhere(now), country },
+    orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
+  })
+  return campaigns.map((c) => ({
+    id: c.id,
+    brand: c.brand,
+    headline: c.headline,
+    category: c.category,
+    placement: c.placement,
+    ageGated: c.ageGated,
+    creative: {
+      image: c.creativeImageKey ? imageUrl(c.creativeImageKey) : null,
+      video: c.creativeVideoKey ? imageUrl(c.creativeVideoKey) : null,
+      color: c.tileColor ?? null,
+    },
   }))
 }
 

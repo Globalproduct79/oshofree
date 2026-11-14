@@ -2,23 +2,24 @@
 
 import { useRef, useState } from 'react'
 import { PhonePreview, type PreviewState } from '@/components/campaign/PhonePreview'
-import { Button } from '@/components/ui/button'
+import { Button } from '@/components/og'
 import { COPY } from '@/lib/copy'
-import type { Mine, PreviewOffer } from '@/lib/preview-merge'
-import { cn } from '@/lib/utils'
+import { MARKETS, type Country } from '@/lib/markets'
+import type { PreviewOffer } from '@/lib/preview-merge'
 
 type Props = {
-  mine: Mine
+  mine: PreviewOffer
+  country: Country
   // A server action answering the live offers for the card's country; fetched each time the dialog opens.
   load: () => Promise<PreviewOffer[]>
   label?: string
-  size?: 'default' | 'lg'
+  size?: 's' | 'lg'
   className?: string
   // A button of the caller's own (the campaign form's ghost button), handed the opener.
   trigger?: (show: () => void) => React.ReactNode
 }
 
-export function PreviewButton({ mine, load, label = COPY.preview.button, size = 'lg', className, trigger }: Props) {
+export function PreviewButton({ mine, country, load, label = COPY.preview.button, size, className, trigger }: Props) {
   const [open, setOpen] = useState(false)
   const [offers, setOffers] = useState<PreviewOffer[]>([])
   const [state, setState] = useState<PreviewState>('loading')
@@ -45,11 +46,11 @@ export function PreviewButton({ mine, load, label = COPY.preview.button, size = 
       {trigger ? (
         trigger(show)
       ) : (
-        <Button type="button" variant="outline" size={size} className={cn('px-4', className)} onClick={show}>
+        <Button type="button" size={size} className={className} onClick={show}>
           {label}
         </Button>
       )}
-      <PhonePreview open={open} onOpenChange={setOpen} offers={offers} mine={mine} state={state} />
+      <PhonePreview open={open} onOpenChange={setOpen} live={offers} mine={mine} country={MARKETS[country].name} state={state} />
     </>
   )
 }

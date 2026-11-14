@@ -6,11 +6,12 @@ import { editOfferAction, previewOffers, submitAction } from '@/app/app/(console
 import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { Box, Button } from '@/components/og'
 import { toast } from '@/components/shell/toast-store'
-import { checkCampaign, rewardLabel, ruleContext, todayIn, type CreditPosition, type FormEdit } from '@/lib/campaign-schema'
+import { ageGated, checkCampaign, ruleContext, todayIn, type CreditPosition, type FormEdit } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import type { PlacementKey } from '@/lib/copy-components'
 import { clearDraft, loadDraft, saveDraft, startOver } from '@/lib/draft-store'
 import { MARKETS } from '@/lib/markets'
+import type { PreviewOffer } from '@/lib/preview-merge'
 import type { MarketRates } from '@/lib/rates'
 import { CardPreview } from './form/CardPreview'
 import { CostBox } from './form/CostBox'
@@ -18,7 +19,7 @@ import { OfferFields } from './form/OfferFields'
 import { PlacementFields } from './form/PlacementFields'
 import { TermsFields } from './form/TermsFields'
 import { uploadCreative } from './form/upload'
-import { amount, fits, offerInput, previewEndsAt, revisionInput, sameValues, toInput, type FormValues } from './form/values'
+import { fits, offerInput, revisionInput, sameValues, toInput, type FormValues } from './form/values'
 
 export type FormMode =
   // ?brand= prefills an agency's client and focus=brand puts the cursor there (Workspace › Add client brand).
@@ -149,16 +150,19 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
     })
   }
 
-  const mine = {
-    id: mode.kind === 'edit' ? mode.id : undefined,
+  // The draft as the Phoenix preview draws it: a new one has no id yet, so it cannot match a live offer.
+  const mine: PreviewOffer = {
+    id: mode.kind === 'edit' ? mode.id : '__draft',
     brand: values.brand.trim() || P.brand,
-    headline: values.headline.trim() || P.headline,
-    description: values.description.trim(),
+    headline: values.headline.trim(),
     category: values.category,
-    imageUrl: values.creative?.kind === 'image' ? values.creative.url : null,
-    color: values.tileColor,
-    rewardLabel: rewardLabel(values.country, amount(values.rewardLocal)),
-    endsAt: previewEndsAt(values),
+    placement: values.placement,
+    ageGated: ageGated(values),
+    creative: {
+      image: values.creative?.kind === 'image' ? values.creative.url : null,
+      video: values.creative?.kind === 'video' ? values.creative.url : null,
+      color: values.tileColor,
+    },
   }
 
   return (
@@ -184,6 +188,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode }: Props
             </Button>
             <PreviewButton
               mine={mine}
+              country={values.country}
               load={() => previewOffers(values.country)}
               trigger={(show) => (
                 <Button type="button" variant="ghost" onClick={show}>

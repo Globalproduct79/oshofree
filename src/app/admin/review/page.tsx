@@ -1,7 +1,7 @@
 import { OfferCard } from '@/components/campaign/OfferCard'
 import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { PageHead } from '@/components/console/PageHead'
-import { campaignCard } from '@/lib/campaign-card'
+import { campaignCard, previewOffer } from '@/lib/campaign-card'
 import { checkLink } from '@/lib/link-check'
 import { COPY } from '@/lib/copy'
 import { db } from '@/lib/db'
@@ -125,10 +125,10 @@ export default async function ReviewPage() {
                   hideApprove={c.workspace.status !== 'approved'}
                   extra={
                     <PreviewButton
-                      size="default"
-                      className="px-3"
+                      size="s"
                       label={COPY.review.preview}
-                      mine={card}
+                      mine={previewOffer(c)}
+                      country={c.country}
                       load={previewOffersAction.bind(null, c.country)}
                     />
                   }

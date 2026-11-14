@@ -482,7 +482,7 @@ describe('previewOffers', () => {
 
   it('hands the browser card fields only, never a claim code or link', async () => {
     const [o] = await previewOffers('NG')
-    expect(Object.keys(o).sort()).toEqual(['brand', 'category', 'creative', 'description', 'ends_at', 'headline', 'id', 'share'])
+    expect(Object.keys(o).sort()).toEqual(['ageGated', 'brand', 'category', 'creative', 'headline', 'id', 'placement'])
     expect(JSON.stringify(o)).not.toContain('R1')
   })
 

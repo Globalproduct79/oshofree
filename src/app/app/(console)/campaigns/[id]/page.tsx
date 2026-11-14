@@ -10,7 +10,7 @@ import { LinkButton } from '@/components/console/LinkButton'
 import { PageHead } from '@/components/console/PageHead'
 import { Box, Section } from '@/components/console/Section'
 import { StatusPill } from '@/components/console/StatusPill'
-import { campaignCard } from '@/lib/campaign-card'
+import { campaignCard, previewOffer } from '@/lib/campaign-card'
 import { effectiveStatus } from '@/lib/campaign-status'
 import { COPY } from '@/lib/copy'
 import { db } from '@/lib/db'
@@ -57,7 +57,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
               </LinkButton>
             )}
             {status === 'draft' && <LinkButton href={edit}>{C.editDraft}</LinkButton>}
-            <PreviewButton mine={card} load={previewOffers.bind(null, campaign.country)} />
+            <PreviewButton mine={previewOffer(campaign)} country={campaign.country} load={previewOffers.bind(null, campaign.country)} />
           </div>
         }
       />

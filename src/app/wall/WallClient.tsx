@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { PhoneFrame } from "@/components/campaign/PhoneFrame";
+import { WallFrame } from "@/components/campaign/WallFrame";
 import { OfferCard } from "@/components/campaign/OfferCard";
 import { COPY } from "@/lib/copy";
 import type { OfferDto } from "@/lib/offers";
@@ -87,7 +87,7 @@ export function WallClient({
   const note = error ?? (offers.length ? null : W.empty);
   return (
     <main className="flex flex-col items-center gap-4 p-6">
-      <PhoneFrame cards={chips} note={note}>
+      <WallFrame cards={chips} note={note}>
         {offers.map((o) => (
           <div key={o.id} className="col-span-2">
             <button
@@ -119,7 +119,7 @@ export function WallClient({
             )}
           </div>
         ))}
-      </PhoneFrame>
+      </WallFrame>
       {failed && (
         <p role="alert" className="text-xs" style={{ color: tokens.ink3 }}>
           {W.actionFailed}

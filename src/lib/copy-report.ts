@@ -78,9 +78,17 @@ export const PREVIEW_COPY = {
   title: 'On Phoenix',
   subtitle: 'Your card, outlined, among the offers live in this country right now.',
   explainer:
-    'The Phoenix user opens Offers, taps your card and either takes a claim code or is sent to your link. If they share it, the friend lands on your offer page and can leave their number to get a link of their own. Every open, claim and share shows in your report straight away.',
+    'The Phoenix user opens Offers, taps your card and either takes a claim code or is sent to your link. If they share it, the friend lands on the same offer with a token; when the friend claims, the sharer earns airtime and points. Each step shows up in your report within the hour.',
   offers: 'Offers',
   all: 'All',
+  url: 'phoenix://offers',
+  skip: 'Skip',
+  caption: (placement: string, brand: string, ageGated: boolean) =>
+    `${placement} · ${brand} · Sponsored${ageGated ? ' · 18+' : ''}`,
+  tileBrand: (brand: string) => `${brand} · Sponsored`,
+  headline: 'Your headline',
+  featuredLabel: 'Featured',
+  splashLabel: 'Splash',
   loading: 'Loading the offers live now…',
   failed: "The live offers didn't load, so your card is shown on its own.",
   close: 'Close',

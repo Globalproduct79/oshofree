@@ -1,43 +1,27 @@
-import type { OfferCardProps } from '@/components/campaign/OfferCard'
+// No database here: the Phoenix preview imports this in the browser.
 
-// No database here: the Phoenix preview dialog imports this in the browser.
+export type PreviewPlacement = 'card' | 'featured' | 'video' | 'splash'
 
-// The card fields of a live offer: all the browser gets. Claim codes and link URLs stay on the server.
+// What the preview draws of an offer: the card fields only. Claim codes and link URLs stay on the server.
 export type PreviewOffer = {
   id: string
   brand: string
   headline: string
-  description: string
   category: string
-  creative: { image: string | null; color: string | null }
-  share: { reward_label: string }
-  ends_at: string
+  placement: PreviewPlacement
+  ageGated: boolean
+  creative: { image: string | null; video: string | null; color: string | null }
 }
 
-export type Mine = OfferCardProps & { id?: string; category?: string }
-export type PreviewCard = OfferCardProps & { key: string; category?: string }
+const SLOT = new Set<PreviewPlacement>(['featured', 'video', 'splash'])
+const LEADS = new Set<PreviewPlacement>(['featured', 'video'])
+const MORE = 5
 
-const MINE_KEY = '__mine'
-
-function toCard(o: PreviewOffer): PreviewCard {
-  return {
-    key: o.id,
-    brand: o.brand,
-    headline: o.headline,
-    description: o.description,
-    category: o.category,
-    imageUrl: o.creative.image,
-    color: o.creative.color,
-    rewardLabel: o.share.reward_label,
-    endsAt: new Date(o.ends_at),
-  }
-}
-
-// My card, outlined, among the live offers: where it already sits when it is live, otherwise first.
-export function mergeMine(offers: PreviewOffer[], mine: Mine): PreviewCard[] {
-  const { id, ...card } = mine
-  const own: PreviewCard = { ...card, key: id ?? MINE_KEY, outlined: true }
-  const cards = offers.map(toCard)
-  const at = id === undefined ? -1 : cards.findIndex((c) => c.key === id)
-  return at === -1 ? [own, ...cards] : cards.map((c, i) => (i === at ? own : c))
+// The wall around the previewed campaign: its featured slot, and the grid (it first, then up to five others).
+// GLB §5.1. The previewed campaign is counted once even when it is live itself.
+export function previewWall(previewed: PreviewOffer, liveInMarket: PreviewOffer[]): { featured?: PreviewOffer; tiles: PreviewOffer[] } {
+  const others = liveInMarket.filter((o) => o.id !== previewed.id)
+  const featured = SLOT.has(previewed.placement) ? previewed : others.find((o) => LEADS.has(o.placement))
+  const rest = others.filter((o) => o !== featured).slice(0, MORE)
+  return { featured, tiles: featured === previewed ? rest : [previewed, ...rest] }
 }
