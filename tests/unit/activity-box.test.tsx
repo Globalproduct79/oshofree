@@ -4,6 +4,8 @@ import { ActivityBox } from '@/components/campaign/ActivityBox'
 import { SharerList } from '@/components/sharing/SharerList'
 import type { ActivityLine, SharerRow } from '@/lib/activity'
 
+// Show more's action module signs in through Auth.js; nothing here calls it.
+vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
 vi.mock('next/navigation', async (o) => ({ ...(await o<typeof import('next/navigation')>()), useRouter: () => ({ push: vi.fn() }) }))
 
 // The campaign page's Recent activity and the Sharing page's Sharers, as markup (Prompt 8).
@@ -14,7 +16,7 @@ const lines: ActivityLine[] = [
   { key: 'points-points:cm2:void', text: '10 points taken back from +234 80• ••• 4567 · 13 Nov, 11:20', title: 'points:cm2:void' },
 ]
 const box = (o: Partial<Parameters<typeof ActivityBox>[0]> = {}) =>
-  renderToStaticMarkup(<ActivityBox campaignId="c1" market="Nigeria" lines={lines} more={false} limit={30} line={null} {...o} />)
+  renderToStaticMarkup(<ActivityBox campaignId="c1" market="Nigeria" lines={lines} next={null} line={null} windowed={false} {...o} />)
 
 describe('ActivityBox', () => {
   it('is a box titled Recent activity, one list line per event with its ids as the tooltip and an anchor', () => {
@@ -29,21 +31,25 @@ describe('ActivityBox', () => {
     expect(m).not.toContain('Show more')
   })
 
-  it('offers Show more for the next 30 when there is more, keeping the scroll', () => {
-    const m = box({ more: true, limit: 60 })
-    expect(m).toMatch(/<a class="btn g s" href="\/app\/campaigns\/c1\?activity=90"[^>]*>Show more<\/a>/)
+  it('offers Show more for the 30 below the last line: a link to that page, which a click fetches in place', () => {
+    const m = box({ next: 'points-points:cm2:void' })
+    expect(m).toContain('<a class="btn g s" href="/app/campaigns/c1?before=points-points%3Acm2%3Avoid">Show more</a>')
+    expect(m).not.toContain('Newest')
   })
 
-  it('lights the line a link asked for and scrolls to it', () => {
-    const m = box({ line: 'fc-cm1' })
+  it('lights the line a link asked for, keeps it in Show more, and leads back to the newest', () => {
+    const m = box({ line: 'fc-cm1', windowed: true, next: 'points-points:cm2:void' })
     expect(m).toContain('<li id="act-fc-cm1" title="cm1 · cm2 · cm3" class="on" aria-current="true">')
     expect(m.match(/class="on"/g)).toHaveLength(1)
+    expect(m).toContain('href="/app/campaigns/c1?line=fc-cm1&amp;before=points-points%3Acm2%3Avoid">Show more</a>')
+    expect(m).toContain('<div class="btns top"><a class="btn g s" href="/app/campaigns/c1">Newest</a></div>')
   })
 
-  it('says nothing has happened yet', () => {
+  it('says nothing has happened yet, or nothing older on a later page', () => {
     const m = box({ lines: [] })
     expect(m).toContain('<p class="hist-none">Nothing yet. Impressions, opens, claims, shares and rewards show here as they are recorded.</p>')
     expect(m).not.toContain('<ul')
+    expect(box({ lines: [], windowed: true })).toContain('<p class="hist-none">Nothing older than this.</p>')
   })
 })
 

@@ -1,48 +1,35 @@
 import { Box, LinkButton } from '@/components/og'
-import { lineAnchor, MAX_LINES, PAGE, type ActivityLine } from '@/lib/activity'
+import { lineAnchor, type CampaignActivity } from '@/lib/activity'
 import { ACTIVITY as A } from '@/lib/copy-activity'
+import { ActivityList } from './ActivityList'
 import { ScrollHere } from './ScrollHere'
 
 // The campaign page's Recent activity (Prompt 8): every recorded event, one line each, newest first, the ids behind a
-// line only in its tooltip. Show more asks the page for 30 more and keeps the scroll; a link to one line (Global's held
-// rewards) lights it and scrolls to it. A Viewer sees it all; nothing here changes anything.
+// line only in its tooltip. A page that starts below the newest line (a link to one line from Global's held rewards,
+// or a later page reached without script) leads back with Newest; a linked line is lit and scrolled to. A Viewer sees
+// it all; nothing here changes anything.
 export function ActivityBox({
   campaignId,
   market,
   lines,
-  more,
-  limit,
+  next,
   line,
-}: {
-  campaignId: string
-  market: string
-  lines: readonly ActivityLine[]
-  more: boolean
-  limit: number
-  line: string | null
-}) {
+  windowed,
+}: CampaignActivity & { campaignId: string; market: string }) {
   return (
     <Box title={A.title} sub={A.sub(market)} id="activity">
-      {lines.length ? (
-        <ul className="hist">
-          {lines.map((l) => {
-            const on = l.key === line
-            return (
-              <li key={l.key} id={lineAnchor(l.key)} title={l.title} className={on ? 'on' : undefined} aria-current={on ? 'true' : undefined}>
-                {l.text}
-              </li>
-            )
-          })}
-        </ul>
-      ) : (
-        <p className="hist-none">{A.empty}</p>
-      )}
-      {more && limit < MAX_LINES && (
-        <div className="btns">
-          <LinkButton variant="ghost" size="s" href={`/app/campaigns/${campaignId}?activity=${limit + PAGE}`} scroll={false}>
-            {A.more}
+      {windowed && (
+        <div className="btns top">
+          <LinkButton variant="ghost" size="s" href={`/app/campaigns/${campaignId}`} scroll={false}>
+            {A.newest}
           </LinkButton>
         </div>
+      )}
+      {lines.length ? (
+        // Keyed by where the page starts, so a new page (Newest, another link) starts its list afresh.
+        <ActivityList key={`${line ?? ''}|${lines[0].key}`} campaignId={campaignId} lines={lines} next={next} line={line} />
+      ) : (
+        <p className="hist-none">{windowed ? A.noOlder : A.empty}</p>
       )}
       {line && <ScrollHere id={lineAnchor(line)} />}
     </Box>

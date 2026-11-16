@@ -64,3 +64,10 @@ it("lights the activity line a link asked for, spaces Show more under a list, an
   // Keyboard focus on a row shows the ring inside the box.
   expect(css).toContain('.shr summary:focus-visible{outline-offset:-2px')
 })
+it('draws a form button as a link, Newest over the activity list, and a Show more on its way dimmed', () => {
+  expect(css).toContain('.linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--blu)')
+  expect(css).toContain('.linkbtn:disabled{opacity:.6')
+  expect(css).toContain('form.enter{display:inline;margin:0}')
+  expect(css).toContain('.box > .btns.top{margin:0 0 10px}')
+  expect(css).toContain('.btn[aria-disabled=true]{opacity:.6')
+})

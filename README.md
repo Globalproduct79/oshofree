@@ -208,7 +208,10 @@ then make sure the daily job is in cron:
 - `npx prisma migrate deploy` applies new migrations. Slice 2 adds six: `20261113230000_slice2`,
   `20261114020000_revision_cpm`, `20261114100000_claim_code_per_campaign`, `20261114120000_reward_lookups`,
   `20261114140000_system_audit_actor` and `20261114160000_invoice_country`. `20261115090000_campaign_created_by`
-  then records who created each campaign; campaigns from before it name no creator. Never run the seed in production.
+  then records who created each campaign; campaigns from before it name no creator.
+  `20261115100000_channel_event_campaign_type_at` adds the `ChannelEvent (campaignId, type, at)` index Recent activity
+  pages and walks impressions by (a plain `CREATE INDEX`: on a large events table, expect it to lock writes to
+  `ChannelEvent` while it builds). Never run the seed in production.
 - `npm run bootstrap` creates what production needs before anyone signs in, and only what is missing:
   the Global user, the Phoenix channel (live in all five markets), Phoenix's rate card, FX and 55 % share
   (the seed's reference figures, from `src/lib/reference-rates.ts`), the three fraud rules and the aggregator

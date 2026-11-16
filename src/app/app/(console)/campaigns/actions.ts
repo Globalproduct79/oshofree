@@ -2,6 +2,7 @@
 
 import type { Campaign, Workspace } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
+import { campaignActivity, isLineKey, type ActivityLine } from '@/lib/activity'
 import { audit } from '@/lib/audit'
 import {
   ageGated, campaignDates, checkCampaign, isRealDay, localMidnight, REVISION_TERMS, ruleContext, type CampaignInput,
@@ -11,6 +12,7 @@ import {
   changeWithoutReview, createCampaign, editOffer, endCampaign, isCreditLimit, pauseCampaign, resumeCampaign, RUNNING,
   submitCampaign, type CampaignEdit, type ChangeWithoutReview, type OfferFields,
 } from '@/lib/campaigns'
+import { ACTIVITY } from '@/lib/copy-activity'
 import { CAMPAIGN } from '@/lib/copy-campaign'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { MONEY } from '@/lib/copy-money'
@@ -265,4 +267,16 @@ export async function endCampaignAction(id: unknown): Promise<Done | Failure> {
 export async function simulateDayAction(): Promise<SimulateDayResult> {
   const m = await requireMember('view')
   return simulateDayAs(m.user.id)
+}
+
+// Recent activity's Show more: the page below `before` (the last line shown) on a campaign of the session's workspace.
+// Anyone who can see the page may ask, a Viewer included. A key the campaign does not have is refused, never read as
+// "from the top", so a stale page cannot repeat what it shows.
+export async function moreActivityAction(id: unknown, before: unknown): Promise<{ lines: ActivityLine[]; next: string | null } | Failure> {
+  const m = await requireMember('view')
+  const c = await ownCampaign(m, id)
+  if (!c || !isLineKey(before)) return { error: ACTIVITY.moreFailed }
+  const page = await campaignActivity(c, { before })
+  if (!page.windowed) return { error: ACTIVITY.moreFailed }
+  return { lines: page.lines, next: page.next }
 }

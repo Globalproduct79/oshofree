@@ -12,6 +12,10 @@ export const ACTIVITY = {
   sub: (market: string) => `Every event on this campaign, newest first, in ${market} time. Hover a line for its record id.`,
   empty: 'Nothing yet. Impressions, opens, claims, shares and rewards show here as they are recorded.',
   more: 'Show more',
+  // A page that starts below the newest line (a linked line, or a later page) leads back to the top.
+  newest: 'Newest',
+  noOlder: 'Nothing older than this.',
+  moreFailed: "Older activity didn't load. Try Show more again.",
   // "{what} · {when}"
   line: (what: string, when: string) => `${what} · ${when}`,
   // An hour's impressions: "14 Nov, 10:00–11:00".
@@ -42,6 +46,7 @@ export const ACTIVITY = {
   phoenixUser: (tail: string) => `Phoenix user ••${tail}`,
   someone: 'a sharer',
   channels: { phoenix: 'Phoenix', boomplay: 'Boomplay' } as Record<string, string>,
+  channelList: (names: string[]) => names.join(' and '),
   via: {
     whatsapp: 'WhatsApp',
     sms: 'SMS',

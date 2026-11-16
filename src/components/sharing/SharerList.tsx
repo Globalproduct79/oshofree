@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Box, LinkButton } from '@/components/og'
-import { MAX_LINES, PAGE, type SharerRow } from '@/lib/activity'
+import { MAX_SHARERS, PAGE, type SharerRow } from '@/lib/activity'
 import { SHARERS as S } from '@/lib/copy-activity'
 
 // The Sharing page's Sharers (Prompt 8): one row per sharer per campaign, newest first. A row opens (a native
@@ -42,7 +42,7 @@ export function SharerList({ rows, more, limit }: { rows: readonly SharerRow[]; 
       ) : (
         <p className="hist-none">{S.empty}</p>
       )}
-      {more && limit < MAX_LINES && (
+      {more && limit < MAX_SHARERS && (
         <div className="btns">
           <LinkButton variant="ghost" size="s" href={`/app/sharing?sharers=${limit + PAGE}`} scroll={false}>
             {S.more}

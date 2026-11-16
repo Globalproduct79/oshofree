@@ -1,10 +1,12 @@
+import { readdirSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import type { PayoutStatus, Prisma, RedeemMethod } from '@prisma/client'
 import { describe, expect, it } from 'vitest'
 import { GET as openLanding } from '@/app/o/[code]/route'
 import { POST as claimLanding } from '@/app/o/[code]/claim/route'
 import { POST as detailsLanding } from '@/app/o/[code]/details/route'
 import { GET as shareLanding } from '@/app/o/[code]/share/route'
-import { campaignActivity, lineAnchor, linesWanted, PAGE, workspaceSharers } from '@/lib/activity'
+import { campaignActivity, isLineKey, lineAnchor, sharersWanted, workspaceSharers } from '@/lib/activity'
 import { claimOffer } from '@/lib/claims'
 import { db } from '@/lib/db'
 import { ingestEvents } from '@/lib/events'
@@ -111,8 +113,8 @@ describe('campaignActivity', () => {
   it('is one line per event, newest first, in the market’s time, with the ids behind each line as its title', async () => {
     const w = await world()
     const s = await story(w)
-    const { lines, more, limit, line } = await campaignActivity(w.campaign)
-    expect({ more, limit, line }).toEqual({ more: false, limit: PAGE, line: null })
+    const { lines, next, line, windowed } = await campaignActivity(w.campaign)
+    expect({ next, line, windowed }).toEqual({ next: null, line: null, windowed: false })
     expect(texts(lines)).toEqual([
       '10 points for +234 80• ••• 4567 · 13 Nov, 11:25',
       '₦50 airtime for +234 80• ••• 4567 queued · 13 Nov, 11:25',
@@ -139,7 +141,7 @@ describe('campaignActivity', () => {
     expect(title(`open-${s.open.id}`)).toBe(s.open.id)
     expect(title(`code-${s.lone.id}`)).toBe(s.lone.id)
     // An hour's impressions name the hour their dedupe keys end with.
-    expect(lines.at(-1)).toMatchObject({ key: `imp-${w.phoenix.id}-2026111309`, title: 'Impression:2026-11-13T09:00:00.000Z' })
+    expect(lines.at(-1)).toMatchObject({ key: 'imp-2026111309', title: 'Impression:2026-11-13T09:00:00.000Z' })
   })
 
   it('never shows a number: phones are masked, codes are PHX-••••', async () => {
@@ -164,34 +166,76 @@ describe('campaignActivity', () => {
     expect((await campaignActivity(w.campaign)).lines).toEqual([])
   })
 
-  it('pages by 30, newest first, and says when there is more', async () => {
+  it('pages by 30 from a cursor, newest first: each page starts below the last line of the one before', async () => {
     const w = await world()
     for (let i = 0; i < 65; i++) await event(w, 'Open', new Date(Date.UTC(2026, 10, 13, 8, i)).toISOString())
     const first = await campaignActivity(w.campaign)
     expect(first.lines).toHaveLength(30)
-    expect(first.more).toBe(true)
+    expect(first.windowed).toBe(false)
     expect(first.lines[0].text).toBe('A Phoenix user opened the offer · 13 Nov, 10:04')
-    const second = await campaignActivity(w.campaign, { limit: 60 })
-    expect(second.lines.slice(0, 30)).toEqual(first.lines)
-    expect(second).toMatchObject({ more: true, limit: 60 })
-    const third = await campaignActivity(w.campaign, { limit: 90 })
-    expect(third.lines).toHaveLength(65)
-    expect(third.more).toBe(false)
+    expect(first.next).toBe(first.lines[29].key)
+    const second = await campaignActivity(w.campaign, { before: first.next })
+    expect(second).toMatchObject({ windowed: true, line: null })
+    expect(second.lines).toHaveLength(30)
+    expect(second.lines[0].text).toBe('A Phoenix user opened the offer · 13 Nov, 09:34')
+    const third = await campaignActivity(w.campaign, { before: second.next })
+    expect(third.lines).toHaveLength(5)
+    expect(third.next).toBeNull()
     expect(third.lines.at(-1)!.text).toBe('A Phoenix user opened the offer · 13 Nov, 09:00')
+    // Every line once, in order.
+    const keys = [...first.lines, ...second.lines, ...third.lines].map((l) => l.key)
+    expect(new Set(keys).size).toBe(65)
+    // A key the campaign does not have starts at the top.
+    expect(await campaignActivity(w.campaign, { before: 'open-nope' })).toMatchObject({ windowed: false, lines: first.lines })
   })
 
-  it('grows to the page holding a line a link asks for, and ignores a line it does not have', async () => {
+  it('walks impressions an hour at a time across pages, and never repeats or drops an hour a cursor sits in', async () => {
     const w = await world()
-    const sharer = await link(w, { sharerSessionId: 'anon-9z9z', via: 'whatsapp', createdAt: at('2026-11-12T08:00:00Z') })
-    const claim = await linkEvent(sharer.id, 'Claim', '2026-11-12T09:00:00Z')
-    const held = await payout(w, sharer.id, claim.id, '2026-11-12T09:00:00Z', 'held', { session: 'anon-9z9z', reason: 'no_phone' })
-    for (let i = 0; i < 40; i++) await event(w, 'Open', new Date(Date.UTC(2026, 10, 13, 8, i)).toISOString())
+    // 40 hours with impressions (two in each), the newest 13 Nov 23:xx UTC.
+    for (let h = 0; h < 40; h++) {
+      const hour = Date.UTC(2026, 10, 13, 23) - h * 3_600_000
+      await event(w, 'Impression', new Date(hour + 10 * 60_000).toISOString())
+      await event(w, 'Impression', new Date(hour + 50 * 60_000).toISOString())
+    }
+    // An open inside the newest hour, between its two impressions.
+    const open = await event(w, 'Open', '2026-11-13T23:30:00Z')
+    const first = await campaignActivity(w.campaign)
+    expect(texts(first.lines).slice(0, 3)).toEqual([
+      '2 impressions from Phoenix · 14 Nov, 00:00–01:00',
+      'A Phoenix user opened the offer · 14 Nov, 00:30',
+      '2 impressions from Phoenix · 13 Nov, 23:00–00:00',
+    ])
+    const second = await campaignActivity(w.campaign, { before: first.next })
+    const all = [...first.lines, ...second.lines]
+    expect(all).toHaveLength(41)
+    expect(new Set(all.map((l) => l.key)).size).toBe(41)
+    expect(second.next).toBeNull()
+    expect(all.at(-1)!.text).toBe('2 impressions from Phoenix · 12 Nov, 09:00–10:00')
+    // Below the open: its hour (whose newest impression is later) was shown above it, so it is not here again.
+    const belowOpen = await campaignActivity(w.campaign, { before: `open-${open.id}` })
+    expect(belowOpen.lines[0].text).toBe('2 impressions from Phoenix · 13 Nov, 23:00–00:00')
+    // Below the newest hour: the open, then the hours before.
+    const belowHour = await campaignActivity(w.campaign, { before: first.lines[0].key })
+    expect(texts(belowHour.lines).slice(0, 2)).toEqual(['A Phoenix user opened the offer · 14 Nov, 00:30', '2 impressions from Phoenix · 13 Nov, 23:00–00:00'])
+  })
+
+  it('opens at a line a link asks for, however far back, and ignores a line it does not have', async () => {
+    const w = await world()
+    const sharer = await link(w, { sharerSessionId: 'anon-9z9z', via: 'whatsapp', createdAt: at('2026-11-10T08:00:00Z') })
+    const claim = await linkEvent(sharer.id, 'Claim', '2026-11-10T09:00:00Z')
+    const held = await payout(w, sharer.id, claim.id, '2026-11-10T09:00:00Z', 'held', { session: 'anon-9z9z', reason: 'no_phone' })
+    for (let i = 0; i < 100; i++) await event(w, 'Open', new Date(Date.UTC(2026, 10, 13, 6, 0, i)).toISOString())
     const found = await campaignActivity(w.campaign, { line: `reward-${held.id}` })
-    expect(found).toMatchObject({ limit: 60, line: `reward-${held.id}`, more: false })
-    expect(found.lines.find((l) => l.key === `reward-${held.id}`)!.text).toBe(
-      '₦50 airtime for Phoenix user ••9z9z held — No phone number · 12 Nov, 10:00',
-    )
-    expect(await campaignActivity(w.campaign, { line: 'reward-nope' })).toMatchObject({ limit: 30, line: null, more: true })
+    expect(found).toMatchObject({ line: `reward-${held.id}`, windowed: true, next: null })
+    expect(texts(found.lines)).toEqual([
+      '₦50 airtime for Phoenix user ••9z9z held — No phone number · 10 Nov, 10:00',
+      'A friend of Phoenix user ••9z9z took claim code PHX-•••• · 10 Nov, 10:00',
+      'Phoenix user ••9z9z shared via WhatsApp · 10 Nov, 09:00',
+    ])
+    const top = await campaignActivity(w.campaign, { line: 'reward-nope' })
+    expect(top).toMatchObject({ line: null, windowed: false })
+    expect(top.lines).toHaveLength(30)
+    expect(top.next).not.toBeNull()
   })
 
   it("says each reward's state and why it was not queued, and points taken back", async () => {
@@ -278,17 +322,19 @@ describe('campaignActivity', () => {
   })
 })
 
-describe('linesWanted and lineAnchor', () => {
-  it('asks for whole pages of 30, one page at least', () => {
-    expect([undefined, '', 'x', '-5', '0', '29'].map((v) => linesWanted(v))).toEqual([30, 30, 30, 30, 30, 30])
-    expect(linesWanted('60')).toBe(60)
-    expect(linesWanted('61')).toBe(90)
-    expect(linesWanted(['90', '30'])).toBe(90)
-    expect(linesWanted('1e9')).toBe(3000)
+describe('sharersWanted, lineAnchor and isLineKey', () => {
+  it('asks for whole pages of 30 sharers, one page at least', () => {
+    expect([undefined, '', 'x', '-5', '0', '29'].map((v) => sharersWanted(v))).toEqual([30, 30, 30, 30, 30, 30])
+    expect(sharersWanted('60')).toBe(60)
+    expect(sharersWanted('61')).toBe(90)
+    expect(sharersWanted(['90', '30'])).toBe(90)
+    expect(sharersWanted('1e9')).toBe(3000)
   })
-  it('makes an element id of any key', () => {
+  it('makes an element id of any key, and takes only a kind and an id from a URL', () => {
     expect(lineAnchor('reward-cm123')).toBe('act-reward-cm123')
     expect(lineAnchor('points-points:cm1:void')).toBe('act-points-points-cm1-void')
+    expect(['reward-cm1', 'points-points:cm1:void', 'imp-2026111309'].every(isLineKey)).toBe(true)
+    expect([undefined, '', "x' OR 1=1", 'a'.repeat(161), ['reward-cm1']].some(isLineKey)).toBe(false)
   })
 })
 
@@ -329,5 +375,23 @@ describe('workspaceSharers', () => {
     expect(all.more).toBe(false)
     const empty = await db.workspace.create({ data: { name: 'Empty', type: 'Brand', country: 'NG', status: 'approved' } })
     expect(await workspaceSharers(empty.id)).toEqual({ rows: [], more: false })
+  })
+})
+
+describe('the channel_event_campaign_type_at migration', () => {
+  const MIGRATIONS = path.join(process.cwd(), 'prisma', 'migrations')
+  const all = readdirSync(MIGRATIONS).filter((d) => /^\d{14}_/.test(d)).sort()
+  const dir = all.find((d) => d.endsWith('_channel_event_campaign_type_at'))
+
+  it('is the newest migration and only adds the index Recent activity pages by', () => {
+    expect(all.at(-1)).toBe(dir)
+    const statements = readFileSync(path.join(MIGRATIONS, dir!, 'migration.sql'), 'utf8').replace(/--.*$/gm, '').replace(/\s+/g, ' ').trim()
+    expect(statements).toBe('CREATE INDEX "ChannelEvent_campaignId_type_at_idx" ON "ChannelEvent"("campaignId", "type", "at");')
+    expect(readFileSync(path.join(process.cwd(), 'prisma', 'schema.prisma'), 'utf8')).toContain('@@index([campaignId, type, at])')
+  })
+
+  it('is applied to the database the tests run on', async () => {
+    const rows = await db.$queryRaw<{ indexname: string }[]>`SELECT indexname FROM pg_indexes WHERE tablename = 'ChannelEvent'`
+    expect(rows.map((r) => r.indexname)).toContain('ChannelEvent_campaignId_type_at_idx')
   })
 })

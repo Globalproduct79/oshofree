@@ -354,6 +354,8 @@ model ChannelEvent {
 
   @@unique([channelId, dedupeKey])
   @@index([campaignId, type])
+  // Recent activity: a campaign's events of a type, newest first from a cursor.
+  @@index([campaignId, type, at])
 }
 
 model ChannelBatch {

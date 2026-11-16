@@ -1,7 +1,7 @@
 import type { CampaignStatus, Prisma, RejectReason } from '@prisma/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { changeWithoutReviewAction, endCampaignAction } from '@/app/app/(console)/campaigns/actions'
+import { changeWithoutReviewAction, endCampaignAction, moreActivityAction } from '@/app/app/(console)/campaigns/actions'
 import CampaignPage from '@/app/app/(console)/campaigns/[id]/page'
 import { saveChanges } from '@/components/campaign/ChangePanel'
 import { endNow } from '@/components/campaign/EndCampaignModal'
@@ -717,33 +717,56 @@ describe('Recent activity', () => {
     expect(markup).toContain(`<li id="act-reward-${held.id}" title="${held.id}">`)
   })
 
-  it('shows 30 lines, then 30 more for each Show more', async () => {
-    const { c, phoenix } = await journey()
-    await db.channelEvent.createMany({
-      data: Array.from({ length: 70 }, (_, i) => ({ campaignId: c.id, channelId: phoenix.id, type: 'Open' as const, sessionId: `s${i}`, at: new Date(Date.UTC(2026, 10, 14, 6, i % 60, Math.floor(i / 60))), dedupeKey: `o${i}` })),
+  const opens = (c: { id: string }, phoenix: { id: string }, n: number) =>
+    db.channelEvent.createMany({
+      data: Array.from({ length: n }, (_, i) => ({ campaignId: c.id, channelId: phoenix.id, type: 'Open' as const, sessionId: `s${i}`, at: new Date(Date.UTC(2026, 10, 14, 6, i % 60, Math.floor(i / 60))), dedupeKey: `o${i}` })),
     })
+  const keys = (box: string) => [...box.matchAll(/<li id="act-([^"]+)"/g)].map((m) => m[1])
+
+  it('shows 30 lines; Show more is the next 30 below the last, as a page of its own without script', async () => {
+    const { c, phoenix } = await journey()
+    await opens(c, phoenix, 70)
     const first = activity((await page(c.id)).markup)
     expect(first.match(/<li /g)).toHaveLength(30)
-    expect(first).toMatch(/<a class="btn g s" href="\/app\/campaigns\/[^"?]+\?activity=60"/)
-    const second = activity((await page(c.id, { activity: '60' })).markup)
-    expect(second.match(/<li /g)).toHaveLength(60)
-    expect(second).toContain('?activity=90')
-    const all = activity((await page(c.id, { activity: '90' })).markup)
-    expect(all.match(/<li /g)).toHaveLength(74)
-    expect(all).not.toContain('Show more')
+    expect(first).not.toContain('Newest')
+    const last = keys(first).at(-1)!
+    expect(first).toContain(`href="/app/campaigns/${c.id}?before=${last}">Show more</a>`)
+    const second = activity((await page(c.id, { before: last })).markup)
+    expect(second.match(/<li /g)).toHaveLength(30)
+    expect(keys(second).some((k) => keys(first).includes(k))).toBe(false)
+    expect(second).toContain(`<a class="btn g s" href="/app/campaigns/${c.id}">Newest</a>`)
+    const third = activity((await page(c.id, { before: keys(second).at(-1)! })).markup)
+    expect(third.match(/<li /g)).toHaveLength(14)
+    expect(third).not.toContain('Show more')
   })
 
-  it('lights the line a held reward links to, a page down if need be', async () => {
+  it('opens at the line a held reward links to, lit, however many lines are newer', async () => {
     const { c, phoenix, held } = await journey()
-    await db.channelEvent.createMany({
-      data: Array.from({ length: 40 }, (_, i) => ({ campaignId: c.id, channelId: phoenix.id, type: 'Open' as const, sessionId: `s${i}`, at: new Date(Date.UTC(2026, 10, 14, 6, i)), dedupeKey: `o${i}` })),
-    })
+    await opens(c, phoenix, 70)
     const box = activity((await page(c.id, { line: `reward-${held.id}` })).markup)
-    expect(box.match(/<li /g)).toHaveLength(44)
-    expect(box).toContain(`<li id="act-reward-${held.id}" title="${held.id}" class="on" aria-current="true">`)
+    expect(box).toMatch(new RegExp(`^.*?<ul class="hist"><li id="act-reward-${held.id}" title="${held.id}" class="on" aria-current="true">`))
+    expect(box.match(/<li /g)).toHaveLength(4)
+    expect(box).toContain('Newest')
     // A malformed line is ignored, not looked up.
     const plain = activity((await page(c.id, { line: "x' OR 1=1" })).markup)
     expect(plain.match(/<li /g)).toHaveLength(30)
     expect(plain).not.toContain('class="on"')
+  })
+
+  it('Show more fetches the next page for anyone who can see the campaign, and nothing for a key it does not have', async () => {
+    const { c, phoenix, ws } = await journey('Viewer')
+    await opens(c, phoenix, 40)
+    const first = keys(activity((await page(c.id)).markup))
+    const more = await moreActivityAction(c.id, first.at(-1))
+    if ('error' in more) throw new Error(more.error)
+    expect(more.lines).toHaveLength(14)
+    expect(more.next).toBeNull()
+    expect(more.lines.some((l) => first.includes(l.key))).toBe(false)
+    expect(await moreActivityAction(c.id, 'open-nope')).toEqual({ error: "Older activity didn't load. Try Show more again." })
+    expect(await moreActivityAction(c.id, "x' OR 1=1")).toHaveProperty('error')
+    const other = await db.workspace.create({ data: { name: 'Rival', type: 'Brand', country: 'NG', status: 'approved' } })
+    const theirs = await mkCampaign(other.id, 'live')
+    expect(await moreActivityAction(theirs.id, first.at(-1))).toHaveProperty('error')
+    expect(ws.id).toBeTruthy()
   })
 })

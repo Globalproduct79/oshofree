@@ -3,7 +3,7 @@ import { SimulateDayButton } from '@/components/demo/SimulateDayButton'
 import { Box, DataTable, EstimatePanel, HBarList, MetricCard, Steps, TokenChip } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { SharerList } from '@/components/sharing/SharerList'
-import { linesWanted, workspaceSharers } from '@/lib/activity'
+import { sharersWanted, workspaceSharers } from '@/lib/activity'
 import { SHARING } from '@/lib/copy-sharing'
 import { db } from '@/lib/db'
 import { demoControlsOn } from '@/lib/demo/controls'
@@ -22,7 +22,7 @@ const S = SHARING
 export default async function SharingPage({ searchParams }: { searchParams?: Promise<{ sharers?: string | string[] }> }) {
   const search = (await searchParams) ?? {}
   const { user, workspace: ws, role } = await requireMember('view')
-  const limit = linesWanted(search.sharers)
+  const limit = sharersWanted(search.sharers)
   const [s, points, wentLive, sharers] = await Promise.all([
     workspaceSharing(ws.id),
     pointsIssued(ws.id),

@@ -1,6 +1,7 @@
 import { Prisma, type Campaign, type PayoutStatus, type RedeemMethod, type ShareVia } from '@prisma/client'
 import { ACTIVITY as A, SHARERS as S } from '@/lib/copy-activity'
 import { db } from '@/lib/db'
+import type { ActivityLine } from '@/lib/activity-keys'
 import { fdt, hm, localAmount, maskPhone } from '@/lib/format'
 import { MARKETS, type Country } from '@/lib/markets'
 
@@ -21,15 +22,19 @@ import { MARKETS, type Country } from '@/lib/markets'
 //   points        PointsLedger, a take-back included
 // Phoenix's share_open / share_claim and share events are the channel's own stats (spec §6.14.2) and are not lines.
 // Phones are masked here and nowhere later; a line's ids are only its tooltip.
+//
+// Pages are keyset, not offset: a page is the PAGE lines below a cursor (a line's key, found again from its row), and
+// every source reads at most PAGE + 1 rows from the cursor, newest first (ChannelEvent by its (campaign, type, at)
+// index; impressions by walking back an hour at a time), so a page costs the same however much a campaign has recorded.
 
 export const PAGE = 30
-// The most lines one page asks for; "Show more" grows by PAGE up to it.
-export const MAX_LINES = 3000
+// The most sharers the Sharing page lists at once; its Show more grows by PAGE up to it.
+export const MAX_SHARERS = 3000
 
 export type Kind =
   | 'impressions' | 'open' | 'claim' | 'follow' | 'pageOpen' | 'share' | 'ownLink' | 'friendOpen' | 'friendClaim' | 'reward' | 'points'
 
-export type ActivityLine = { key: string; text: string; title: string }
+export { isLineKey, lineAnchor, type ActivityLine } from '@/lib/activity-keys'
 
 type Row = {
   kind: Kind
@@ -41,6 +46,9 @@ type Row = {
   channelId: string | null
   n: number | null
   hour: Date | null
+  // An impressions line's count and channels (countHours).
+  count?: number | null
+  channels?: string[] | null
   via: ShareVia | null
   sharer: string | null
   sharerPhone: string | null
@@ -81,136 +89,209 @@ const codeOf = (e: string, campaign: string, channel: string, session: string) =
 
 type Ids = Prisma.Sql
 
-function impressions(ids: Ids): Prisma.Sql {
-  const hour = raw(`date_trunc('hour', e."at")`)
-  return sql`SELECT ${select({
-    kind: sql`'impressions'`, at: sql`max(e."at")`, rank: sql`0`,
-    key: sql`'imp-' || e."channelId" || '-' || to_char(${hour}, 'YYYYMMDDHH24')`,
-    // The hour as ingestion writes it at the end of the events' dedupe keys.
-    ids: sql`'Impression:' || to_char(${hour}, 'YYYY-MM-DD"T"HH24":00:00.000Z"')`,
-    campaignId: sql`e."campaignId"`, channelId: sql`e."channelId"`, n: sql`count(*)`, hour,
-  })}
-  FROM "ChannelEvent" e WHERE e."campaignId" IN (${ids}) AND e."type" = 'Impression'
-  GROUP BY e."campaignId", e."channelId", ${hour}`
+// One source of lines: what it selects, where from, and the line's moment, rank and key as expressions, so a page can
+// bound the branch on its own (cursor, ORDER BY, LIMIT) and a key can be found again by its row id.
+type Branch = {
+  // The key's prefix ("reward" in reward-<id>) and the id column after it.
+  prefix: string
+  id: Prisma.Sql
+  at: Prisma.Sql
+  // A constant rank stays out of the branch's ORDER BY (a bare integer there would name a column).
+  rank: number | Prisma.Sql
+  key: Prisma.Sql
+  cols: Cols
+  from: Prisma.Sql
+  where: Prisma.Sql
 }
 
-function channelEvents(ids: Ids): Prisma.Sql {
-  return sql`SELECT ${select({
-    kind: sql`CASE e."type" WHEN 'Open' THEN 'open' ELSE 'claim' END`, at: sql`e."at"`,
-    rank: sql`CASE e."type" WHEN 'Open' THEN 1 ELSE 2 END`, key: sql`lower(e."type"::text) || '-' || e."id"`,
-    ids: sql`concat_ws(' · ', e."id", cc."id")`, campaignId: sql`e."campaignId"`, channelId: sql`e."channelId"`,
-  })}
-  FROM "ChannelEvent" e ${codeOf('e', 'e."campaignId"', 'e."channelId"', 'e."sessionId"')}
-  WHERE e."campaignId" IN (${ids}) AND e."type" IN ('Open', 'Claim')`
+// Where a page starts: below a line (Show more, ?before=) or at it (a link to one line, ?line=).
+type Cursor = { at: Date; rank: number; key: string; inclusive: boolean }
+
+const rankSql = (b: Branch) => (typeof b.rank === 'number' ? raw(String(b.rank)) : b.rank)
+
+// The branch's rows; with a page, only the n before the cursor, newest first (an index scan that stops for
+// ChannelEvent, a top-n sort for the small tables); with `only`, the one row with that id.
+function branchSql(b: Branch, page?: { n: number; cursor: Cursor | null }, only?: string): Prisma.Sql {
+  const rank = rankSql(b)
+  const where = [b.where]
+  if (only !== undefined) where.push(sql`${b.id} = ${only}`)
+  const c = page?.cursor
+  if (c) {
+    where.push(sql`${b.at} <= ${c.at}`)
+    where.push(c.inclusive
+      ? sql`(${b.at}, ${rank}, ${b.key}) <= (${c.at}, ${c.rank}, ${c.key})`
+      : sql`(${b.at}, ${rank}, ${b.key}) < (${c.at}, ${c.rank}, ${c.key})`)
+  }
+  const body = sql`SELECT ${select({ ...b.cols, at: b.at, rank, key: b.key })} ${b.from} WHERE ${Prisma.join(where, ' AND ')}`
+  if (!page) return body
+  const order = typeof b.rank === 'number' ? sql`${b.at} DESC, ${b.key} DESC` : sql`${b.at} DESC, ${rank} DESC, ${b.key} DESC`
+  return sql`(${body} ORDER BY ${order} LIMIT ${page.n})`
 }
+
+const channelEvents = (type: 'Open' | 'Claim') => (ids: Ids): Branch => ({
+  prefix: type === 'Open' ? 'open' : 'claim',
+  id: sql`e."id"`,
+  at: sql`e."at"`,
+  rank: type === 'Open' ? 1 : 2,
+  key: type === 'Open' ? sql`'open-' || e."id"` : sql`'claim-' || e."id"`,
+  cols: {
+    kind: type === 'Open' ? sql`'open'` : sql`'claim'`, ids: sql`concat_ws(' · ', e."id", cc."id")`,
+    campaignId: sql`e."campaignId"`, channelId: sql`e."channelId"`,
+  },
+  from: sql`FROM "ChannelEvent" e ${codeOf('e', 'e."campaignId"', 'e."channelId"', 'e."sessionId"')}`,
+  where: type === 'Open'
+    ? sql`e."campaignId" IN (${ids}) AND e."type" = 'Open'`
+    : sql`e."campaignId" IN (${ids}) AND e."type" = 'Claim'`,
+})
 
 // Codes with no claim event that day and no offer-page claim by that visitor: the code is the only record.
-function codes(ids: Ids): Prisma.Sql {
-  return sql`SELECT ${select({
-    kind: sql`'claim'`, at: sql`cc."createdAt"`, rank: sql`2`, key: sql`'code-' || cc."id"`, ids: sql`cc."id"`,
-    campaignId: sql`cc."campaignId"`, channelId: sql`cc."channelId"`,
-  })}
-  FROM "ClaimCode" cc
-  WHERE cc."campaignId" IN (${ids})
+const codes = (ids: Ids): Branch => ({
+  prefix: 'code', id: sql`cc."id"`, at: sql`cc."createdAt"`, rank: 2, key: sql`'code-' || cc."id"`,
+  cols: { kind: sql`'claim'`, ids: sql`cc."id"`, campaignId: sql`cc."campaignId"`, channelId: sql`cc."channelId"` },
+  from: sql`FROM "ClaimCode" cc`,
+  where: sql`cc."campaignId" IN (${ids})
     AND NOT EXISTS (SELECT 1 FROM "ChannelEvent" e WHERE e."campaignId" = cc."campaignId" AND e."type" = 'Claim'
       AND e."channelId" = cc."channelId" AND e."sessionId" = cc."sessionId" AND date_trunc('day', e."at") = cc."day")
     AND NOT EXISTS (SELECT 1 FROM "LinkEvent" v JOIN "ShareLink" vl ON vl."id" = v."linkId"
-      WHERE vl."campaignId" = cc."campaignId" AND v."type" = 'Claim' AND v."visitorId" = cc."sessionId")`
-}
+      WHERE vl."campaignId" = cc."campaignId" AND v."type" = 'Claim' AND v."visitorId" = cc."sessionId")`,
+})
 
 // The campaign's own link: Phoenix's click-through (or a code taken on its page) and opens of its page.
-function rootEvents(ids: Ids): Prisma.Sql {
-  return sql`SELECT ${select({
-    kind: sql`CASE e."type" WHEN 'Claim' THEN 'follow' ELSE 'pageOpen' END`, at: sql`e."at"`,
-    rank: sql`CASE e."type" WHEN 'Claim' THEN 2 ELSE 1 END`, key: sql`'root-' || e."id"`,
-    ids: sql`concat_ws(' · ', e."id", cc."id")`, campaignId: sql`l."campaignId"`, channelId: sql`l."channelId"`,
-  })}
-  FROM "LinkEvent" e JOIN "ShareLink" l ON l."id" = e."linkId"
-  ${codeOf('e', 'l."campaignId"', 'l."channelId"', 'e."visitorId"')}
-  WHERE l."campaignId" IN (${ids}) AND l."depth" = 0 AND (e."type" = 'Claim' OR (e."type" = 'Open' AND e."deduped" = false))`
-}
+const rootEvents = (ids: Ids): Branch => ({
+  prefix: 'root', id: sql`e."id"`, at: sql`e."at"`, rank: sql`CASE e."type" WHEN 'Claim' THEN 2 ELSE 1 END`,
+  key: sql`'root-' || e."id"`,
+  cols: {
+    kind: sql`CASE e."type" WHEN 'Claim' THEN 'follow' ELSE 'pageOpen' END`, ids: sql`concat_ws(' · ', e."id", cc."id")`,
+    campaignId: sql`l."campaignId"`, channelId: sql`l."channelId"`,
+  },
+  from: sql`FROM "LinkEvent" e JOIN "ShareLink" l ON l."id" = e."linkId"
+  ${codeOf('e', 'l."campaignId"', 'l."channelId"', 'e."visitorId"')}`,
+  where: sql`l."campaignId" IN (${ids}) AND l."depth" = 0 AND (e."type" = 'Claim' OR (e."type" = 'Open' AND e."deduped" = false))`,
+})
 
 // Sharers' links: one that went out on a medium is a share; a friend's own link not shared on yet is still a line.
-function links(ids: Ids): Prisma.Sql {
-  return sql`SELECT ${select({
+const links = (ids: Ids): Branch => ({
+  prefix: 'link', id: sql`l."id"`, at: sql`LEAST(l."createdAt", se."at", dt."at")`, rank: 3, key: sql`'link-' || l."id"`,
+  cols: {
     kind: sql`CASE WHEN l."via" IS NULL THEN 'ownLink' ELSE 'share' END`,
-    at: sql`LEAST(l."createdAt", se."at", dt."at")`, rank: sql`3`, key: sql`'link-' || l."id"`,
     ids: sql`concat_ws(' · ', l."id", se."id", dt."id")`, campaignId: sql`l."campaignId"`, channelId: sql`l."channelId"`,
     via: sql`l."via"`, sharer: linkSharer('l'), sharerPhone: sql`c."phone"`, sharerSession: linkSession('l'),
     parent: sql`CASE WHEN pa."sharerType" = 'Root' THEN NULL ELSE ${linkSharer('pa')} END`, parentPhone: sql`pc."phone"`,
     parentSession: sql`CASE WHEN pa."sharerType" = 'Root' THEN NULL ELSE ${linkSession('pa')} END`,
-  })}
-  FROM "ShareLink" l
+  },
+  from: sql`FROM "ShareLink" l
   LEFT JOIN "ShareLink" pa ON pa."id" = l."parentId"
   LEFT JOIN "Consumer" c ON c."id" = l."consumerId"
   LEFT JOIN "Consumer" pc ON pc."id" = pa."consumerId"
   LEFT JOIN (
-    SELECT DISTINCT ON ("campaignId", "channelId", "linkCode") "campaignId", "channelId", "linkCode", "at", "id"
+    -- Ingestion keeps a token's share event only on that token's channel and campaign, so the token alone joins it.
+    SELECT DISTINCT ON ("linkCode") "linkCode", "at", "id"
     FROM "ChannelEvent" WHERE "campaignId" IN (${ids}) AND "type" = 'Share' AND "linkCode" IS NOT NULL
-    ORDER BY "campaignId", "channelId", "linkCode", "at", "id"
-  ) se ON se."campaignId" = l."campaignId" AND se."channelId" = l."channelId" AND se."linkCode" = l."code"
+    ORDER BY "linkCode", "at", "id"
+  ) se ON se."linkCode" = l."code"
   LEFT JOIN (
     SELECT DISTINCT ON (d."linkId", d."visitorId") d."linkId", d."visitorId", d."at", d."id"
     FROM "LinkEvent" d JOIN "ShareLink" dl ON dl."id" = d."linkId"
     WHERE dl."campaignId" IN (${ids}) AND d."type" = 'DetailsLeft'
     ORDER BY d."linkId", d."visitorId", d."at", d."id"
-  ) dt ON l."sharerType" = 'Consumer' AND dt."linkId" = l."parentId" AND dt."visitorId" = l."sharerSessionId"
-  WHERE l."campaignId" IN (${ids}) AND l."sharerType" <> 'Root' AND (l."via" IS NOT NULL OR l."sharerType" = 'Consumer')`
-}
+  ) dt ON l."sharerType" = 'Consumer' AND dt."linkId" = l."parentId" AND dt."visitorId" = l."sharerSessionId"`,
+  where: sql`l."campaignId" IN (${ids}) AND l."sharerType" <> 'Root' AND (l."via" IS NOT NULL OR l."sharerType" = 'Consumer')`,
+})
 
-function friendOpens(ids: Ids): Prisma.Sql {
-  return sql`SELECT ${select({
-    kind: sql`'friendOpen'`, at: sql`e."at"`, rank: sql`4`, key: sql`'fo-' || e."id"`, ids: sql`e."id"`,
-    campaignId: sql`l."campaignId"`, channelId: sql`l."channelId"`,
+const friendOpens = (ids: Ids): Branch => ({
+  prefix: 'fo', id: sql`e."id"`, at: sql`e."at"`, rank: 4, key: sql`'fo-' || e."id"`,
+  cols: {
+    kind: sql`'friendOpen'`, ids: sql`e."id"`, campaignId: sql`l."campaignId"`, channelId: sql`l."channelId"`,
     sharer: linkSharer('l'), sharerPhone: sql`c."phone"`, sharerSession: linkSession('l'),
-  })}
-  FROM "LinkEvent" e JOIN "ShareLink" l ON l."id" = e."linkId" LEFT JOIN "Consumer" c ON c."id" = l."consumerId"
-  WHERE l."campaignId" IN (${ids}) AND l."depth" >= 1 AND e."type" = 'Open' AND e."deduped" = false`
-}
+  },
+  from: sql`FROM "LinkEvent" e JOIN "ShareLink" l ON l."id" = e."linkId" LEFT JOIN "Consumer" c ON c."id" = l."consumerId"`,
+  where: sql`l."campaignId" IN (${ids}) AND l."depth" >= 1 AND e."type" = 'Open' AND e."deduped" = false`,
+})
 
 // A friend's first claim on a sharer's link is the one a payout is keyed by; a repeat claim earns nothing and is no line.
-function friendClaims(ids: Ids): Prisma.Sql {
-  return sql`SELECT ${select({
-    kind: sql`'friendClaim'`, at: sql`e."at"`, rank: sql`5`, key: sql`'fc-' || e."id"`,
-    ids: sql`concat_ws(' · ', e."id", p."id", cc."id")`, campaignId: sql`l."campaignId"`, channelId: sql`l."channelId"`,
-    sharer: linkSharer('l'), sharerPhone: sql`c."phone"`, sharerSession: linkSession('l'),
+const friendClaims = (ids: Ids): Branch => ({
+  prefix: 'fc', id: sql`e."id"`, at: sql`e."at"`, rank: 5, key: sql`'fc-' || e."id"`,
+  cols: {
+    kind: sql`'friendClaim'`, ids: sql`concat_ws(' · ', e."id", p."id", cc."id")`, campaignId: sql`l."campaignId"`,
+    channelId: sql`l."channelId"`, sharer: linkSharer('l'), sharerPhone: sql`c."phone"`, sharerSession: linkSession('l'),
     status: sql`p."status"`, reason: sql`p."reason"`, amount: sql`p."amountLocal"`,
-  })}
-  FROM "LinkEvent" e JOIN "ShareLink" l ON l."id" = e."linkId" JOIN "RewardPayout" p ON p."claimEventKey" = e."id"
+  },
+  from: sql`FROM "LinkEvent" e JOIN "ShareLink" l ON l."id" = e."linkId" JOIN "RewardPayout" p ON p."claimEventKey" = e."id"
   LEFT JOIN "Consumer" c ON c."id" = l."consumerId"
-  ${codeOf('e', 'l."campaignId"', 'l."channelId"', 'e."visitorId"')}
-  WHERE l."campaignId" IN (${ids}) AND l."depth" >= 1 AND e."type" = 'Claim'`
-}
+  ${codeOf('e', 'l."campaignId"', 'l."channelId"', 'e."visitorId"')}`,
+  where: sql`l."campaignId" IN (${ids}) AND l."depth" >= 1 AND e."type" = 'Claim'`,
+})
 
-function rewards(ids: Ids): Prisma.Sql {
-  return sql`SELECT ${select({
-    kind: sql`'reward'`, at: sql`p."createdAt"`, rank: sql`6`, key: sql`'reward-' || p."id"`, ids: sql`p."id"`,
-    campaignId: sql`p."campaignId"`,
+const rewards = (ids: Ids): Branch => ({
+  prefix: 'reward', id: sql`p."id"`, at: sql`p."createdAt"`, rank: 6, key: sql`'reward-' || p."id"`,
+  cols: {
+    kind: sql`'reward'`, ids: sql`p."id"`, campaignId: sql`p."campaignId"`,
     sharer: sql`CASE WHEN p."sharerConsumerId" IS NOT NULL THEN 'c:' || p."sharerConsumerId" ELSE 's:' || COALESCE(p."sharerSessionId", p."shareLinkId") END`,
     sharerPhone: sql`c."phone"`, sharerSession: sql`COALESCE(p."sharerSessionId", p."shareLinkId")`,
     status: sql`p."status"`, reason: sql`p."reason"`, amount: sql`p."amountLocal"`,
+  },
+  from: sql`FROM "RewardPayout" p LEFT JOIN "Consumer" c ON c."id" = p."sharerConsumerId"`,
+  where: sql`p."campaignId" IN (${ids})`,
+})
+
+const points = (ids: Ids): Branch => ({
+  prefix: 'points', id: sql`pl."id"`, at: sql`pl."createdAt"`, rank: 7, key: sql`'points-' || pl."id"`,
+  cols: {
+    kind: sql`'points'`, ids: sql`pl."id"`, campaignId: sql`pl."campaignId"`, sharerPhone: sql`c."phone"`,
+    sharerSession: sql`pl."sharerSessionId"`, points: sql`pl."points"`,
+  },
+  from: sql`FROM "PointsLedger" pl LEFT JOIN "Consumer" c ON c."id" = pl."consumerId"`,
+  where: sql`pl."campaignId" IN (${ids})`,
+})
+
+// Every source but impressions, which are walked hour by hour (impressionsPage).
+const EVENTS = [channelEvents('Open'), channelEvents('Claim'), codes, rootEvents, links, friendOpens, friendClaims, rewards, points]
+const SHARING = [links, friendOpens, friendClaims, rewards]
+
+// One campaign's impressions as hour lines (one per UTC hour, the hour ingestion dedupes by), a page at a time, without
+// reading the impressions themselves: a recursive walk steps back an hour at a time from the cursor (each step one
+// index probe: the newest impression before the hour found last), and each walked hour's newest impression (one more
+// probe) is the line's moment. Only the hours that make the page are counted, after the page is cut (countHours). A
+// page needs at most n hours, plus the hour the cursor sits in, whose line may already have been shown.
+function impressionsPage(campaignId: string, n: number, c: Cursor | null): { walk: Prisma.Sql; part: Prisma.Sql } {
+  const latest = (bound: Prisma.Sql) =>
+    sql`date_trunc('hour', (SELECT max(e."at") FROM "ChannelEvent" e WHERE e."campaignId" = ${campaignId} AND e."type" = 'Impression' ${bound}))`
+  const walk = sql`walk(h, n) AS (
+    SELECT ${latest(c ? sql`AND e."at" <= ${c.at}` : sql``)}, 1
+    UNION ALL
+    SELECT ${latest(sql`AND e."at" < w.h`)}, w.n + 1 FROM walk w WHERE w.h IS NOT NULL AND w.n < ${n + 1}
+  )`
+  const key = sql`'imp-' || to_char(w.h, 'YYYYMMDDHH24')`
+  const after = !c ? sql``
+    : c.inclusive ? sql`AND (hx."at", 0, ${key}) <= (${c.at}, ${c.rank}, ${c.key})`
+    : sql`AND (hx."at", 0, ${key}) < (${c.at}, ${c.rank}, ${c.key})`
+  const part = sql`(SELECT ${select({
+    kind: sql`'impressions'`, at: sql`hx."at"`, rank: sql`0`, key,
+    // The hour as ingestion writes it at the end of the events' dedupe keys.
+    ids: sql`'Impression:' || to_char(w.h, 'YYYY-MM-DD"T"HH24":00:00.000Z"')`,
+    campaignId: sql`${campaignId}`, hour: sql`w.h`,
   })}
-  FROM "RewardPayout" p LEFT JOIN "Consumer" c ON c."id" = p."sharerConsumerId"
-  WHERE p."campaignId" IN (${ids})`
+  FROM walk w CROSS JOIN LATERAL (
+    SELECT max(e."at") AS "at" FROM "ChannelEvent" e
+    WHERE e."campaignId" = ${campaignId} AND e."type" = 'Impression' AND e."at" >= w.h AND e."at" < w.h + interval '1 hour'
+  ) hx
+  WHERE w.h IS NOT NULL ${after}
+  ORDER BY hx."at" DESC LIMIT ${n})`
+  return { walk, part }
 }
 
-function points(ids: Ids): Prisma.Sql {
-  return sql`SELECT ${select({
-    kind: sql`'points'`, at: sql`pl."createdAt"`, rank: sql`7`, key: sql`'points-' || pl."id"`, ids: sql`pl."id"`,
-    campaignId: sql`pl."campaignId"`, sharerPhone: sql`c."phone"`, sharerSession: sql`pl."sharerSessionId"`, points: sql`pl."points"`,
-  })}
-  FROM "PointsLedger" pl LEFT JOIN "Consumer" c ON c."id" = pl."consumerId"
-  WHERE pl."campaignId" IN (${ids})`
-}
+// The count and channels of each impressions hour a page shows (the only impressions any page reads).
+const countHours = (campaignId: string) => sql`LEFT JOIN LATERAL (
+  SELECT count(*)::int AS "count", array_agg(DISTINCT e."channelId") AS "channels" FROM "ChannelEvent" e
+  WHERE a."kind" = 'impressions' AND e."campaignId" = ${campaignId} AND e."type" = 'Impression'
+    AND e."at" >= a."hour" AND e."at" < a."hour" + interval '1 hour'
+) x ON true`
 
-const BRANCHES = { impressions, channelEvents, codes, rootEvents, links, friendOpens, friendClaims, rewards, points }
-type Branch = keyof typeof BRANCHES
-const EVERY = Object.keys(BRANCHES) as Branch[]
-const SHARING: Branch[] = ['links', 'friendOpens', 'friendClaims', 'rewards']
-
-function union(campaignIds: string[], branches: Branch[]): Prisma.Sql {
-  const ids = Prisma.join(campaignIds)
-  return Prisma.join(branches.map((b) => BRANCHES[b](ids)), ' UNION ALL ')
+// Runs a read with JIT off. These reads are index probes and small sorts; their estimates would switch on JIT, whose
+// compiling costs more than the query (130 ms of 197 ms on a scale-1 page before this).
+async function quick<T>(query: Prisma.Sql): Promise<T> {
+  const [, rows] = await db.$transaction([db.$executeRaw`SET LOCAL jit = off`, db.$queryRaw<T>(query)])
+  return rows
 }
 
 // Newest first; at one instant the effect before its cause (points, reward, then the claim that earned them).
@@ -233,7 +314,7 @@ function what(r: Row, c: Campaignish, channel: string): string {
   const amount = () => localAmount(r.amount ?? 0, c.country)
   switch (r.kind) {
     case 'impressions':
-      return A.impressions(r.n ?? 0, channel)
+      return A.impressions(r.count ?? r.n ?? 0, channel)
     case 'open':
       return A.open(channel)
     case 'claim':
@@ -275,52 +356,77 @@ const lineOf = (r: Row, c: Campaignish, channel: string): ActivityLine => ({
   title: r.ids,
 })
 
-// "Show more" asks for one more page each time: a whole number of pages, at least one, at most MAX_LINES.
-export function linesWanted(value: string | string[] | undefined): number {
+// The Sharing page's Show more asks for one more page of sharers each time: a whole number of pages, at least one.
+export function sharersWanted(value: string | string[] | undefined): number {
   const n = Number(Array.isArray(value) ? value[0] : value)
   if (!Number.isFinite(n) || n < PAGE) return PAGE
-  return Math.min(MAX_LINES, Math.ceil(n / PAGE) * PAGE)
+  return Math.min(MAX_SHARERS, Math.ceil(n / PAGE) * PAGE)
 }
 
-// A line's element id, for a link to it (keys are ids and kinds; points keys carry a colon).
-export const lineAnchor = (key: string) => `act-${key.replace(/[^\w-]/g, '-')}`
+// Where a line sits in the order (its moment, rank and key), found from its key alone: the row it was made from, or for
+// an hour of impressions the newest impression in that hour. Null when the campaign has no such line.
+async function locate(campaignId: string, key: string): Promise<Omit<Cursor, 'inclusive'> | null> {
+  const hour = /^imp-(\d{4})(\d\d)(\d\d)(\d\d)$/.exec(key)
+  if (hour) {
+    const [, y, mo, d, h] = hour
+    const from = new Date(Date.UTC(+y, +mo - 1, +d, +h))
+    const [row] = await db.$queryRaw<{ at: Date | null }[]>`
+      SELECT max("at") AS "at" FROM "ChannelEvent" WHERE "campaignId" = ${campaignId} AND "type" = 'Impression'
+        AND "at" >= ${from} AND "at" < ${new Date(from.getTime() + 3_600_000)}`
+    return row?.at ? { at: row.at, rank: 0, key } : null
+  }
+  const dash = key.indexOf('-')
+  const branch = EVENTS.map((b) => b(Prisma.join([campaignId]))).find((b) => b.prefix === key.slice(0, dash))
+  if (!branch || dash < 0) return null
+  const rows = await db.$queryRaw<Row[]>(branchSql(branch, undefined, key.slice(dash + 1)))
+  const row = rows.find((r) => r.key === key)
+  return row ? { at: row.at, rank: row.rank, key } : null
+}
 
 export type CampaignActivity = {
   lines: ActivityLine[]
-  // There is an older line than the last one shown.
-  more: boolean
-  // How many lines were asked for (the next "Show more" asks for PAGE more).
-  limit: number
-  // The line a link asked for, when the campaign has it; the page grew to include it.
+  // The key Show more passes as ?before= for the next page; null at the oldest line.
+  next: string | null
+  // The line a link asked for, when this page shows it (it is lit).
   line: string | null
+  // The page starts below the newest line (at a linked line, or past Show more): it offers "Newest".
+  windowed: boolean
 }
 
-// The campaign's last `limit` lines, newest first. With `line` (a link from Global's held rewards), enough pages to
-// reach that line, which is returned as found. More than MAX_LINES are never read at once.
+// One page of the campaign's lines, newest first: the newest PAGE, or those below `before` (Show more), or those
+// from `line` down (a link to one line: Global's held rewards). Keyset, not offset: each source reads at most a page
+// from the cursor, so a page costs the same however much the campaign has recorded. A key the campaign does not have
+// is ignored.
 export async function campaignActivity(
   c: Pick<Campaign, 'id'> & Campaignish,
-  opts: { limit?: number; line?: string | null } = {},
+  opts: { before?: string | null; line?: string | null } = {},
 ): Promise<CampaignActivity> {
-  const all = union([c.id], EVERY)
-  let limit = Math.min(MAX_LINES, Math.max(PAGE, opts.limit ?? PAGE))
-  let line: string | null = null
-  if (opts.line) {
-    const [pos] = await db.$queryRaw<{ before: number; found: number }[]>`
-      WITH a AS (${all}), t AS (SELECT "at", "rank", "key" FROM a WHERE "key" = ${opts.line})
-      SELECT (SELECT count(*) FROM a, t WHERE (a."at", a."rank", a."key") > (t."at", t."rank", t."key"))::int AS "before",
-             (SELECT count(*) FROM t)::int AS "found"`
-    const need = Math.ceil((pos.before + 1) / PAGE) * PAGE
-    // A line further back than a page may show is not looked for.
-    if (pos.found && need <= MAX_LINES) {
-      line = opts.line
-      limit = Math.max(limit, need)
-    }
+  let cursor: Cursor | null = null
+  if (opts.before) {
+    const found = await locate(c.id, opts.before)
+    if (found) cursor = { ...found, inclusive: false }
+  } else if (opts.line) {
+    const found = await locate(c.id, opts.line)
+    if (found) cursor = { ...found, inclusive: true }
   }
-  const [rows, channel] = await Promise.all([
-    db.$queryRaw<Row[]>`WITH a AS (${all}) SELECT * FROM a ORDER BY ${ORDER} LIMIT ${limit + 1}`,
-    channelNames(),
-  ])
-  return { lines: rows.slice(0, limit).map((r) => lineOf(r, c, channel(r.channelId))), more: rows.length > limit, limit, line }
+  const n = PAGE + 1
+  const ids = Prisma.join([c.id])
+  const imp = impressionsPage(c.id, n, cursor)
+  const parts = [imp.part, ...EVENTS.map((b) => branchSql(b(ids), { n, cursor }))]
+  const page = sql`WITH RECURSIVE ${imp.walk}
+    SELECT a.*, x."count", x."channels"
+    FROM (SELECT * FROM (${Prisma.join(parts, ' UNION ALL ')}) u ORDER BY ${ORDER} LIMIT ${n}) a ${countHours(c.id)}
+    ORDER BY ${ORDER}`
+  const [rows, channel] = await Promise.all([quick<Row[]>(page), channelNames()])
+  // An hour of impressions names every channel they came from; any other line its own.
+  const channelOf = (r: Row) => (r.channels?.length ? A.channelList(r.channels.map(channel)) : channel(r.channelId))
+  const lines = rows.slice(0, PAGE).map((r) => lineOf(r, c, channelOf(r)))
+  return {
+    lines,
+    next: rows.length > PAGE ? lines[lines.length - 1].key : null,
+    line: opts.line && lines.some((l) => l.key === opts.line) ? opts.line : null,
+    windowed: cursor !== null,
+  }
 }
 
 // ---- The Sharing page's sharers ----
@@ -377,15 +483,16 @@ function friendLine(r: Row, c: Campaignish): string {
 // Every sharer of the workspace's campaigns, one row per campaign, newest activity first: what they shared on, how
 // many friends opened and claimed, the rewards by status, and (for the row opened) their friends' events.
 export async function workspaceSharers(workspaceId: string, opts: { limit?: number } = {}): Promise<{ rows: SharerRow[]; more: boolean }> {
-  const limit = Math.min(MAX_LINES, Math.max(PAGE, opts.limit ?? PAGE))
+  const limit = Math.min(MAX_SHARERS, Math.max(PAGE, opts.limit ?? PAGE))
   const campaigns = await db.campaign.findMany({
     where: { workspaceId },
     select: { id: true, name: true, country: true, redeemMethod: true },
   })
   if (!campaigns.length) return { rows: [], more: false }
   const byId = new Map(campaigns.map((c) => [c.id, c]))
-  const all = union(campaigns.map((c) => c.id), SHARING)
-  const summaries = await db.$queryRaw<SharerSummary[]>`
+  const ids = Prisma.join(campaigns.map((c) => c.id))
+  const all = Prisma.join(SHARING.map((b) => branchSql(b(ids))), ' UNION ALL ')
+  const summaries = await quick<SharerSummary[]>(sql`
     WITH a AS (${all})
     SELECT "campaignId", "sharer",
       max("sharerPhone") AS "phone", max("sharerSession") AS "session",
@@ -401,13 +508,13 @@ export async function workspaceSharers(workspaceId: string, opts: { limit?: numb
     FROM a WHERE "sharer" IS NOT NULL
     GROUP BY "campaignId", "sharer"
     ORDER BY max("at") DESC, "campaignId" DESC, "sharer" DESC
-    LIMIT ${limit + 1}`
+    LIMIT ${limit + 1}`)
   const page = summaries.slice(0, limit)
   const keys = page.map((s) => `${s.campaignId}|${s.sharer}`)
   // Each shown sharer's friends' events, the newest PAGE of them.
   const events = keys.length
-    ? await db.$queryRaw<(Row & { owner: string; total: number })[]>`
-        WITH a AS (${union(campaigns.map((c) => c.id), ['links', 'friendOpens', 'friendClaims'])}),
+    ? await quick<(Row & { owner: string; total: number })[]>(sql`
+        WITH a AS (${Prisma.join([links, friendOpens, friendClaims].map((b) => branchSql(b(ids))), ' UNION ALL ')}),
         x AS (
           SELECT a.*, CASE WHEN a."kind" IN ('friendOpen', 'friendClaim') THEN a."sharer" ELSE a."parent" END AS "owner"
           FROM a WHERE a."kind" IN ('friendOpen', 'friendClaim') OR a."parent" IS NOT NULL
@@ -416,7 +523,7 @@ export async function workspaceSharers(workspaceId: string, opts: { limit?: numb
           SELECT x.*, row_number() OVER (PARTITION BY x."campaignId", x."owner" ORDER BY ${ORDER})::int AS "rn",
                  (count(*) OVER (PARTITION BY x."campaignId", x."owner"))::int AS "total"
           FROM x WHERE x."campaignId" || '|' || x."owner" IN (${Prisma.join(keys)})
-        ) y WHERE y."rn" <= ${PAGE} ORDER BY ${ORDER}`
+        ) y WHERE y."rn" <= ${PAGE} ORDER BY ${ORDER}`)
     : []
   const lines = new Map<string, { lines: ActivityLine[]; total: number }>()
   for (const e of events) {

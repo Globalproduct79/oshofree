@@ -9,7 +9,7 @@ import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { SharingBox } from '@/components/campaign/SharingBox'
 import { BarChart14d, Box, Funnel, LinkButton, MetricCard, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
-import { campaignActivity, linesWanted } from '@/lib/activity'
+import { campaignActivity, isLineKey } from '@/lib/activity'
 import { offerPreview } from '@/lib/campaign-card'
 import { campaignReport } from '@/lib/campaign-report'
 import { CAMPAIGN_COPY as C } from '@/lib/copy-report'
@@ -19,15 +19,12 @@ import { can, requireMember } from '@/lib/permissions'
 
 const HOME = '/app'
 
-type Search = { activity?: string | string[]; line?: string | string[] }
-
-// A line a link asks for is an activity key: a kind and an id.
-const lineParam = (v: Search['line']) => (typeof v === 'string' && /^[\w:-]{1,120}$/.test(v) ? v : null)
+type Search = { before?: string | string[]; line?: string | string[] }
 
 // The campaign page (ADV §2): head and status line, the KPI row, impressions per day, the funnel,
 // Sharing and Recent activity on the left; Change without review, The offer and History on the right. A Viewer sees it
-// all without the controls that change anything (spec §6.2). ?activity= is how many activity lines to show (Show more
-// adds 30); ?line= lights one (Global's held rewards link to theirs).
+// all without the controls that change anything (spec §6.2). Recent activity starts at ?line= (lit; Global's held
+// rewards link to theirs) or below ?before= (Show more without script), else at the newest line.
 export default async function CampaignPage({
   params,
   searchParams,
@@ -43,7 +40,10 @@ export default async function CampaignPage({
   if (!c) notFound()
   const [r, activity] = await Promise.all([
     campaignReport(c, ws, new Date()),
-    campaignActivity(c, { limit: linesWanted(search.activity), line: lineParam(search.line) }),
+    campaignActivity(c, {
+      before: isLineKey(search.before) ? search.before : null,
+      line: isLineKey(search.line) ? search.line : null,
+    }),
   ])
   const canAct = can(role, 'campaigns')
   const running = c.status === 'live' || c.status === 'paused' ? c.status : null

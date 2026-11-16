@@ -236,3 +236,9 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
 .shr .ph{font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--ink)}.shr .of{color:var(--ink3)}
 .shr .v{margin-left:auto;font-weight:600;color:var(--ink2)}
 .shr details > .hist,.shr details > .hist-none{margin:0 0 10px 20px}
+/* A form button that reads as a link (Global entering a workspace from a row): blue, no box, the row's own size. Recent
+   activity's Newest sits over the list; a Show more on its way is dimmed. */
+form.enter{display:inline;margin:0}
+.linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--blu);text-align:left;cursor:pointer}.linkbtn:disabled{opacity:.6;cursor:progress}
+.box > .btns.top{margin:0 0 10px}
+.btn[aria-disabled=true]{opacity:.6;cursor:progress}
