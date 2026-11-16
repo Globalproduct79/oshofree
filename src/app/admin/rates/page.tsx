@@ -36,7 +36,7 @@ export default async function RatesPage() {
       <div className="pills">
         <span className="pill" aria-pressed="true">
           {RATES.phoenix.name}
-          <i>{RATES.phoenix.status}</i>
+          <i>{RATES.phoenix.status(channel?.isLive ?? null)}</i>
         </span>
         <span className="pill" aria-pressed="false">
           {RATES.boomplay.name}
