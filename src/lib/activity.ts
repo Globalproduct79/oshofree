@@ -7,8 +7,8 @@ import { MARKETS, type Country } from '@/lib/markets'
 
 // What happened on a campaign, one line per recorded event (Prompt 8), read-only. Nothing here writes, and every
 // line comes from a row the journey already stores:
-//   impressions   ChannelEvent Impression, one line per channel per UTC hour (the hour ingestion dedupes by; the
-//                 events carry no batch id, so the hour is the batch)
+//   impressions   ChannelEvent Impression, one line per UTC hour across every channel (the hour ingestion dedupes
+//                 by; the events carry no batch id, so the hour is the batch), naming each channel, most first
 //   open, claim   ChannelEvent Open / Claim; a claim carries the code POST /claims issued that session that day
 //   claim (code)  a ClaimCode with no claim event and no offer-page claim behind it (Phoenix asked, never posted)
 //   follow        LinkEvent Claim on the campaign's own (Root) link: the click-through to a link offer, or a code
@@ -23,9 +23,13 @@ import { MARKETS, type Country } from '@/lib/markets'
 // Phoenix's share_open / share_claim and share events are the channel's own stats (spec §6.14.2) and are not lines.
 // Phones are masked here and nowhere later; a line's ids are only its tooltip.
 //
-// Pages are keyset, not offset: a page is the PAGE lines below a cursor (a line's key, found again from its row), and
-// every source reads at most PAGE + 1 rows from the cursor, newest first (ChannelEvent by its (campaign, type, at)
-// index; impressions by walking back an hour at a time), so a page costs the same however much a campaign has recorded.
+// Pages are keyset, not offset: a page is the PAGE lines below a cursor (a line's key, found again from its row), each
+// source cut to PAGE + 1 rows from the cursor before the page is merged. The ChannelEvent sources, which grow with
+// delivery (opens and claims by the (campaign, type, at) index, impressions by walking back an hour at a time), read
+// only those rows and stop. The others (links, codes, the Root link's events, friends' opens and claims, rewards,
+// points) read the campaign's rows of their kind and sort them before the cut: they grow with sharing, not delivery
+// (at demo scale, a few hundred to a few thousand rows a campaign, a few ms), and links look their people up only for
+// the rows they keep. A LinkEvent (linkId, type, at) index would bound friends' events too; it is not added yet.
 
 export const PAGE = 30
 // The most sharers the Sharing page lists at once; its Show more grows by PAGE up to it.
@@ -112,8 +116,6 @@ type Cursor = { at: Date; rank: number; key: string; inclusive: boolean }
 
 const rankSql = (b: Branch) => (typeof b.rank === 'number' ? raw(String(b.rank)) : b.rank)
 
-// The branch's rows; with a page, only the n before the cursor, newest first (an index scan that stops for
-// ChannelEvent, a top-n sort for the small tables); with `only`, the one row with that id.
 // The conditions that put a row below (or at) the cursor: a plain bound on the moment for the index, then the exact
 // order.
 function belowCursor(at: Prisma.Sql, rank: Prisma.Sql, key: Prisma.Sql, c: Cursor | null | undefined): Prisma.Sql[] {
@@ -124,6 +126,8 @@ function belowCursor(at: Prisma.Sql, rank: Prisma.Sql, key: Prisma.Sql, c: Curso
   ]
 }
 
+// The branch's rows; with a page, only the n below the cursor, newest first (for ChannelEvent an index scan that stops
+// after n; for the other tables a top-n sort of the campaign's rows of that kind); with `only`, the one row with that id.
 function branchSql(b: Branch, page?: Page, only?: string): Prisma.Sql {
   const rank = rankSql(b)
   const where = [b.where, ...belowCursor(b.at, rank, b.key, page?.cursor)]
@@ -303,11 +307,17 @@ function impressionsPage(campaignId: string, n: number, c: Cursor | null): { wal
   return { walk, part }
 }
 
-// The count and channels of each impressions hour a page shows (the only impressions any page reads).
+// The count and channels of each impressions hour a page shows (the only impressions any page reads), summed over
+// every channel.
+// Its channels come most impressions first.
 const countHours = (campaignId: string) => sql`LEFT JOIN LATERAL (
-  SELECT count(*)::int AS "count", array_agg(DISTINCT e."channelId") AS "channels" FROM "ChannelEvent" e
-  WHERE a."kind" = 'impressions' AND e."campaignId" = ${campaignId} AND e."type" = 'Impression'
-    AND e."at" >= a."hour" AND e."at" < a."hour" + interval '1 hour'
+  SELECT sum(g."n")::int AS "count", array_agg(g."channelId" ORDER BY g."n" DESC, g."channelId") AS "channels"
+  FROM (
+    SELECT e."channelId", count(*) AS "n" FROM "ChannelEvent" e
+    WHERE a."kind" = 'impressions' AND e."campaignId" = ${campaignId} AND e."type" = 'Impression'
+      AND e."at" >= a."hour" AND e."at" < a."hour" + interval '1 hour'
+    GROUP BY e."channelId"
+  ) g
 ) x ON true`
 
 // Runs a read with JIT off. These reads are index probes and small sorts; their estimates would switch on JIT, whose
@@ -417,9 +427,9 @@ export type CampaignActivity = {
 }
 
 // One page of the campaign's lines, newest first: the newest PAGE, or those below `before` (Show more), or those
-// from `line` down (a link to one line: Global's held rewards). Keyset, not offset: each source reads at most a page
-// from the cursor, so a page costs the same however much the campaign has recorded. A key the campaign does not have
-// is ignored.
+// from `line` down (a link to one line: Global's held rewards). Keyset, not offset: no page re-reads the lines above
+// it, and the events that grow with delivery are read only a page at a time (see the top of this file), so a page
+// costs about the same however much the campaign has delivered. A key the campaign does not have is ignored.
 export async function campaignActivity(
   c: Pick<Campaign, 'id'> & Campaignish,
   opts: { before?: string | null; line?: string | null } = {},

@@ -219,6 +219,40 @@ describe('campaignActivity', () => {
     expect(texts(belowHour.lines).slice(0, 2)).toEqual(['A Phoenix user opened the offer · 14 Nov, 00:30', '2 impressions from Phoenix · 13 Nov, 23:00–00:00'])
   })
 
+  it('pages through 40 lines of one instant: every line once, none skipped', async () => {
+    const w = await world()
+    for (let i = 0; i < 40; i++) await event(w, 'Open', '2026-11-13T10:00:00Z')
+    const first = await campaignActivity(w.campaign)
+    expect(first.lines).toHaveLength(30)
+    const second = await campaignActivity(w.campaign, { before: first.next })
+    expect(second.lines).toHaveLength(10)
+    expect(second.next).toBeNull()
+    const keys = [...first.lines, ...second.lines].map((l) => l.key)
+    expect(new Set(keys).size).toBe(40)
+    // At one instant the key orders them, newest first by key, with nothing between the pages lost.
+    expect(keys).toEqual([...keys].sort().reverse())
+    const stored = await db.channelEvent.findMany({ where: { campaignId: w.campaign.id }, select: { id: true } })
+    expect(new Set(keys)).toEqual(new Set(stored.map((e) => `open-${e.id}`)))
+  })
+
+  it("makes one line of an hour's impressions from every channel, its count summed, naming each channel most first", async () => {
+    const w = await world()
+    const boomplay = await db.channel.create({ data: { key: 'boomplay', name: 'Boomplay Music', apiKeyHash: 'b', isLive: true } })
+    for (const m of ['05', '20', '40']) await event(w, 'Impression', `2026-11-13T10:${m}:00Z`)
+    await db.channelEvent.create({
+      data: { channelId: boomplay.id, campaignId: w.campaign.id, type: 'Impression', sessionId: 'b1', at: at('2026-11-13T10:50:00Z'), dedupeKey: 'b1' },
+    })
+    // Boomplay alone in the hour before.
+    await db.channelEvent.create({
+      data: { channelId: boomplay.id, campaignId: w.campaign.id, type: 'Impression', sessionId: 'b2', at: at('2026-11-13T09:15:00Z'), dedupeKey: 'b2' },
+    })
+    const { lines } = await campaignActivity(w.campaign)
+    expect(lines).toEqual([
+      { key: 'imp-2026111310', text: '4 impressions from Phoenix and Boomplay · 13 Nov, 11:00–12:00', title: 'Impression:2026-11-13T10:00:00.000Z' },
+      { key: 'imp-2026111309', text: '1 impression from Boomplay · 13 Nov, 10:00–11:00', title: 'Impression:2026-11-13T09:00:00.000Z' },
+    ])
+  })
+
   it('opens at a line a link asks for, however far back, and ignores a line it does not have', async () => {
     const w = await world()
     const sharer = await link(w, { sharerSessionId: 'anon-9z9z', via: 'whatsapp', createdAt: at('2026-11-10T08:00:00Z') })
@@ -383,8 +417,9 @@ describe('the channel_event_campaign_type_at migration', () => {
   const all = readdirSync(MIGRATIONS).filter((d) => /^\d{14}_/.test(d)).sort()
   const dir = all.find((d) => d.endsWith('_channel_event_campaign_type_at'))
 
-  it('is the newest migration and only adds the index Recent activity pages by', () => {
-    expect(all.at(-1)).toBe(dir)
+  it('comes after the campaign_created_by migration and only adds the index Recent activity pages by', () => {
+    expect(dir).toBeDefined()
+    expect(all.indexOf(dir!)).toBeGreaterThan(all.indexOf('20261115090000_campaign_created_by'))
     const statements = readFileSync(path.join(MIGRATIONS, dir!, 'migration.sql'), 'utf8').replace(/--.*$/gm, '').replace(/\s+/g, ' ').trim()
     expect(statements).toBe('CREATE INDEX "ChannelEvent_campaignId_type_at_idx" ON "ChannelEvent"("campaignId", "type", "at");')
     expect(readFileSync(path.join(process.cwd(), 'prisma', 'schema.prisma'), 'utf8')).toContain('@@index([campaignId, type, at])')
