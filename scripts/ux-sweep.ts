@@ -4,13 +4,25 @@
 //   npm run dev:test                       # the test server on 3101, against the seeded oshofree_test
 //   npx tsx scripts/ux-sweep.ts            # writes .superpowers/ux/sweep.md (and prints the problems)
 //
-// It changes the test database the way a person clicking around would (a draft, a top-up, a credit request…), so reseed
-// before an e2e run (npm run test:e2e does). Never point it at the dev server: SWEEP_URL defaults to 3101.
+// It changes the database behind the server the way a person clicking around would (fraud switches, a top-up, an invite,
+// a draft…), so it only ever runs against the test server: 3101, checked against .env.test's APP_URL, never the dev
+// server on 3100 and its database. Reseed before an e2e run (npm run test:e2e does).
 import { createHash } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test'
+import { parse } from 'dotenv'
 
-const BASE = process.env.SWEEP_URL ?? 'http://localhost:3101'
+const TEST_PORT = '3101'
+const BASE = `http://localhost:${TEST_PORT}`
+
+// The test server's address as .env.test gives it; anything but port 3101 there, or here, and nothing runs.
+export function sweepTarget(envTest: string, base = BASE): string {
+  const appUrl = parse(envTest).APP_URL
+  if (!appUrl || new URL(appUrl).port !== TEST_PORT || new URL(base).port !== TEST_PORT)
+    throw new Error(`The sweep only runs against the test server on port ${TEST_PORT} (.env.test APP_URL ${appUrl ?? 'missing'}).`)
+  return base
+}
 const OUT = process.env.SWEEP_OUT ?? '.superpowers/ux/sweep.md'
 const PASSWORD = 'password'
 
@@ -299,6 +311,7 @@ async function shell(page: Page, role: Role) {
 }
 
 async function main() {
+  sweepTarget(readFileSync('.env.test', 'utf8'))
   const browser = await chromium.launch()
   const started = Date.now()
   for (const role of ROLES) {
@@ -323,7 +336,10 @@ async function main() {
   console.log(md.split('\n').slice(0, 3).join('\n'))
 }
 
-main().catch((e) => {
-  console.error(e)
-  process.exit(1)
-})
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+if (isMain) {
+  main().catch((e) => {
+    console.error(e instanceof Error ? e.message : e)
+    process.exit(1)
+  })
+}

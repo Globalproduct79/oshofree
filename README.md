@@ -260,7 +260,8 @@ npx tsx scripts/ux-sweep.ts      # writes .superpowers/ux/sweep.md; SWEEP_ROLES=
 ```
 
 It changes the test data the way a person clicking around would, so reseed before the next e2e run (the script
-does).
+does). It only ever runs against the test server: the address is fixed to port 3101, and it stops unless
+`.env.test`'s `APP_URL` is on 3101 too, so it can never reach the dev server or its database.
 
 ## Production build
 
