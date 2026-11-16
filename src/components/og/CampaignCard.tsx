@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { COMPONENTS, type PlacementKey } from '@/lib/copy-components'
 import { CreativeMedia } from './CreativeMedia'
+import { DemoPill } from './DemoPill'
 import { StatusBadge, type StatusKey } from './StatusBadge'
 
 export type CardModel = {
@@ -30,6 +31,8 @@ export type CardModel = {
   spendPct?: number
   // A line under the sub-line naming who created the campaign (Platform › Advertisers › workspace).
   createdBy?: string
+  // Its workspace is the seed's (Prompt 9): the Demo pill after the sub-line (Review's "Live now").
+  demo?: boolean
 }
 
 const clampPct = (n: number) => (Number.isNaN(n) ? 0 : Math.min(100, Math.max(0, n)))
@@ -67,6 +70,7 @@ export function CampaignCard({
           {c.flightDays === undefined
             ? COMPONENTS.card.sub(c.brand, c.country, c.daysLeft)
             : COMPONENTS.card.subFlight(c.brand, c.country, c.flightDays)}
+          {c.demo && <DemoPill />}
           {c.createdBy && <span className="by">{COMPONENTS.card.createdBy(c.createdBy)}</span>}
         </div>
         <div className="row">

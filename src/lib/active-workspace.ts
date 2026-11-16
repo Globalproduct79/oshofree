@@ -7,9 +7,17 @@ import { isAdminInDb, requireUser, type SessionUser } from '@/lib/session'
 
 export const ACTIVE_WORKSPACE_COOKIE = 'of_ws'
 
-export type SwitcherItem = { id: string; name: string; type: WorkspaceType; country: string; status: WorkspaceStatus }
+// `demo`: the seed made it (Prompt 9), so its row carries the Demo pill.
+export type SwitcherItem = {
+  id: string
+  name: string
+  type: WorkspaceType
+  country: string
+  status: WorkspaceStatus
+  demo: boolean
+}
 
-const pick = { id: true, name: true, type: true, country: true, status: true } as const
+const pick = { id: true, name: true, type: true, country: true, status: true, demo: true } as const
 const statusRank: Record<WorkspaceStatus, number> = { approved: 0, pending: 1, declined: 2 }
 
 // The only writer of the cookie: Global may pick any workspace, everyone else only their own.

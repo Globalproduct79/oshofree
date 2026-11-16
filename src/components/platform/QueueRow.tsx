@@ -5,7 +5,7 @@ import {
   approveCampaignAction, approveRevisionAction, previewOffersAction, rejectCampaignAction, rejectRevisionAction,
 } from '@/app/admin/review/actions'
 import { PreviewButton } from '@/components/campaign/PreviewButton'
-import { Button, CreativeMedia } from '@/components/og'
+import { Button, CreativeMedia, DemoPill } from '@/components/og'
 import { COMPONENTS } from '@/lib/copy-components'
 import { REVIEW } from '@/lib/copy-review'
 import type { QueueRow as Row } from '@/lib/review'
@@ -53,6 +53,7 @@ export function QueueRow({ row }: { row: Row }) {
                 </>
               )}
             </span>
+            {row.demo && <DemoPill />}
           </div>
           <p>{row.description}</p>
           <div>

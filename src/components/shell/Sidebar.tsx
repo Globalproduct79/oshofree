@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useSyncExternalStore } from 'react'
+import { DemoPill } from '@/components/og/DemoPill'
+import { DEMO } from '@/lib/copy-demo'
 import { isCurrent, type NavGroup } from '@/lib/nav'
 import { tokens } from '@/lib/tokens'
 import { NavIcon } from './Icons'
@@ -25,7 +27,8 @@ export const useDrawer = () => useSyncExternalStore(subscribe, () => drawerOpen,
 
 export const SIDEBAR_ID = 'side'
 
-export type SidebarBrand = { initials: string; name: string; sub: string; tile: 'ink' | 'phx' }
+// `demo`: a workspace the seed made (Prompt 9) — the Demo pill beside its name and the demo line in the footer.
+export type SidebarBrand = { initials: string; name: string; sub: string; tile: 'ink' | 'phx'; demo?: boolean }
 
 export function Sidebar({
   brand,
@@ -60,7 +63,10 @@ export function Sidebar({
             {brand.initials}
           </div>
           <div>
-            <b>{brand.name}</b>
+            <b>
+              {brand.name}
+              {brand.demo && <DemoPill />}
+            </b>
             <small>{brand.sub}</small>
           </div>
         </div>
@@ -85,7 +91,10 @@ export function Sidebar({
         </nav>
         <div className="mt-auto">
           {children && <div className="px-[10px] pt-[14px]">{children}</div>}
-          <div className="foot">{footer}</div>
+          <div className="foot">
+            {brand.demo && <span className="dmf">{DEMO.footer}</span>}
+            {footer}
+          </div>
         </div>
       </aside>
     </>

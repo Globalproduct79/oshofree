@@ -64,3 +64,7 @@ it("lights the activity line a link asked for, spaces Show more under a list, an
   // Keyboard focus on a row shows the ring inside the box.
   expect(css).toContain('.shr summary:focus-visible{outline-offset:-2px')
 })
+it("draws a demo workspace's grey pill beside its name, and its line at the foot of the sidebar", () => {
+  expect(css).toContain('.dm{display:inline-block;margin-left:6px;padding:0 7px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink2)')
+  expect(css).toContain('.side .foot .dmf{display:block')
+})

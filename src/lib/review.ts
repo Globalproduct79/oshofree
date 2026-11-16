@@ -29,6 +29,8 @@ export type PendingWorkspace = {
   country: string
   owner: string | null
   creditCents: number
+  // The seed made it (Prompt 9): the Demo pill beside its name.
+  demo: boolean
 }
 
 export type QueueRow = {
@@ -52,6 +54,8 @@ export type QueueRow = {
   warnings: string[]
   // Approve waits for the workspace's approval (spec §6.4; a declined workspace stays refused, D4).
   approveEnabled: boolean
+  // Its workspace is the seed's (Prompt 9): the Demo pill after the byline.
+  demo: boolean
   country: Country
   // The offer as the preview draws it (a revision's offer over its campaign's reward and flight).
   preview: PreviewCampaign
@@ -64,7 +68,7 @@ export type ReviewQueue = { pendingWorkspaces: PendingWorkspace[]; rows: QueueRo
 // The campaign's offer as the row shows it: the campaign's own, or with a revision's offer fields over it.
 type Offer = Pick<Campaign, keyof OfferFields>
 type Waiting = { kind: QueueRow['kind']; id: string; submittedAt: Date; campaign: Campaign; offer: Offer; createdBy: string | null }
-type WorkspaceOf = { name: string; status: WorkspaceStatus }
+type WorkspaceOf = { name: string; status: WorkspaceStatus; demo: boolean }
 
 const campaignHref = (id: string) => `/app/campaigns/${id}`
 
@@ -134,6 +138,7 @@ function row(w: Waiting, ws: WorkspaceOf, link: LinkState | null): QueueRow {
     link,
     warnings: warnings(o, ws),
     approveEnabled: ws.status === 'approved',
+    demo: ws.demo,
     country: c.country,
     preview: preview(c, o),
   }
@@ -172,13 +177,14 @@ async function pendingWorkspaces(): Promise<PendingWorkspace[]> {
     country: MARKETS[w.country].name,
     owner: w.members[0]?.user.name ?? null,
     creditCents: w.creditLimitCents,
+    demo: w.demo,
   }))
 }
 
 // Campaigns in review and the revised offers of running campaigns, newest submission first. Each link offer's
 // link is checked once, all at the same time.
 async function waiting(check: (url: string) => Promise<LinkState>): Promise<QueueRow[]> {
-  const ws = { workspace: { select: { name: true, status: true } }, createdBy: { select: { name: true } } } as const
+  const ws = { workspace: { select: { name: true, status: true, demo: true } }, createdBy: { select: { name: true } } } as const
   const [campaigns, revisions] = await Promise.all([
     db.campaign.findMany({ where: { status: 'review' }, include: ws }),
     db.campaignRevision.findMany({ where: { status: 'review' }, include: { campaign: { include: ws } } }),

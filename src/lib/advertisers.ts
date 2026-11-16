@@ -37,6 +37,8 @@ const OWNER = {
 export type AdvertiserRow = {
   id: string
   name: string
+  // The seed made it (Prompt 9): the Demo pill beside its name.
+  demo: boolean
   owner: string | null
   type: WorkspaceType
   country: Country
@@ -61,6 +63,7 @@ export async function advertiserRows(): Promise<AdvertiserRow[]> {
     return {
       id: w.id,
       name: w.name,
+      demo: w.demo,
       owner: w.members[0]?.user.name ?? null,
       type: w.type,
       country: w.country,
@@ -96,6 +99,8 @@ export type AdvertiserEvent = { id: string; at: string; actor: string; action: s
 export type AdvertiserDetail = {
   id: string
   name: string
+  // The seed made it (Prompt 9): the Demo pill in the head.
+  demo: boolean
   type: WorkspaceType
   country: Country
   status: WorkspaceStatus
@@ -174,6 +179,7 @@ export async function advertiserDetail(id: string, now: Date): Promise<Advertise
   return {
     id: ws.id,
     name: ws.name,
+    demo: ws.demo,
     type: ws.type,
     country: ws.country,
     status: ws.status,

@@ -357,26 +357,30 @@ export async function homeCards(workspaceId: string, filter: HomeFilter, now: Da
   }
 }
 
-// `creators` adds who created each campaign, where one was recorded.
+// `creators` adds who created each campaign, where one was recorded; `demo` marks the cards of the seed's workspaces
+// (Prompt 9).
 async function cardsWhere(
-  where: Prisma.CampaignWhereInput, now: Date, creators = false,
+  where: Prisma.CampaignWhereInput, now: Date, opts: { creators?: boolean; demo?: boolean } = {},
 ): Promise<(CardData & { workspaceId: string })[]> {
-  const campaigns = await db.campaign.findMany({ where, orderBy: LIST_ORDER, include: { createdBy: { select: { name: true } } } })
+  const campaigns = await db.campaign.findMany({
+    where, orderBy: LIST_ORDER, include: { createdBy: { select: { name: true } }, workspace: { select: { demo: true } } },
+  })
   const ids = campaigns.map((c) => c.id)
   const [event, spend] = await Promise.all([channelEventsBy(ids, ['Impression', 'Open']), chargedBy(ids, CHARGES)])
-  return campaigns.map(({ createdBy, ...c }) => ({
+  return campaigns.map(({ createdBy, workspace, ...c }) => ({
     ...cardOf(c, { imp: event(c.id, 'Impression'), opens: event(c.id, 'Open'), spendCents: spend.get(c.id) ?? 0 }, now),
-    ...(creators && createdBy ? { createdBy: createdBy.name } : {}),
+    ...(opts.creators && createdBy ? { createdBy: createdBy.name } : {}),
+    ...(opts.demo && workspace.demo ? { demo: true } : {}),
     workspaceId: c.workspaceId,
   }))
 }
 
 // Every live campaign on the platform as its card (GLB §2.1 "Live now"), in list order, with the workspace
-// it belongs to.
-export const liveCards = (now: Date) => cardsWhere({ status: 'live' }, now)
+// it belongs to; a demo workspace's carry the Demo pill.
+export const liveCards = (now: Date) => cardsWhere({ status: 'live' }, now, { demo: true })
 
 // Every campaign of one workspace as its card, in list order, with who created it (Advertisers › workspace › Campaigns).
-export const workspaceCards = (workspaceId: string, now: Date) => cardsWhere({ workspaceId }, now, true)
+export const workspaceCards = (workspaceId: string, now: Date) => cardsWhere({ workspaceId }, now, { creators: true })
 
 // ---- Platform (GLB §2.1 block 1, §2.4, §2.5) ----
 

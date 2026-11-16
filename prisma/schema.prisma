@@ -159,6 +159,8 @@ model User {
   passwordHash     String
   name             String
   isGlobalAdmin    Boolean           @default(false)
+  // Demo data (Prompt 9): true only for the people the seed makes; `npm run demo:remove` deletes these and nothing else.
+  demo             Boolean           @default(false)
   createdAt        DateTime          @default(now())
   memberships      WorkspaceMember[]
   reviews          ReviewAction[]
@@ -185,6 +187,8 @@ model Workspace {
   rewardMaxPerSharerPerDay Int               @default(5)
   rewardCapPct             Int               @default(20)
   pointsPerShare           Int               @default(10)
+  // Demo data (Prompt 9): true only for the seed's workspaces, which the console marks with a grey "Demo" pill.
+  demo                     Boolean           @default(false)
   invitations              Invitation[]
   ledger                   LedgerEntry[]
   invoices                 Invoice[]

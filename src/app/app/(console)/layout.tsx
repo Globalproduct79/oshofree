@@ -37,6 +37,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
           name: workspace.name,
           sub: SHELL.brand.workspaceSub(workspace.type, MARKETS[workspace.country].name),
           tile: 'ink',
+          demo: workspace.demo,
         }}
         groups={navFor({ role, inWorkspace: true, counts })}
         footer={APP_VERSION}

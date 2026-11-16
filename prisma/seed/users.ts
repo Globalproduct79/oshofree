@@ -19,9 +19,13 @@ export const LOGINS = [
 export type PersonKey = (typeof LOGINS)[number]['key']
 export type People = Record<PersonKey, User>
 
+// Each is demo data (Prompt 9): `npm run demo:remove` deletes them, and only them.
 export async function seedUsers(): Promise<People> {
   const people = {} as People
-  for (const { key, email, name } of LOGINS) people[key] = await createUser({ email, password: PASSWORD, name })
+  for (const { key, email, name } of LOGINS) {
+    const made = await createUser({ email, password: PASSWORD, name })
+    people[key] = await db.user.update({ where: { id: made.id }, data: { demo: true } })
+  }
   people.admin = await db.user.update({ where: { id: people.admin.id }, data: { isGlobalAdmin: true } })
   return people
 }

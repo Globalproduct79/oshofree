@@ -60,6 +60,8 @@ describe('bootstrap', () => {
 
     const admin = await verifyCredentials('ops@oshofree.test', ENV.adminPassword)
     expect(admin?.isGlobalAdmin).toBe(true)
+    // Only the seed makes demo data (Prompt 9); production's Global user is real.
+    expect(admin?.demo).toBe(false)
 
     // No PHOENIX_CHANNEL_KEY: a key is made, handed back this once, and only its hash is stored.
     expect(r.generatedKey).toMatch(/^phx_live_[0-9A-Za-z]{24}$/)

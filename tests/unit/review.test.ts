@@ -466,7 +466,7 @@ describe('reviewQueue — New advertisers and Live now', () => {
     await db.workspaceMember.create({ data: { userId: kofi.id, workspaceId: ws.id, role: 'Owner' } })
     const { pendingWorkspaces } = await reviewQueue(NOW, okLinks)
     expect(pendingWorkspaces).toEqual([
-      { id: ws.id, name: 'SunFresh Juices', type: 'Brand', country: 'Ghana', owner: 'Kofi Mensah', creditCents: 50_000 },
+      { id: ws.id, name: 'SunFresh Juices', type: 'Brand', country: 'Ghana', owner: 'Kofi Mensah', creditCents: 50_000, demo: false },
     ])
   })
 
