@@ -228,7 +228,10 @@ describe('Platform › Advertisers › workspace', () => {
     expect(html).toContain('value="1500"')
     expect(t).toContain('Buy 2 get 1')
     expect(t).toContain('Next offer')
-    expect(html).toContain(`href="/app/campaigns/${live.id}"`)
+    // A card's own address is this Platform page (entering is the click's action, landing on /app/campaigns/{id}), so
+    // one opened in a new tab never lands in the wrong workspace (Prompt 10).
+    expect(html).toContain(`<a class="cc" href="/admin/advertisers/${ws.id}">`)
+    expect(html).not.toContain(`href="/app/campaigns/${live.id}"`)
     expect(t).toContain('No requests.')
     expect(t).toContain('No history yet.')
   })

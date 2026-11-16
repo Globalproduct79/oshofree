@@ -39,8 +39,9 @@ export default async function CampaignPage({
   // Scoped here; everything below reads only a campaign this workspace owns.
   const c = await db.campaign.findFirst({ where: { id, workspaceId: ws.id } })
   if (!c) {
-    // Global may reach a campaign's address from outside its workspace (a Live now card opened in a new tab, a pasted
-    // link): it says where the campaign is, with the audited way in, instead of a 404. Nothing of it is shown before.
+    // Global inside one workspace may reach another's campaign by its address (a pasted link, an old tab): it says
+    // where the campaign is, with the audited way in, instead of a 404. Nothing of it is shown before. (Global on
+    // Platform, with no workspace, never gets here: the layout sends it to Review. Live now cards link to Platform.)
     const away =
       role === 'Global'
         ? await db.campaign.findUnique({ where: { id }, select: { name: true, headline: true, workspace: { select: { id: true, name: true } } } })
@@ -49,7 +50,7 @@ export default async function CampaignPage({
     return (
       <>
         <PageHead
-          crumb={[{ label: ws.name }, { label: C.crumb, href: HOME }, { label: away.name }]}
+          crumb={[{ label: away.workspace.name }, { label: away.name }]}
           title={away.headline}
           lead={C.elsewhere.lead(away.workspace.name)}
         />

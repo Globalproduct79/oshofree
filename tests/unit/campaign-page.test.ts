@@ -166,7 +166,8 @@ describe('the campaign page head', () => {
     const other = await db.workspace.create({ data: { name: 'Rival Foods', type: 'Brand', country: 'NG', status: 'approved' } })
     const c = await mkCampaign(other.id, 'live')
     const { markup, text: t } = await page(c.id)
-    expect(t).toContain('Kola Bright › Campaigns › Buy 2 get 1 — November')
+    // Its own workspace in the breadcrumb, not the one Global is in.
+    expect(markup).toContain('<div class="crumb">Rival Foods › <span>Buy 2 get 1 — November</span></div>')
     expect(markup).toContain('<h1>Buy 2 bottles, get 1 free</h1>')
     expect(t).toContain('This campaign is in Rival Foods. Enter Rival Foods to open it there.')
     expect(markup).toMatch(/<form action="[^"]*"><button class="btn p" type="submit">Enter Rival Foods<\/button><\/form>/)

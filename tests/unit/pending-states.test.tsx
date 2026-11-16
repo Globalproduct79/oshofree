@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
@@ -7,6 +8,7 @@ import ConsoleLoading from '@/app/app/(console)/loading'
 import { pendingState, SubmitButton } from '@/components/og/SubmitButton'
 import { PageSkeleton } from '@/components/shell/PageSkeleton'
 import { savePref } from '@/app/app/(console)/notifications/PrefsClient'
+import { entersOnClick } from '@/components/platform/EnterCampaignCards'
 import { getToast, takeToast } from '@/components/shell/toast-store'
 import { NOTIFICATIONS_PAGE } from '@/lib/copy-notifications-page'
 import { SHELL } from '@/lib/copy-shell'
@@ -104,5 +106,38 @@ describe('console.css', () => {
     for (const sel of ['.sk{display:block', '.sk-h1{', '.sk-lead{', '.sk-box .sk-h3{', '.sk-line{', '.sk-short{', '@keyframes sk{'])
       expect(css).toContain(sel)
     expect(css).toContain('@media (prefers-reduced-motion:reduce){.sk{animation:none}}')
+  })
+})
+
+// Fix round 1: every submit button in the app shows it is on its way. SubmitButton does it for a form with an action;
+// a form driven by onSubmit and a transition puts aria-busy on its own button. A new raw submit without either fails.
+describe('every submit button', () => {
+  const files = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+      const p = path.join(dir, d.name)
+      return d.isDirectory() ? files(p) : p.endsWith('.tsx') ? [p] : []
+    })
+  it('is a SubmitButton or carries aria-busy', () => {
+    const raw: string[] = []
+    for (const f of files('src')) {
+      const src = readFileSync(f, 'utf8')
+      for (let at = src.indexOf('type="submit"'); at >= 0; at = src.indexOf('type="submit"', at + 1)) {
+        const start = src.lastIndexOf('<', at)
+        const tag = src.slice(start, src.indexOf('>', at) + 1)
+        if (!tag.includes('aria-busy')) raw.push(`${f}: ${tag.replace(/\s+/g, ' ').slice(0, 80)}`)
+      }
+    }
+    expect(raw).toEqual([])
+  })
+})
+
+// Fix round 1: a Live now card's plain click enters its workspace; any click that asks for a new tab or window is left
+// to the browser, which opens the card's own address (its advertiser's Platform page).
+describe('entersOnClick', () => {
+  const click = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false }
+  it('a plain left click enters', () => expect(entersOnClick(click)).toBe(true))
+  it('a click with a modifier, or another button, is the browser\'s', () => {
+    for (const k of ['metaKey', 'ctrlKey', 'shiftKey', 'altKey'] as const) expect(entersOnClick({ ...click, [k]: true })).toBe(false)
+    expect(entersOnClick({ ...click, button: 1 })).toBe(false)
   })
 })

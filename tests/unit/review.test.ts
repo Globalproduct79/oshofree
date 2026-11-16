@@ -483,6 +483,8 @@ describe('reviewQueue — New advertisers and Live now', () => {
     expect(livenow[0]).toMatchObject({
       id: live.id,
       href: `/app/campaigns/${live.id}`,
+      // The card's own address: its advertiser's Platform page, which opens without a workspace (Prompt 10).
+      platformHref: `/admin/advertisers/${media.id}`,
       workspaceId: media.id,
       status: 'live',
       headline: 'Supa10 Jackpot',

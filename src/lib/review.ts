@@ -61,7 +61,11 @@ export type QueueRow = {
   preview: PreviewCampaign
 }
 
-export type LiveCard = CardData & { workspaceId: string; href: string }
+// `href` is where entering the card's workspace lands (its campaign page there); `platformHref` is the card's own
+// address, a Platform page that opens without a workspace (a card opened in a new tab or copied — Prompt 10).
+export type LiveCard = CardData & { workspaceId: string; href: string; platformHref: string }
+
+export const advertiserHref = (workspaceId: string) => `/admin/advertisers/${workspaceId}`
 
 export type ReviewQueue = { pendingWorkspaces: PendingWorkspace[]; rows: QueueRow[]; livenow: LiveCard[] }
 
@@ -216,5 +220,5 @@ export async function reviewQueue(
 ): Promise<ReviewQueue> {
   const check = opts.checkLink ?? ((url: string) => checkLink(url, fetch, LINK_TIMEOUT_MS))
   const [pending, rows, live] = await Promise.all([pendingWorkspaces(), waiting(check), liveCards(now)])
-  return { pendingWorkspaces: pending, rows, livenow: live.map((c) => ({ ...c, href: campaignHref(c.id) })) }
+  return { pendingWorkspaces: pending, rows, livenow: live.map((c) => ({ ...c, href: campaignHref(c.id), platformHref: advertiserHref(c.workspaceId) })) }
 }

@@ -8,7 +8,7 @@ import { fd, loc, localAmount, usd } from '@/lib/format'
 import { isCountry, MARKETS, type Country } from '@/lib/markets'
 import { creditSummary, invoiceStatus, limitFromDollars, type InvoiceDisplayStatus } from '@/lib/money'
 import { workspaceCards } from '@/lib/reports'
-import type { LiveCard } from '@/lib/review'
+import { advertiserHref, type LiveCard } from '@/lib/review'
 import { workspaceStatusBox } from '@/lib/workspaces'
 
 // Platform › Advertisers (GLB §2.2) and its workspace detail (spec §6.1, §6.5, §6.14.6), as data.
@@ -190,7 +190,7 @@ export async function advertiserDetail(id: string, now: Date): Promise<Advertise
     accountManager: ws.accountManager,
     termsDays: ws.termsDays,
     creditLimitCents: ws.creditLimitCents,
-    cards: cards.map((c) => ({ ...c, href: `/app/campaigns/${c.id}` })),
+    cards: cards.map((c) => ({ ...c, href: `/app/campaigns/${c.id}`, platformHref: advertiserHref(ws.id) })),
     invoices: invoices.map((inv) => {
       const status = invoiceStatus(inv, now)
       const issuedIn = MARKETS[inv.country].timezone
