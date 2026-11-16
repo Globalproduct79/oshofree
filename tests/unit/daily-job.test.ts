@@ -586,7 +586,25 @@ describe('runDailyJobAction', () => {
     expect(await deliveries(c.id)).toMatchObject([{ amountCents: -180, dedupeKey: `delivery:${c.id}:2026-11-10` }])
     expect(await runDailyJobAction()).toMatchObject({ ok: true, summary: { skipped: false, charged: 0 } })
     expect(await deliveries(c.id)).toHaveLength(1)
-    expect(await db.jobRun.findMany({ where: { name: 'daily' }, select: { day: true } })).toEqual([{ day: at('2026-11-10T00:00:00Z') }])
+    const runs = await db.jobRun.findMany({ where: { name: 'daily' } })
+    expect(runs.map((r) => r.day)).toEqual([at('2026-11-10T00:00:00Z')])
+
+    // Each click is recorded, like "Simulate a day" (Prompt 9): who ran the job, on which run, and what it did — its
+    // errors too, which the toast only counts.
+    const admin = await db.user.findFirstOrThrow({ where: { isGlobalAdmin: true } })
+    const audits = await db.auditEvent.findMany({ where: { action: 'demo.runDaily' } })
+    expect(audits).toHaveLength(2)
+    for (const a of audits) expect(a).toMatchObject({ actorId: admin.id, targetType: 'JobRun', targetId: runs[0].id, workspaceId: null })
+    expect(audits.map((a) => a.after)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ charged: 1, errors: [] }), expect.objectContaining({ charged: 0, errors: [] })]),
+    )
+  })
+
+  it('records nothing when refused', async () => {
+    vi.stubEnv('DEMO_CONTROLS', '')
+    await signIn(true)
+    await runDailyJobAction()
+    expect(await db.auditEvent.count()).toBe(0)
   })
 })
 

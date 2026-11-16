@@ -106,7 +106,7 @@ describe('advertiserRows', () => {
     const rows = await advertiserRows()
     expect(rows.map((r) => r.name)).toEqual(['Kola Bright', 'SunFresh Juices', 'Nope Ltd'])
     expect(rows[0]).toEqual({
-      id: ws.id, name: 'Kola Bright', owner: 'Tunde Okafor', type: 'Brand', country: 'NG', status: 'approved',
+      id: ws.id, name: 'Kola Bright', demo: false, owner: 'Tunde Okafor', type: 'Brand', country: 'NG', status: 'approved',
       campaigns: 3, live: 1, creditLimitCents: 150_000, inUseCents: 51_000, outstandingCents: 21_000,
     })
     const money = await creditSummary(ws.id)

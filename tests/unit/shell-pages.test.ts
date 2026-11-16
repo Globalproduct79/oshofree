@@ -185,8 +185,8 @@ describe('Switcher', () => {
         currentId: 'w1',
         isGlobal: true,
         items: [
-          { id: 'w1', name: 'Kola Bright', type: 'Brand', country: 'NG', status: 'approved' },
-          { id: 'w2', name: 'SunFresh Juices', type: 'Brand', country: 'GH', status: 'pending' },
+          { id: 'w1', name: 'Kola Bright', type: 'Brand', country: 'NG', status: 'approved', demo: false },
+          { id: 'w2', name: 'SunFresh Juices', type: 'Brand', country: 'GH', status: 'pending', demo: false },
         ],
       }),
     )

@@ -3,7 +3,11 @@ export const RATES = {
   crumb: 'Rates',
   title: 'Rates',
   lead: 'Per 1,000 impressions, in USD, per country, placement and channel. Changes apply to new campaigns only.',
-  phoenix: { name: 'Phoenix Browser', status: 'live' },
+  // The pill reads the channel row (Prompt 9): the prototype's fixed "live" only while Phoenix is.
+  phoenix: {
+    name: 'Phoenix Browser',
+    status: (isLive: boolean | null) => (isLive === null ? 'not set up' : isLive ? 'live' : 'not live'),
+  },
   boomplay: { name: 'Boomplay', status: 'coming soon' },
   tableTitle: 'Phoenix Browser · CPM in USD',
   tableSub: 'Floor from the 5 Nov call: $1.2–1.5 cards, video $4–6. Video and splash are subject to Phoenix confirming inventory.',

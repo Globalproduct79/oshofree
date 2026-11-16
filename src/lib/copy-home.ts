@@ -29,10 +29,11 @@ export const HOME = {
     title: 'Nothing on Phoenix yet',
     line: 'Create your first offer. It takes about five minutes.',
   },
-  // Ours (Prompt 6): the New form's draft, kept in this browser, as a card that opens the form again.
+  // Ours (Prompt 6): the New form's draft, kept in this browser, as a card that opens the form again. It says where it is
+  // kept (Prompt 9): only this browser has it, not the account.
   draft: {
     untitled: 'Untitled draft',
-    notSent: 'Not submitted yet',
+    savedHere: 'Saved in this browser',
     carryOn: 'Carry on',
   },
 } as const

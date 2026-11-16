@@ -65,6 +65,9 @@ function marketDate(country: Country, at: Date): Date {
   return new Date(Date.UTC(year, month, day))
 }
 
+// The JobRun row the daily run of `day` claimed: Review's "Run daily job" names it in its audit row (Prompt 9).
+export const dailyRunOf = (day: Date) => db.jobRun.findUnique({ where: { name_day: { name: DAILY, day: utcDate(day) } } })
+
 // True for the first caller only: the insert is ON CONFLICT DO NOTHING on (name, day).
 async function claim(name: string, day: Date): Promise<boolean> {
   const { count } = await db.jobRun.createMany({ data: [{ name, day }], skipDuplicates: true })

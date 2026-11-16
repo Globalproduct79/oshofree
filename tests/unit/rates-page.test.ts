@@ -43,6 +43,17 @@ describe('/admin/rates', () => {
     expect(html).toContain('Senegal')
   })
 
+  // Prompt 9: the pill says what the channel row says, not the prototype's fixed "live".
+  it("reads Phoenix's pill from its channel: live, not live, or not set up", async () => {
+    await signIn(true)
+    const pill = async () => /Phoenix Browser<i>([^<]*)<\/i>/.exec(renderToStaticMarkup(await RatesPage()))?.[1]
+    expect(await pill()).toBe('not set up')
+    const ch = await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix Browser', apiKeyHash: 'x', isLive: false } })
+    expect(await pill()).toBe('not live')
+    await db.channel.update({ where: { id: ch.id }, data: { isLive: true } })
+    expect(await pill()).toBe('live')
+  })
+
   it('actions validate, write, audit and return a toast', async () => {
     await signIn(true)
     await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix Browser', apiKeyHash: 'x' } })

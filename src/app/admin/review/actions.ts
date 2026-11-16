@@ -1,11 +1,12 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { audit } from '@/lib/audit'
 import { approveCampaign, approveRevision, rejectCampaign, rejectRevision } from '@/lib/campaigns'
 import { isRejectReason } from '@/lib/copy-campaign'
 import { REVIEW } from '@/lib/copy-review'
 import { simulateDayAs, type SimulateDayResult } from '@/lib/demo/controls'
-import { previousMarketDay, runDaily, type DailyResult } from '@/lib/jobs/daily'
+import { dailyRunOf, previousMarketDay, runDaily, type DailyResult } from '@/lib/jobs/daily'
 import { isCountry } from '@/lib/markets'
 import { previewOffersFor } from '@/lib/offers'
 import type { PreviewOffer } from '@/lib/preview-merge'
@@ -94,11 +95,16 @@ export async function previewOffersAction(country: unknown): Promise<PreviewOffe
 // §6.7): the market day that has just finished, every other duty at now — replayed past the once-a-day guard, so
 // each click runs. A replay is always safe: every duty is idempotent and a day's delivery line is raised to the
 // day's total, never charged twice. Before the 02:00 UTC run, a click is that run, which then finds its day done.
+// Each click is audited, as "Simulate a day" is (Prompt 9): who ran it, on which run, and what it did, errors included
+// (the toast only counts them).
 export async function runDailyJobAction(): Promise<{ ok: true; summary: DailyResult } | { error: 'FORBIDDEN' }> {
   const user = await requireUser()
   if (process.env.DEMO_CONTROLS !== '1' || !(await isAdminInDb(user.id))) return { error: 'FORBIDDEN' }
   const now = new Date()
-  const summary = await runDaily(previousMarketDay(now), now, { replay: true })
+  const day = previousMarketDay(now)
+  const summary = await runDaily(day, now, { replay: true })
+  const run = await dailyRunOf(day)
+  await audit(user.id, 'demo.runDaily', { type: 'JobRun', id: run?.id ?? '' }, undefined, summary)
   revalidatePath('/', 'layout')
   return { ok: true, summary }
 }

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { switchWorkspaceToAction } from '@/app/app/(console)/switch/actions'
-import { Box, DataTable, StatusBadge } from '@/components/og'
+import { Box, DataTable, DemoPill, StatusBadge } from '@/components/og'
 import { ActionButton, CommitInput } from '@/components/platform/InlineControls'
 import { PageHead } from '@/components/shell/PageHead'
 import { advertiserRows } from '@/lib/advertisers'
@@ -26,6 +26,7 @@ export default async function AdvertisersPage() {
       <Link href={`/admin/advertisers/${r.id}`}>
         <b>{r.name}</b>
       </Link>
+      {r.demo && <DemoPill />}
       {r.owner && (
         <>
           <br />

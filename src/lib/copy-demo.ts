@@ -14,6 +14,10 @@ export const DEMO = {
   ranDailyWithErrors: (n: number) => `Daily job ran with ${n === 1 ? '1 error' : `${n} errors`}`,
   dailySkipped: 'The daily job already ran today.',
   dailyForbidden: 'Only Global can run the daily job.',
+  // Ours (Prompt 9): the seed's workspaces are demo data. The grey pill beside a demo workspace's name (its tooltip is
+  // the footer line), and the line at the foot of its sidebar.
+  pill: 'Demo',
+  footer: 'Demo data — reseeded on each reset',
 } as const
 
 export type SimulateError = keyof typeof DEMO.errors

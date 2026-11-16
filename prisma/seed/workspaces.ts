@@ -43,8 +43,9 @@ export type Workspaces = Record<WorkspaceKey, Workspace>
 
 async function join(spec: Spec, people: People, joinedAt: Date): Promise<Workspace> {
   const created = await createWorkspace(people[spec.owner].id, { name: spec.name, type: spec.type, country: spec.country })
-  // createWorkspace stamps the wall clock; "Since" on the Workspace page reads when it joined.
-  const ws = await db.workspace.update({ where: { id: created.id }, data: { createdAt: joinedAt } })
+  // createWorkspace stamps the wall clock; "Since" on the Workspace page reads when it joined. It is demo data (Prompt 9):
+  // the console marks it with the Demo pill, and `npm run demo:remove` deletes it.
+  const ws = await db.workspace.update({ where: { id: created.id }, data: { createdAt: joinedAt, demo: true } })
   if (spec.members.length) {
     await db.workspaceMember.createMany({ data: spec.members.map(([who, role]) => ({ userId: people[who].id, workspaceId: ws.id, role })) })
   }

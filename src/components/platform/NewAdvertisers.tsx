@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useTransition } from 'react'
 import { approveWorkspaceAction, declineWorkspaceAction } from '@/app/admin/review/actions'
-import { Box, Button } from '@/components/og'
+import { Box, Button, DemoPill } from '@/components/og'
 import { Modal } from '@/components/shell/Modal'
 import { REVIEW } from '@/lib/copy-review'
 import { usd } from '@/lib/format'
@@ -53,6 +53,7 @@ function Row({ ws }: { ws: PendingWorkspace }) {
         <div>
           <div>
             <b>{ws.name}</b>
+            {ws.demo && <DemoPill />}
             {A.rest(ws.type, ws.country)}
           </div>
           <p>{A.owner(ws.owner ?? A.noOwner, usd(ws.creditCents))}</p>

@@ -81,6 +81,9 @@ describe('seed', () => {
     expect(await db.marketFx.count()).toBe(5)
     expect(await db.fraudRule.count()).toBe(3)
     expect(summary).toMatchObject({ users: 8, workspaces: 4, campaigns: 9 })
+    // All of it is demo data (Prompt 9): labelled in the console, and what `npm run demo:remove` deletes.
+    expect(await db.workspace.count({ where: { demo: false } })).toBe(0)
+    expect(await db.user.count({ where: { demo: false } })).toBe(0)
 
     const campaigns = await db.campaign.findMany({ include: { workspace: true } })
     expect(Object.fromEntries(campaigns.map((c) => [c.name, c.status]))).toEqual(STATUSES)

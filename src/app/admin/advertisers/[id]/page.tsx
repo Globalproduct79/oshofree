@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { setCreditLimitAction } from '@/app/admin/advertisers/actions'
 import { switchWorkspaceToAction } from '@/app/app/(console)/switch/actions'
-import { Box, DataTable, EmptyState, KVGrid, LinkButton, StatusBadge } from '@/components/og'
+import { Box, DataTable, DemoPill, EmptyState, KVGrid, LinkButton, StatusBadge } from '@/components/og'
 import { EnterCampaignCards } from '@/components/platform/EnterCampaignCards'
 import { ActionButton, CommitInput, CommitSelect } from '@/components/platform/InlineControls'
 import { PageHead } from '@/components/shell/PageHead'
@@ -51,7 +51,12 @@ export default async function AdvertiserPage({ params }: { params: Promise<{ id:
     <>
       <PageHead
         crumb={[{ label: SHELL.groups.platform }, { label: A.crumb, href: '/admin/advertisers' }, { label: d.name }]}
-        title={d.name}
+        title={
+          <>
+            {d.name}
+            {d.demo && <DemoPill />}
+          </>
+        }
         lead={D.lead(d.type, m.name, d.owner ?? D.noOwner, d.since)}
         actions={
           <>

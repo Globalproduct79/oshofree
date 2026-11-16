@@ -71,6 +71,38 @@ The seed leaves four invoices:
 A row marked "(to date)" on an Invoices page is not an invoice. It is this month's charges so far, which the
 next month close turns into an invoice. It is never stored, so it never blocks that close.
 
+### Demo data is labelled
+
+Every workspace and person the seed creates is marked as demo data (`Workspace.demo` and `User.demo`). Nothing
+else sets the mark: a sign-up, an accepted invitation and `npm run bootstrap` all make real records. The console
+shows a demo workspace with a small grey "Demo" pill beside its name (the sidebar head, the Workspaces switcher,
+Platform › Advertisers and the advertiser's page, and its cards on Review), and the foot of its sidebar reads
+"Demo data — reseeded on each reset". A workspace someone made shows neither. A database seeded before the
+`20261116090000_demo_flags` migration has no marks until it is reseeded.
+
+The New campaign form's "Save draft" is the one thing kept outside the database: the draft lives in this
+browser only, and the form, its toast and the Draft card on Campaigns home say "Saved in this browser".
+
+### Removing the demo data
+
+```sh
+npm run demo:remove                  # prints what it would delete, deletes nothing
+DEMO_REMOVE=1 npm run demo:remove    # deletes it
+```
+
+It deletes only the demo workspaces and people, with everything that hangs off them: their campaigns and every
+event, share link, claim, reward, point and revision of those campaigns, the Phoenix users' numbers that only
+those campaigns carry, their ledgers, invoices, credit requests, invitations, memberships, notifications and
+their review and audit history. It prints the database's name and the plan first (the plan is the deletion
+itself, rolled back), and without `DEMO_REMOVE=1` it stops there and exits 1. A demo person whom a real record
+names stays, and the plan says why: a member of a real workspace, or the Global who decided on or acted in one.
+
+What stays: the platform's own records, which belong to no workspace — Phoenix's channels and key, rates, FX and
+share, the fraud rules, the aggregator's balance and top-ups, settlement statements and job runs. The seed's
+Global user (`admin@oshofree.demo`) is demo data too, so afterwards run `npm run bootstrap` with
+`BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` to have a Global user. `scripts/db-truncate.ts` is not this:
+it empties every table and runs only on a database named `*_test`.
+
 ## Demo controls
 
 Set `DEMO_CONTROLS=1` in `.env` and Global gets two buttons. Nobody else sees them, and each action checks
@@ -211,7 +243,9 @@ then make sure the daily job is in cron:
   then records who created each campaign; campaigns from before it name no creator.
   `20261115100000_channel_event_campaign_type_at` adds the `ChannelEvent (campaignId, type, at)` index Recent activity
   pages and walks impressions by (a plain `CREATE INDEX`: on a large events table, expect it to lock writes to
-  `ChannelEvent` while it builds). Never run the seed in production.
+  `ChannelEvent` while it builds).
+  `20261116090000_demo_flags` adds
+  the demo-data marks, false for every row already there. Never run the seed or `npm run demo:remove` in production.
 - `npm run bootstrap` creates what production needs before anyone signs in, and only what is missing:
   the Global user, the Phoenix channel (live in all five markets), Phoenix's rate card, FX and 55 % share
   (the seed's reference figures, from `src/lib/reference-rates.ts`), the three fraud rules and the aggregator
