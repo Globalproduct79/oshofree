@@ -100,3 +100,31 @@ Every decision the controller made during the subagent-driven build of slice 2, 
 96. Global's notification toggles inside a workspace are stored but gate nothing (Global never receives workspace notifications) — left as the prototype shows them — costs nothing.
 97. rewardLocal gets the same Int ceiling as budget/credit (changeWithoutReview, setCampaignReward, the form validation) with one copy sentence — the implementer found the same overflow outside the brief; a 500 on a reward field is a user-visible defect — costs one small commit, verified by the controller.
 98. impressions an authenticated channel reports are billed as delivered whatever the campaign's status now (ingestEvents has no delivery check; chargeDelivery bills them) — the channel is the source of truth for delivery and the spec gives it 15 minutes to drop a paused/ended offer; a tighter window is a product call for the user — costs billing late impressions Phoenix should have stopped showing.
+
+## The ten UX prompts (14–16 Nov 2026)
+
+Rulings made while running the owner's ten "Incremental UX Implementation" prompts on top of slice 2, in order. Same form: what — why — cost.
+
+1. [P2] titles/leads stay verbatim from the prototype; the head gains one control per page (orange primary where a real action exists, else one white related-page link); form pages keep their submit in the form; Billing keeps the prototype's head (Invoices) — costs a few pages whose "primary" is a link.
+2. [P2] Invite and Top-up move to dedicated pages (/app/people/invite, /admin/rewards/top-up) per the prompt; Rotate key, End campaign, Reject and Decline keep their modals because they are destructive confirmations or reason entry, which the prompt's "unnecessary modals" does not cover — costs two new routes.
+3. [P1] the sidebar is built by capability — a role never sees an item it cannot open — costs one fewer item for Viewers (the prototype only ever showed Owners signed in).
+4. [P1] the home greeting uses the signed-in user's first name (ruling 45 of slice 2 is superseded) — costs nothing for Owners.
+5. [P6] a campaign is one offer (the spec's and prototype's model); "one or more offers" = one offer per campaign, any number of campaigns per brand; no Offer table — costs the form saying so in one line.
+6. [P6] Campaign.createdById is added (migration) so records reference their creator — costs one column.
+7. [P9] demo data is labelled with Workspace.demo/User.demo set by the seed only, shown as a grey "Demo" pill; a `demo:remove` script deletes only demo rows and refuses without DEMO_REMOVE=1 — costs one migration.
+8. [P10] route-level loading skeletons + pending submit buttons are added (none existed); three-user journeys become one serial e2e spec — costs e2e time.
+9. [P3] Invite/Resend/Revoke are Owner and Global only — the people capability excludes Managers, as the prototype says ("Owners manage billing and people"); the brief's "Owner/Manager" was loose — costs nothing.
+10. [P3] People's "Copy invite link" is gone; a link is only ever shown once, on creation or on Resend (which retires the old one) — fewer token exposures — costs one more click for an Owner who lost a link.
+11. [P3] acceptInvite must also match the token it was given (not only the id) so a link retired by Resend can never be accepted — fix round.
+12. [P6] the seed stamps each campaign's submitter as its creator (Ada/Chidi on four) — truer than stamping the Owner — costs nothing.
+13. [P6] "Save draft" stays browser-local, as the prototype had it; a DB draft needs nullable columns (a business-rule change); P9 labels it "Saved in this browser" — costs drafts not following the user across devices.
+14. [P6] the licence number stays in the description (the rules read it there); the Review step says "In the description ✓" — costs no new field.
+15. [P7] the landing page is reused render-only in a sandboxed frame (it is a string renderer); preview buttons point at /o/preview routes that refuse with 403 and write nothing; the real /o/[code] routes are untouched — costs nothing.
+16. [P7] the Share tab shows the page's Share-and-earn section only (the rest sits below the fold) — accepted.
+17. [P8] impressions are grouped per channel per UTC hour (events carry no batch id) — one line per hour, the hour as the tooltip id — costs nothing visible.
+18. [P8] a ChannelEvent index on (campaignId, type, at) rides in Prompt 9's migration (one migration, not two); the activity query must page in the database — carried to the P8 fix round if the reviewer confirms the full scan.
+19. [P9] demo:remove also removes the seed's Global user; the README says to run bootstrap afterwards — accepted. accountManager still defaults to "Obinna A." — carried to Prompt 10's sweep.
+20. [P9] the pill is rendered as a sibling of headings/links, never inside them — the product fix, not a looser locator — costs one wrapper per site.
+21. [P9] kept demo persons lose Global and get an unusable password hash on demo:remove — costs nothing (bootstrap makes the real Global).
+22. [P10] the sweep script is pinned to port 3101 by code, not convention — it mutates data — costs nothing.
+23. [P10] Live-now cards on Platform link to the advertiser page (works without a workspace cookie) rather than a campaign page that bounces Global — costs one href.
