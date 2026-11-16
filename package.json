@@ -10,7 +10,7 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "dotenv -o -e .env.test -- sh -c 'prisma migrate deploy && tsx scripts/db-truncate.ts && SEED_FORCE=1 SEED_SCALE=0.2 tsx prisma/seed.ts && playwright test'",
+    "test:e2e": "dotenv -o -e .env.test -- sh -c 'prisma migrate deploy && tsx scripts/db-truncate.ts && SEED_FORCE=1 SEED_SCALE=0.2 tsx prisma/seed.ts && playwright test \"$@\"' sh",
     "db:migrate": "dotenv -- prisma migrate dev",
     "db:seed": "dotenv -- tsx prisma/seed.ts",
     "db:reset": "dotenv -- prisma migrate reset --force",
