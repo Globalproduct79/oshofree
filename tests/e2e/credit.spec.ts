@@ -117,7 +117,8 @@ test("F4: Global marks MediaSpec's open invoice paid and Dolapo's credit in use 
 
   await openAdvertiser(MEDIASPEC)
   const row = admin.getByRole('row').filter({ hasText: INVOICE })
-  await expect(row.getByText(STATUS_LABEL.due, { exact: true })).toBeVisible()
+  // Unpaid: Due until the 15th (the 1st's close plus 14 days' terms), Overdue from the 16th — either takes Mark paid.
+  await expect(row.getByText(new RegExp(`^(${STATUS_LABEL.due}|${STATUS_LABEL.overdue})$`))).toBeVisible()
   // The invoice's columns: number, period, status, due, USD, local, action.
   const amount = dollars(await row.getByRole('cell').nth(4).textContent())
   // Large enough that a drop of nothing cannot pass for it within the rounding allowance below.
