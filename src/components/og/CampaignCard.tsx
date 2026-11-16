@@ -45,10 +45,13 @@ export function CampaignCard({
   campaign: c,
   href,
   onClick,
+  busy,
 }: {
   campaign: CardModel
   href?: string
   onClick?: React.MouseEventHandler<HTMLAnchorElement>
+  // A click the caller took over is on its way (Review's Live now entering a workspace): dimmed, progress cursor.
+  busy?: boolean
 }) {
   const body = (
     <>
@@ -85,7 +88,7 @@ export function CampaignCard({
     </>
   )
   const card = href ? (
-    <Link href={href} className="cc" onClick={onClick}>
+    <Link href={href} className="cc" onClick={onClick} aria-busy={busy || undefined}>
       {body}
     </Link>
   ) : (

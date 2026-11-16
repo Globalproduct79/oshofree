@@ -1,4 +1,5 @@
 import { switchToPlatformAction } from '@/app/app/(console)/switch/actions'
+import { SubmitButton } from '@/components/og/SubmitButton'
 import { SHELL } from '@/lib/copy-shell'
 
 export type BannerKind = 'pending' | 'declined' | 'global' | 'globalInside'
@@ -27,9 +28,9 @@ export function Banner({
       <b>{lead}</b> {text}
       {kind === 'globalInside' && (
         <form action={switchToPlatformAction} className="ml-auto">
-          <button type="submit" className="border-0 bg-transparent p-0 text-inherit underline">
+          <SubmitButton plain className="border-0 bg-transparent p-0 text-inherit underline">
             {b.back}
-          </button>
+          </SubmitButton>
         </form>
       )}
     </div>

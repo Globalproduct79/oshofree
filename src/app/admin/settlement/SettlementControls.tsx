@@ -8,17 +8,19 @@ import { markStatementPaidAction, setShareAction } from './actions'
 
 type Result = { toast: string } | { error: string }
 
-function useRun() {
-  const [, start] = useTransition()
-  return (act: () => Promise<Result>) =>
+// Runs one action and toasts its answer; `pending` keeps the control off until it answers (Prompt 10).
+function useRun(): [(act: () => Promise<Result>) => void, boolean] {
+  const [pending, start] = useTransition()
+  const run = (act: () => Promise<Result>) =>
     start(async () => {
       const res = await act()
       toast('toast' in res ? res.toast : res.error)
     })
+  return [run, pending]
 }
 
 export function ShareInput({ share }: { share: number }) {
-  const run = useRun()
+  const [run] = useRun()
   return (
     <label style={{ display: 'block' }}>
       <span style={{ display: 'block', marginBottom: 6 }}>{SETTLEMENT.shareLabel}</span>
@@ -39,9 +41,9 @@ export function ShareInput({ share }: { share: number }) {
 }
 
 export function MarkPaid({ id }: { id: string }) {
-  const run = useRun()
+  const [run, pending] = useRun()
   return (
-    <Button variant="ghost" size="s" onClick={() => run(() => markStatementPaidAction(id))}>
+    <Button variant="ghost" size="s" disabled={pending} aria-busy={pending || undefined} onClick={() => run(() => markStatementPaidAction(id))}>
       {SETTLEMENT.markPaid}
     </Button>
   )

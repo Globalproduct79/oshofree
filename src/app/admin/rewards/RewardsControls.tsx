@@ -9,13 +9,15 @@ import { rejectPayoutAction, releasePayoutAction, setFraudRuleAction, topUpActio
 
 type Result = { toast: string } | { error: string }
 
-function useRun() {
-  const [, start] = useTransition()
-  return (act: () => Promise<Result>) =>
+// Runs one action and toasts its answer; `pending` keeps the control off until it answers (Prompt 10).
+function useRun(): [(act: () => Promise<Result>) => void, boolean] {
+  const [pending, start] = useTransition()
+  const run = (act: () => Promise<Result>) =>
     start(async () => {
       const res = await act()
       toast('toast' in res ? res.toast : res.error)
     })
+  return [run, pending]
 }
 
 const LEDGER = '/admin/rewards'
@@ -55,16 +57,16 @@ export function TopUpForm() {
 }
 
 export function FraudToggle({ ruleKey, label, sub, enabled }: { ruleKey: string; label: string; sub: string; enabled: boolean }) {
-  const run = useRun()
-  return <ToggleRow label={label} sub={sub} checked={enabled} onChange={(c) => run(() => setFraudRuleAction(ruleKey, c))} />
+  const [run, pending] = useRun()
+  return <ToggleRow label={label} sub={sub} checked={enabled} disabled={pending} onChange={(c) => run(() => setFraudRuleAction(ruleKey, c))} />
 }
 
 export function HeldButtons({ id }: { id: string }) {
-  const run = useRun()
+  const [run, pending] = useRun()
   return (
     <span style={{ display: 'inline-flex', gap: 6 }}>
-      <Button variant="primary" size="s" onClick={() => run(() => releasePayoutAction(id))}>{R.release}</Button>
-      <Button variant="ghost" size="s" danger onClick={() => run(() => rejectPayoutAction(id))}>{R.reject}</Button>
+      <Button variant="primary" size="s" disabled={pending} aria-busy={pending || undefined} onClick={() => run(() => releasePayoutAction(id))}>{R.release}</Button>
+      <Button variant="ghost" size="s" danger disabled={pending} aria-busy={pending || undefined} onClick={() => run(() => rejectPayoutAction(id))}>{R.reject}</Button>
     </span>
   )
 }

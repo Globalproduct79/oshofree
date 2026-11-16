@@ -36,6 +36,22 @@ export const SHELL = {
   },
   version: (v: string) => `v${v}`,
   menu: 'Menu',
+  // Ours (Prompt 10): what a screen reader hears while a page's skeleton is up.
+  loading: 'Loading…',
+  // Ours (Prompt 10): a page that is not there, or that failed, said inside the shell with the way back.
+  problem: {
+    notHere: {
+      title: "This page isn't here",
+      line: 'The link may be old, or what it opens may belong to another workspace.',
+    },
+    failed: {
+      title: "This page didn't load",
+      line: 'Something went wrong on our side. Try again, or go back and carry on.',
+      retry: 'Try again',
+    },
+    toCampaigns: 'Back to Campaigns',
+    toReview: 'Back to Review',
+  },
   search: {
     label: 'Search',
     placeholder: 'Search campaigns, invoices, people…',

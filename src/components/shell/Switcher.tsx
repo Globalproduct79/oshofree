@@ -3,6 +3,7 @@
 import type { SwitcherItem } from '@/lib/active-workspace'
 import { signOutAction, switchToPlatformAction, switchWorkspaceAction } from '@/app/app/(console)/switch/actions'
 import { DemoPill } from '@/components/og/DemoPill'
+import { SubmitButton } from '@/components/og/SubmitButton'
 import { COPY } from '@/lib/copy'
 import { SHELL } from '@/lib/copy-shell'
 import { isCountry, MARKETS } from '@/lib/markets'
@@ -14,7 +15,7 @@ const countryName = (c: string) => (isCountry(c) ? MARKETS[c].name : c)
 
 // "▦ Workspaces" opens this instead of the prototype's native <select> (spec §6.2): one row per
 // workspace with its type, country and status (and the Demo pill on a seeded one), then "Platform (Global)" for Global,
-// then Sign out.
+// then Sign out. Each row is a form's submit, off while its press is on its way (Prompt 10).
 export function Switcher({
   id,
   open,
@@ -36,8 +37,8 @@ export function Switcher({
       {items.map((w) => (
         <div key={w.id}>
           <form action={switchWorkspaceAction.bind(null, w.id)}>
-            <button
-              type="submit"
+            <SubmitButton
+              plain
               className={`${ROW_BUTTON} flex items-center gap-3`}
               aria-current={w.id === currentId ? 'true' : undefined}
             >
@@ -47,24 +48,24 @@ export function Switcher({
                 <small>{s.sub(w.type, countryName(w.country))}</small>
               </span>
               <span className={`st st-${w.status}`}>{COPY.status[w.status]}</span>
-            </button>
+            </SubmitButton>
           </form>
         </div>
       ))}
       {isGlobal && (
         <div>
           <form action={switchToPlatformAction}>
-            <button type="submit" className={`${ROW_BUTTON} block`} aria-current={currentId === null ? 'true' : undefined}>
+            <SubmitButton plain className={`${ROW_BUTTON} block`} aria-current={currentId === null ? 'true' : undefined}>
               <b>{s.platform}</b>
-            </button>
+            </SubmitButton>
           </form>
         </div>
       )}
       <div>
         <form action={signOutAction}>
-          <button type="submit" className={`${ROW_BUTTON} block`}>
+          <SubmitButton plain className={`${ROW_BUTTON} block`}>
             {s.signOut}
-          </button>
+          </SubmitButton>
         </form>
       </div>
     </div>

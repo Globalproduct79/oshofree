@@ -11,6 +11,8 @@ export const NOTIFICATIONS_PAGE = {
   prefsBox: 'Email and in-app',
   recentBox: 'Recent',
   empty: 'Nothing new.',
+  // Ours (Prompt 10): a flip that did not reach the server goes back, and says so.
+  saveFailed: "That setting didn't save. Try again.",
   prefs: [
     { kind: 'approved', label: 'Campaign approved or rejected', sub: 'The decision and, if rejected, why' },
     { kind: 'credit', label: 'Credit limit reached or invoice due', sub: 'Campaigns pause at the limit' },

@@ -253,3 +253,11 @@ form.enter{display:inline;margin:0}
 /* The New form's line beside Save draft: the draft is kept in this browser only (Prompt 9). */
 .saved-here{color:var(--ink3);font-size:13px}
 .ccw > .dm{position:absolute;left:10px;top:89px;margin:0;pointer-events:none;transition:transform .12s}.ccw:hover > .dm{transform:translateY(-2px)}
+/* Prompt 10: a form's submit on its way (SubmitButton), and a Live now card entering its workspace, are dimmed with the
+   progress cursor; while a page loads, its place holds grey blocks (PageSkeleton), pulsing unless less motion is asked. */
+.btn[aria-busy=true],button[aria-busy=true],.cc[aria-busy=true]{opacity:.6;cursor:progress}
+.sk{display:block;background:var(--line2);border-radius:8px;animation:sk 1.4s ease-in-out infinite}
+.sk-crumb{width:180px;height:13px}.sk-h1{width:min(320px,70%);height:28px;margin:0 0 10px}.sk-lead{width:min(520px,90%);height:14px}
+.sk-box .sk-h3{width:160px;height:16px;margin:0 0 14px}.sk-line{width:100%;height:12px;margin:0 0 10px}.sk-short{width:60%}
+@keyframes sk{50%{opacity:.5}}
+@media (prefers-reduced-motion:reduce){.sk{animation:none}}
