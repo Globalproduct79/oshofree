@@ -100,9 +100,12 @@ type Branch = {
   rank: number | Prisma.Sql
   key: Prisma.Sql
   cols: Cols
-  from: Prisma.Sql
+  // A source that can cut its own page before its lookups (links) builds its FROM from the page.
+  from: Prisma.Sql | ((page: Page | undefined, only: string | undefined) => Prisma.Sql)
   where: Prisma.Sql
 }
+
+type Page = { n: number; cursor: Cursor | null }
 
 // Where a page starts: below a line (Show more, ?before=) or at it (a link to one line, ?line=).
 type Cursor = { at: Date; rank: number; key: string; inclusive: boolean }
@@ -111,18 +114,22 @@ const rankSql = (b: Branch) => (typeof b.rank === 'number' ? raw(String(b.rank))
 
 // The branch's rows; with a page, only the n before the cursor, newest first (an index scan that stops for
 // ChannelEvent, a top-n sort for the small tables); with `only`, the one row with that id.
-function branchSql(b: Branch, page?: { n: number; cursor: Cursor | null }, only?: string): Prisma.Sql {
+// The conditions that put a row below (or at) the cursor: a plain bound on the moment for the index, then the exact
+// order.
+function belowCursor(at: Prisma.Sql, rank: Prisma.Sql, key: Prisma.Sql, c: Cursor | null | undefined): Prisma.Sql[] {
+  if (!c) return []
+  return [
+    sql`${at} <= ${c.at}`,
+    c.inclusive ? sql`(${at}, ${rank}, ${key}) <= (${c.at}, ${c.rank}, ${c.key})` : sql`(${at}, ${rank}, ${key}) < (${c.at}, ${c.rank}, ${c.key})`,
+  ]
+}
+
+function branchSql(b: Branch, page?: Page, only?: string): Prisma.Sql {
   const rank = rankSql(b)
-  const where = [b.where]
+  const where = [b.where, ...belowCursor(b.at, rank, b.key, page?.cursor)]
   if (only !== undefined) where.push(sql`${b.id} = ${only}`)
-  const c = page?.cursor
-  if (c) {
-    where.push(sql`${b.at} <= ${c.at}`)
-    where.push(c.inclusive
-      ? sql`(${b.at}, ${rank}, ${b.key}) <= (${c.at}, ${c.rank}, ${c.key})`
-      : sql`(${b.at}, ${rank}, ${b.key}) < (${c.at}, ${c.rank}, ${c.key})`)
-  }
-  const body = sql`SELECT ${select({ ...b.cols, at: b.at, rank, key: b.key })} ${b.from} WHERE ${Prisma.join(where, ' AND ')}`
+  const from = typeof b.from === 'function' ? b.from(page, only) : b.from
+  const body = sql`SELECT ${select({ ...b.cols, at: b.at, rank, key: b.key })} ${from} WHERE ${Prisma.join(where, ' AND ')}`
   if (!page) return body
   const order = typeof b.rank === 'number' ? sql`${b.at} DESC, ${b.key} DESC` : sql`${b.at} DESC, ${rank} DESC, ${b.key} DESC`
   return sql`(${body} ORDER BY ${order} LIMIT ${page.n})`
@@ -169,33 +176,49 @@ const rootEvents = (ids: Ids): Branch => ({
   where: sql`l."campaignId" IN (${ids}) AND l."depth" = 0 AND (e."type" = 'Claim' OR (e."type" = 'Open' AND e."deduped" = false))`,
 })
 
-// Sharers' links: one that went out on a medium is a share; a friend's own link not shared on yet is still a line.
+// Sharers' links: one that went out on a medium is a share; a friend's own link not shared on yet is still a line. The
+// link's moment is worked out first (its row, its token's share event, its details) and its people looked up after, so
+// a page sorts the links alone and looks up only the ones it keeps.
 const links = (ids: Ids): Branch => ({
-  prefix: 'link', id: sql`l."id"`, at: sql`LEAST(l."createdAt", se."at", dt."at")`, rank: 3, key: sql`'link-' || l."id"`,
+  prefix: 'link', id: sql`l."id"`, at: sql`l."moment"`, rank: 3, key: sql`'link-' || l."id"`,
   cols: {
     kind: sql`CASE WHEN l."via" IS NULL THEN 'ownLink' ELSE 'share' END`,
-    ids: sql`concat_ws(' · ', l."id", se."id", dt."id")`, campaignId: sql`l."campaignId"`, channelId: sql`l."channelId"`,
+    ids: sql`concat_ws(' · ', l."id", l."shareEventId", l."detailsId")`, campaignId: sql`l."campaignId"`, channelId: sql`l."channelId"`,
     via: sql`l."via"`, sharer: linkSharer('l'), sharerPhone: sql`c."phone"`, sharerSession: linkSession('l'),
     parent: sql`CASE WHEN pa."sharerType" = 'Root' THEN NULL ELSE ${linkSharer('pa')} END`, parentPhone: sql`pc."phone"`,
     parentSession: sql`CASE WHEN pa."sharerType" = 'Root' THEN NULL ELSE ${linkSession('pa')} END`,
   },
-  from: sql`FROM "ShareLink" l
+  from: (page, only) => {
+    const moment = sql`LEAST(l."createdAt", se."at", dt."at")`
+    const key = sql`'link-' || l."id"`
+    const where = [
+      sql`l."campaignId" IN (${ids}) AND l."sharerType" <> 'Root' AND (l."via" IS NOT NULL OR l."sharerType" = 'Consumer')`,
+      ...belowCursor(moment, raw('3'), key, page?.cursor),
+      ...(only !== undefined ? [sql`l."id" = ${only}`] : []),
+    ]
+    return sql`FROM (
+    SELECT l.*, ${moment} AS "moment", se."id" AS "shareEventId", dt."id" AS "detailsId"
+    FROM "ShareLink" l
+    LEFT JOIN (
+      -- Ingestion keeps a token's share event only on that token's channel and campaign, so the token alone joins it.
+      SELECT DISTINCT ON ("linkCode") "linkCode", "at", "id"
+      FROM "ChannelEvent" WHERE "campaignId" IN (${ids}) AND "type" = 'Share' AND "linkCode" IS NOT NULL
+      ORDER BY "linkCode", "at", "id"
+    ) se ON se."linkCode" = l."code"
+    LEFT JOIN (
+      SELECT DISTINCT ON (d."linkId", d."visitorId") d."linkId", d."visitorId", d."at", d."id"
+      FROM "LinkEvent" d JOIN "ShareLink" dl ON dl."id" = d."linkId"
+      WHERE dl."campaignId" IN (${ids}) AND d."type" = 'DetailsLeft'
+      ORDER BY d."linkId", d."visitorId", d."at", d."id"
+    ) dt ON l."sharerType" = 'Consumer' AND dt."linkId" = l."parentId" AND dt."visitorId" = l."sharerSessionId"
+    WHERE ${Prisma.join(where, ' AND ')}
+    ${page ? sql`ORDER BY ${moment} DESC, ${key} DESC LIMIT ${page.n}` : sql``}
+  ) l
   LEFT JOIN "ShareLink" pa ON pa."id" = l."parentId"
   LEFT JOIN "Consumer" c ON c."id" = l."consumerId"
-  LEFT JOIN "Consumer" pc ON pc."id" = pa."consumerId"
-  LEFT JOIN (
-    -- Ingestion keeps a token's share event only on that token's channel and campaign, so the token alone joins it.
-    SELECT DISTINCT ON ("linkCode") "linkCode", "at", "id"
-    FROM "ChannelEvent" WHERE "campaignId" IN (${ids}) AND "type" = 'Share' AND "linkCode" IS NOT NULL
-    ORDER BY "linkCode", "at", "id"
-  ) se ON se."linkCode" = l."code"
-  LEFT JOIN (
-    SELECT DISTINCT ON (d."linkId", d."visitorId") d."linkId", d."visitorId", d."at", d."id"
-    FROM "LinkEvent" d JOIN "ShareLink" dl ON dl."id" = d."linkId"
-    WHERE dl."campaignId" IN (${ids}) AND d."type" = 'DetailsLeft'
-    ORDER BY d."linkId", d."visitorId", d."at", d."id"
-  ) dt ON l."sharerType" = 'Consumer' AND dt."linkId" = l."parentId" AND dt."visitorId" = l."sharerSessionId"`,
-  where: sql`l."campaignId" IN (${ids}) AND l."sharerType" <> 'Root' AND (l."via" IS NOT NULL OR l."sharerType" = 'Consumer')`,
+  LEFT JOIN "Consumer" pc ON pc."id" = pa."consumerId"`
+  },
+  where: sql`true`,
 })
 
 const friendOpens = (ids: Ids): Branch => ({
