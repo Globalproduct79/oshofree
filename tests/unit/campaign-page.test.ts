@@ -157,6 +157,28 @@ describe('the campaign page head', () => {
     const c = await mkCampaign(other.id, 'live')
     await expect(page(c.id)).rejects.toThrow()
   })
+
+  // Prompt 10's sweep: Global opening a campaign's address outside its workspace (a card opened in a new tab, a pasted
+  // link) found a 404. It is told which workspace the campaign is in, with the audited way in; nothing else is shown.
+  it("for Global, another workspace's campaign says where it is and enters that workspace on a press", async () => {
+    await setup('Global')
+    clock('2026-11-14T08:00:00Z')
+    const other = await db.workspace.create({ data: { name: 'Rival Foods', type: 'Brand', country: 'NG', status: 'approved' } })
+    const c = await mkCampaign(other.id, 'live')
+    const { markup, text: t } = await page(c.id)
+    expect(t).toContain('Kola Bright › Campaigns › Buy 2 get 1 — November')
+    expect(markup).toContain('<h1>Buy 2 bottles, get 1 free</h1>')
+    expect(t).toContain('This campaign is in Rival Foods. Enter Rival Foods to open it there.')
+    expect(markup).toMatch(/<form action="[^"]*"><button class="btn p" type="submit">Enter Rival Foods<\/button><\/form>/)
+    // None of the campaign's report reaches the page before Global enters.
+    expect(t).not.toContain('Impressions')
+    expect(t).not.toContain('Recent activity')
+  })
+
+  it("for Global, a campaign that does not exist anywhere is still not found", async () => {
+    await setup('Global')
+    await expect(page('no-such-campaign')).rejects.toThrow()
+  })
 })
 
 describe('the status line', () => {

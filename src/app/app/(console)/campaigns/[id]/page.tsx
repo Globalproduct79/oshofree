@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { previewOffers } from '@/app/app/(console)/campaigns/actions'
+import { switchWorkspaceToAction } from '@/app/app/(console)/switch/actions'
 import { ActivityBox } from '@/components/campaign/ActivityBox'
 import { ChangePanel } from '@/components/campaign/ChangePanel'
 import { HistoryList } from '@/components/campaign/HistoryList'
@@ -7,7 +8,7 @@ import { OfferBox } from '@/components/campaign/OfferBox'
 import { PauseResume } from '@/components/campaign/PauseResume'
 import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { SharingBox } from '@/components/campaign/SharingBox'
-import { BarChart14d, Box, Funnel, LinkButton, MetricCard, StatusBadge } from '@/components/og'
+import { BarChart14d, Box, Funnel, LinkButton, MetricCard, StatusBadge, SubmitButton } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { campaignActivity, isLineKey } from '@/lib/activity'
 import { offerPreview } from '@/lib/campaign-card'
@@ -37,7 +38,27 @@ export default async function CampaignPage({
   const { workspace: ws, role } = await requireMember('view')
   // Scoped here; everything below reads only a campaign this workspace owns.
   const c = await db.campaign.findFirst({ where: { id, workspaceId: ws.id } })
-  if (!c) notFound()
+  if (!c) {
+    // Global may reach a campaign's address from outside its workspace (a Live now card opened in a new tab, a pasted
+    // link): it says where the campaign is, with the audited way in, instead of a 404. Nothing of it is shown before.
+    const away =
+      role === 'Global'
+        ? await db.campaign.findUnique({ where: { id }, select: { name: true, headline: true, workspace: { select: { id: true, name: true } } } })
+        : null
+    if (!away) notFound()
+    return (
+      <>
+        <PageHead
+          crumb={[{ label: ws.name }, { label: C.crumb, href: HOME }, { label: away.name }]}
+          title={away.headline}
+          lead={C.elsewhere.lead(away.workspace.name)}
+        />
+        <form action={switchWorkspaceToAction.bind(null, away.workspace.id, `/app/campaigns/${id}`)}>
+          <SubmitButton variant="primary">{C.elsewhere.enter(away.workspace.name)}</SubmitButton>
+        </form>
+      </>
+    )
+  }
   const [r, activity] = await Promise.all([
     campaignReport(c, ws, new Date()),
     campaignActivity(c, {

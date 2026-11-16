@@ -14,6 +14,11 @@ export const CAMPAIGN_COPY = {
     `${brand} · ${country} · ${placement} · ${start} – ${end}`,
   seeOnPhoenix: 'See it on Phoenix',
   back: '← Campaigns',
+  // Ours (Prompt 10): Global opening a campaign's address while in another workspace (or on Platform).
+  elsewhere: {
+    lead: (workspace: string) => `This campaign is in ${workspace}. Enter ${workspace} to open it there.`,
+    enter: (workspace: string) => `Enter ${workspace}`,
+  },
   status: {
     review: 'Global usually decides within one working day',
     // After the badge, which says the status word: "Live · a revised offer is in review".
