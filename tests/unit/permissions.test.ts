@@ -120,7 +120,7 @@ describe('active workspace', () => {
     await join(u.id, b.id, 'Owner')
     await join(u.id, a.id, 'Viewer')
     expect((await listSwitcher(u)).map((w) => w.name)).toEqual(['B', 'A'])
-    expect(Object.keys((await listSwitcher(u))[0]).sort()).toEqual(['country', 'id', 'name', 'status', 'type'])
+    expect(Object.keys((await listSwitcher(u))[0]).sort()).toEqual(['country', 'demo', 'id', 'name', 'status', 'type'])
     expect((await listSwitcher(g)).map((w) => w.id)).toEqual([a.id, b.id, p.id, d.id])
   })
 })

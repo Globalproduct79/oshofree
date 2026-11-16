@@ -26,10 +26,12 @@ const mkUser = (name: string, email: string) => db.user.create({ data: { email, 
 const mkWorkspace = () => db.workspace.create({ data: { name: 'Acme', type: 'Brand', country: 'NG' } })
 
 describe('the campaign_created_by migration', () => {
-  it('is the newest migration, after the slice-2 ones', () => {
+  // Later prompts add their own migrations after it (Prompt 9's demo flags), so it need not stay the newest.
+  it('comes after the slice-2 ones', () => {
     const all = readdirSync(MIGRATIONS).filter((d) => /^\d{14}_/.test(d)).sort()
     expect(dir).toMatch(/^20261115\d{6}_campaign_created_by$/)
-    expect(all.at(-1)).toBe(dir)
+    expect(all.indexOf(dir!)).toBeGreaterThan(all.indexOf('20261114160000_invoice_country'))
+    expect(all.indexOf('20261114160000_invoice_country')).toBeGreaterThan(-1)
   })
 
   it('adds a nullable column, its index and a foreign key that lets a user go without losing the campaign', () => {
