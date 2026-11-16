@@ -95,13 +95,18 @@ event, share link, claim, reward, point and revision of those campaigns, the Pho
 those campaigns carry, their ledgers, invoices, credit requests, invitations, memberships, notifications and
 their review and audit history. It prints the database's name and the plan first (the plan is the deletion
 itself, rolled back), and without `DEMO_REMOVE=1` it stops there and exits 1. A demo person whom a real record
-names stays, and the plan says why: a member of a real workspace, or the Global who decided on or acted in one.
+names stays, and the plan says why ("Kept, sign-in disabled"): a member of a real workspace, or the Global who
+decided on or acted in one. A kept account cannot sign in afterwards: it loses Global, and its password (the seed's
+public `password`) is replaced by a hash nobody holds. A real person who joined a demo workspace stays, losing only
+that membership and its notifications and settings.
 
 What stays: the platform's own records, which belong to no workspace — Phoenix's channels and key, rates, FX and
-share, the fraud rules, the aggregator's balance and top-ups, settlement statements and job runs. The seed's
-Global user (`admin@oshofree.demo`) is demo data too, so afterwards run `npm run bootstrap` with
-`BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` to have a Global user. `scripts/db-truncate.ts` is not this:
-it empties every table and runs only on a database named `*_test`.
+share, the fraud rules, the aggregator's balance and top-ups, settlement statements and job runs. Their audit rows
+written by the seed's Global (rates, FX and share set, key rotations, top-ups, statements paid, fraud rules, month
+closes, the demo controls) are deleted with him, on their own line of the plan, so a top-up then reads "by Unknown".
+The seed's Global user (`admin@oshofree.demo`) is demo data too, so afterwards run `npm run bootstrap` with
+`BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`: it makes the new Global (a kept seeded Global stays signed
+out). `scripts/db-truncate.ts` is not this: it empties every table and runs only on a database named `*_test`.
 
 ## Demo controls
 

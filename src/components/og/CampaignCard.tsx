@@ -31,7 +31,7 @@ export type CardModel = {
   spendPct?: number
   // A line under the sub-line naming who created the campaign (Platform › Advertisers › workspace).
   createdBy?: string
-  // Its workspace is the seed's (Prompt 9): the Demo pill after the sub-line (Review's "Live now").
+  // Its workspace is the seed's (Prompt 9): the Demo pill on the cover's free corner (Review's "Live now").
   demo?: boolean
 }
 
@@ -70,7 +70,6 @@ export function CampaignCard({
           {c.flightDays === undefined
             ? COMPONENTS.card.sub(c.brand, c.country, c.daysLeft)
             : COMPONENTS.card.subFlight(c.brand, c.country, c.flightDays)}
-          {c.demo && <DemoPill />}
           {c.createdBy && <span className="by">{COMPONENTS.card.createdBy(c.createdBy)}</span>}
         </div>
         <div className="row">
@@ -85,7 +84,7 @@ export function CampaignCard({
       </div>
     </>
   )
-  return href ? (
+  const card = href ? (
     <Link href={href} className="cc" onClick={onClick}>
       {body}
     </Link>
@@ -93,5 +92,13 @@ export function CampaignCard({
     <div className="cc" data-static="" style={{ cursor: 'default' }}>
       {body}
     </div>
+  )
+  // A demo workspace's card: the pill sits on the cover but after the link, not in it, so the link keeps its own name.
+  return c.demo ? (
+    <div className="ccw">
+      {card} <DemoPill />
+    </div>
+  ) : (
+    card
   )
 }

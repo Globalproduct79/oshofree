@@ -132,8 +132,9 @@ describe('what a user does is stored, and every page reads it back after a resta
     const global = globalThis as unknown as { db?: PrismaClient }
     delete global.db
     vi.resetModules()
+    let fresh: PrismaClient | undefined
     try {
-      const fresh = (await import('@/lib/db')).db
+      fresh = (await import('@/lib/db')).db
       expect(fresh).not.toBe(before)
       const { listSwitcher } = await import('@/lib/active-workspace')
       const { advertiserDetail, advertiserRows } = await import('@/lib/advertisers')
@@ -180,8 +181,9 @@ describe('what a user does is stored, and every page reads it back after a resta
       expect((await workspaceSharers(ws.id)).rows).toMatchObject([{ campaignId: submitted.id, opened: 1, claimed: 1 }])
       expect(await rewardsLedgerRows()).toMatchObject([{ campaignId: submitted.id, workspaceName: 'Ama Foods', successfulShares: 1 }])
       expect(await fresh.rewardPayout.findMany({ select: { status: true, amountLocal: true } })).toEqual([{ status: 'sent', amountLocal: 50 }])
-      await fresh.$disconnect()
     } finally {
+      // Whatever failed above, the new client's connection closes and the next test gets the old client back.
+      await fresh?.$disconnect()
       global.db = before
     }
   })

@@ -301,6 +301,18 @@ describe('page head, modal, toast', () => {
     expect(out).toContain('<div class="head"><div><h1>Buy 2 get 1</h1><p>Lead.</p></div><div class="acts"><button>Pause</button></div></div>')
   })
 
+  it("puts a badge beside the h1, not in it, so the heading's name stays the title (Prompt 9's Demo pill)", () => {
+    const out = renderToStaticMarkup(
+      createElement(PageHead, {
+        crumb: [{ label: 'Kola Bright' }],
+        title: 'Kola Bright',
+        badge: createElement('span', { className: 'dm' }, 'Demo'),
+        lead: 'Lead.',
+      }),
+    )
+    expect(out).toContain('<div class="head"><div><div class="ttl"><h1>Kola Bright</h1> <span class="dm">Demo</span></div><p>Lead.</p></div></div>')
+  })
+
   it('renders an open modal as a labelled dialog and nothing when closed', () => {
     const props = { onClose: () => {}, title: 'On Phoenix', children: createElement('p', null, 'Body') }
     const open = renderToStaticMarkup(createElement(Modal, { ...props, open: true }))

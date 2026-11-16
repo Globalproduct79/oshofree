@@ -11,10 +11,11 @@ import { listSwitcher } from '@/lib/active-workspace'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { invite } from '@/lib/invitations'
-import { createUser } from '@/lib/users'
+import { recentTopUps } from '@/lib/rewards-ledger'
+import { createUser, verifyCredentials } from '@/lib/users'
 import { approveWorkspace, createWorkspace } from '@/lib/workspaces'
 import { seed } from '../../prisma/seed'
-import { main, removeDemo } from '../../scripts/demo-remove'
+import { main, PLATFORM_AUDIT, removeDemo } from '../../scripts/demo-remove'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
@@ -36,6 +37,9 @@ const DAY = 86_400_000
 const count = (markup: string, needle: string) => markup.split(needle).length - 1
 const text = (m: string) =>
   m.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim()
+// The text as a browser reads it (tags removed, nothing added): the pill is never glued to the name before it.
+const plain = (m: string) => m.replace(/<[^>]+>/g, '').replace(/&#x27;/g, "'").replace(/&amp;/g, '&')
+const GLUED = /\SDemo\b/
 
 let seq = 0
 const mkUser = (name: string, o: { admin?: boolean; demo?: boolean } = {}) =>
@@ -80,15 +84,15 @@ describe('the Demo pill', () => {
     signIn(demo.owner, demo.ws.id)
     const shown = await layout()
     expect(count(sidebarHead(shown), PILL)).toBe(1)
-    expect(text(sidebarHead(shown))).toContain('Kola Bright Demo')
+    expect(plain(sidebarHead(shown))).toContain('Kola Bright Demo')
     expect(text(sidebarFoot(shown))).toContain(FOOTER)
 
     const real = await mkWs('Ama Foods', false)
     signIn(real.owner, real.ws.id)
-    const plain = await layout()
-    expect(plain).not.toContain(PILL)
-    expect(plain).not.toContain(FOOTER)
-    expect(text(sidebarHead(plain))).toContain('Ama Foods')
+    const realShell = await layout()
+    expect(realShell).not.toContain(PILL)
+    expect(realShell).not.toContain(FOOTER)
+    expect(text(sidebarHead(realShell))).toContain('Ama Foods')
   })
 
   it('marks the demo rows of the switcher only', async () => {
@@ -102,6 +106,7 @@ describe('the Demo pill', () => {
     expect(text(rows[0])).not.toContain('Demo')
     expect(count(rows[1], PILL)).toBe(1)
     expect(text(rows[1])).toContain('Kola Bright Demo Brand · Nigeria')
+    expect(plain(rows[1])).toContain('Kola Bright Demo')
   })
 
   it("marks a demo workspace's row on Platform › Advertisers and the head of its page, never a real one's", async () => {
@@ -115,13 +120,18 @@ describe('the Demo pill', () => {
     const row = (name: string) => rows.find((r) => r.includes(`<b>${name}</b>`)) ?? ''
     expect(count(row('Kola Bright'), PILL)).toBe(1)
     expect(row('Ama Foods')).not.toContain(PILL)
+    // Beside the name's link, never inside it: the link is named by the workspace alone.
+    expect(row('Kola Bright')).toMatch(/<a [^>]*><b>Kola Bright<\/b><\/a> <span class="dm"/)
+    expect(plain(row('Kola Bright'))).toContain('Kola Bright Demo')
 
     const page = async (id: string) => renderToStaticMarkup(await AdvertiserPage({ params: Promise.resolve({ id }) }))
-    const head = (m: string) => m.slice(m.indexOf('<h1'), m.indexOf('</h1>'))
+    // The h1 holds the name alone (its accessible name); the pill sits beside it, in the title's row.
     const demoPage = await page(demo.ws.id)
-    expect(count(head(demoPage), PILL)).toBe(1)
-    expect(text(head(demoPage))).toBe('Kola Bright Demo')
-    expect(await page(real.ws.id)).not.toContain(PILL)
+    expect(demoPage).toContain('<div class="ttl"><h1>Kola Bright</h1> <span class="dm"')
+    expect(count(demoPage.slice(demoPage.indexOf('<div class="head">')), PILL)).toBe(1)
+    const realPage = await page(real.ws.id)
+    expect(realPage).toContain('<h1>Ama Foods</h1>')
+    expect(realPage).not.toContain(PILL)
   })
 
   it("marks Review's cards of demo workspaces: a new advertiser, a campaign waiting and a live one", async () => {
@@ -147,9 +157,12 @@ describe('the Demo pill', () => {
     expect(one(advertisers, 'Ama Foods')).not.toContain(PILL)
     expect(count(one(queue, 'Buy 2 get 1'), PILL)).toBe(1)
     expect(one(queue, 'Cashback week')).not.toContain(PILL)
-    expect(count(one(cards, 'Kwik draw'), PILL)).toBe(1)
+    // A card's pill follows its link, never inside it: the link is named by the card alone.
+    expect(one(cards, 'Kwik draw')).not.toContain(PILL)
+    expect(out).toMatch(/Kwik draw[^]*?<\/a> <span class="dm"[^>]*>Demo<\/span><\/div>/)
     expect(one(cards, 'Top-up bonus')).not.toContain(PILL)
     expect(count(out, PILL)).toBe(3)
+    expect(plain(out)).not.toMatch(GLUED)
   })
 })
 
@@ -217,6 +230,15 @@ describe('npm run demo:remove', () => {
     expect(plan.people).not.toContain('ama@amafoods.test')
     expect(plan.kept).toEqual([])
     expect(Object.fromEntries(plan.rows)).toMatchObject({ campaigns: 9, workspaces: 4, people: 8, 'channel events': seeded.channelEvents })
+    // The seeded Global's own platform audit rows (the rate card, FX, share, the aggregator's top-up…) go with him.
+    const platformAudits = await db.auditEvent.count({ where: { workspaceId: null, actor: { demo: true } } })
+    expect(platformAudits).toBeGreaterThan(0)
+    expect(Object.fromEntries(plan.rows)[PLATFORM_AUDIT]).toBe(platformAudits)
+    // …on their own line of the plan, not among the workspaces' rows.
+    const lines: string[] = []
+    expect(await main({}, (l) => lines.push(l))).toBe(1)
+    expect(lines.find((l) => l.startsWith('  Rows it would delete:'))).not.toContain(PLATFORM_AUDIT)
+    expect(lines).toContainEqual(expect.stringMatching(new RegExp(`^  Platform audit rows those people wrote, which it would delete: ${platformAudits} \\(rates, FX, share, key rotations, top-ups, .*"by Unknown"\\.$`)))
     expect(await workspaceTables()).toEqual(seeded)
     expect(await db.workspace.count()).toBe(5)
 
@@ -236,27 +258,71 @@ describe('npm run demo:remove', () => {
     const audits = await db.auditEvent.findMany({ select: { actorId: true, workspaceId: true, action: true } })
     expect(audits).toEqual([{ actorId: ama.id, workspaceId: real.id, action: 'member.invite' }])
     expect(await platform()).toEqual(platformBefore)
+    // The top-ups stay; with their audit rows and their author gone, each reads "by Unknown".
+    const topUps = await recentTopUps()
+    expect(topUps.length).toBeGreaterThan(0)
+    expect(topUps.map((t) => t.by)).toEqual(topUps.map(() => 'Unknown'))
 
     // A second run finds nothing.
     expect(await removeDemo({ commit: false })).toMatchObject({ workspaces: [], people: [] })
   }, SLOW)
 
-  it('keeps a demo person whom a real record names, and says why; their demo rows still go', async () => {
-    const admin = await mkUser('Global', { admin: true, demo: true })
+  it('keeps a demo person whom a real record names, says why, and disables their sign-in; their demo rows still go', async () => {
+    // The seeded Global, with the seed's public password.
+    const made = await createUser({ email: 'admin@oshofree.demo', password: 'password', name: 'Global Admin' })
+    const admin = await db.user.update({ where: { id: made.id }, data: { isGlobalAdmin: true, demo: true } })
     const demo = await mkWs('Kola Bright', true, 'pending')
     await approveWorkspace(demo.ws.id, admin.id)
     // A real advertiser that the seeded Global approved: its decision and audit row name him.
     const real = await mkWs('Ama Foods', false, 'pending')
     await approveWorkspace(real.ws.id, admin.id)
 
+    // The plan says so, and changes nothing: he is still Global, with the same password.
+    const lines: string[] = []
+    expect(await main({}, (l) => lines.push(l))).toBe(1)
+    expect(lines).toContain('  Kept, sign-in disabled: admin@oshofree.demo (decided on a real workspace or campaign)')
+    expect(await verifyCredentials('admin@oshofree.demo', 'password')).toMatchObject({ isGlobalAdmin: true })
+
     const done = await removeDemo({ commit: true })
     expect(done.people).toEqual([demo.owner.email])
     expect(done.kept).toEqual([{ email: admin.email, why: 'decided on a real workspace or campaign' }])
     expect((await db.user.findMany({ select: { id: true } })).map((u) => u.id).sort()).toEqual([admin.id, real.owner.id].sort())
+    // Kept, but no longer Global, and the seed's password no longer opens the account.
+    expect(await db.user.findUniqueOrThrow({ where: { id: admin.id } })).toMatchObject({ isGlobalAdmin: false, demo: true })
+    expect(await verifyCredentials('admin@oshofree.demo', 'password')).toBeNull()
     expect(await db.workspace.findMany({ select: { id: true } })).toEqual([{ id: real.ws.id }])
     // The real workspace's decision and audit row stay; the demo one's went.
     expect(await db.reviewAction.findMany({ select: { targetId: true } })).toEqual([{ targetId: real.ws.id }])
     expect(await db.auditEvent.findMany({ select: { workspaceId: true } })).toEqual([{ workspaceId: real.ws.id }])
+  })
+
+  it('keeps a real person who joined a demo workspace: only that membership, its notifications and settings go', async () => {
+    const demo = await mkWs('Kola Bright', true)
+    const real = await mkWs('Ama Foods', false)
+    // Ama (real) is also a Manager in the demo workspace.
+    await db.workspaceMember.create({ data: { userId: real.owner.id, workspaceId: demo.ws.id, role: 'Manager' } })
+    await db.notification.createMany({
+      data: [
+        { userId: real.owner.id, workspaceId: demo.ws.id, kind: 'pace', title: 'Kola Bright: pace' },
+        { userId: real.owner.id, workspaceId: real.ws.id, kind: 'pace', title: 'Ama Foods: pace' },
+      ],
+    })
+    await db.notificationPref.createMany({
+      data: [
+        { userId: real.owner.id, workspaceId: demo.ws.id, kind: 'weekly', enabled: true },
+        { userId: real.owner.id, workspaceId: real.ws.id, kind: 'weekly', enabled: true },
+      ],
+    })
+
+    const done = await removeDemo({ commit: true })
+    expect(done.people).toEqual([demo.owner.email])
+    expect(done.kept).toEqual([])
+    expect(await db.user.findMany({ select: { id: true } })).toEqual([{ id: real.owner.id }])
+    expect(await db.workspaceMember.findMany({ select: { userId: true, workspaceId: true } })).toEqual([
+      { userId: real.owner.id, workspaceId: real.ws.id },
+    ])
+    expect(await db.notification.findMany({ select: { title: true } })).toEqual([{ title: 'Ama Foods: pace' }])
+    expect(await db.notificationPref.findMany({ select: { workspaceId: true } })).toEqual([{ workspaceId: real.ws.id }])
   })
 
   it('prints the plan and refuses without DEMO_REMOVE=1; with it, deletes', async () => {

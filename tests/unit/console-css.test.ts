@@ -73,6 +73,12 @@ it('draws a form button as a link, Newest over the activity list, and a Show mor
 })
 
 it("draws a demo workspace's grey pill beside its name, and its line at the foot of the sidebar", () => {
-  expect(css).toContain('.dm{display:inline-block;margin-left:6px;padding:0 7px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink2)')
+  expect(css).toContain('.dm{display:inline-block;margin-left:2px;padding:0 7px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink2)')
   expect(css).toContain('.side .foot .dmf{display:block')
+  // Beside the h1 in one row, and on a card's cover outside its link, lifting with the card.
+  expect(css).toContain('.head .ttl{display:flex;align-items:center;flex-wrap:wrap')
+  expect(css).toContain('.ccw{position:relative}.ccw > .cc{height:100%}')
+  expect(css).toContain('.ccw > .dm{position:absolute;left:10px;top:89px;margin:0;pointer-events:none')
+  expect(css).toContain('.ccw:hover > .dm{transform:translateY(-2px)}')
+  expect(css).toContain('.saved-here{color:var(--ink3);font-size:13px}')
 })

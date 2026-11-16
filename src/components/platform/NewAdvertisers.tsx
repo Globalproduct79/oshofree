@@ -53,7 +53,7 @@ function Row({ ws }: { ws: PendingWorkspace }) {
         <div>
           <div>
             <b>{ws.name}</b>
-            {ws.demo && <DemoPill />}
+            {ws.demo && <> <DemoPill /></>}
             {A.rest(ws.type, ws.country)}
           </div>
           <p>{A.owner(ws.owner ?? A.noOwner, usd(ws.creditCents))}</p>

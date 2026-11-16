@@ -65,7 +65,7 @@ export function Sidebar({
           <div>
             <b>
               {brand.name}
-              {brand.demo && <DemoPill />}
+              {brand.demo && <> <DemoPill /></>}
             </b>
             <small>{brand.sub}</small>
           </div>

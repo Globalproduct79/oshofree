@@ -53,7 +53,7 @@ export function QueueRow({ row }: { row: Row }) {
                 </>
               )}
             </span>
-            {row.demo && <DemoPill />}
+            {row.demo && <> <DemoPill /></>}
           </div>
           <p>{row.description}</p>
           <div>

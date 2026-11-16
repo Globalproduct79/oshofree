@@ -242,7 +242,14 @@ form.enter{display:inline;margin:0}
 .linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--blu);text-align:left;cursor:pointer}.linkbtn:disabled{opacity:.6;cursor:progress}
 .box > .btns.top{margin:0 0 10px}
 .btn[aria-disabled=true]{opacity:.6;cursor:progress}
-/* Demo data (Prompt 9): the grey pill beside a seeded workspace's name, wherever the name sits (a bold name, the h1, a
-   card's sub-line), and the line at the foot of a demo workspace's sidebar, above the version. */
-.dm{display:inline-block;margin-left:6px;padding:0 7px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink2);font-size:11px;font-weight:600;line-height:18px;letter-spacing:0;vertical-align:middle;white-space:nowrap}
+/* Demo data (Prompt 9): the grey pill beside a seeded workspace's name, after a space (a bold name, a row's byline),
+   never inside a heading or a link: beside the h1 in the head's title row, and on a card's cover after the card's link
+   (the cover's free bottom-left corner, lifting with the card). The line at the foot of a demo workspace's sidebar sits
+   above the version. */
+.dm{display:inline-block;margin-left:2px;padding:0 7px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink2);font-size:11px;font-weight:600;line-height:18px;letter-spacing:0;vertical-align:middle;white-space:nowrap}
 .side .foot .dmf{display:block;margin-bottom:4px;color:var(--ink2)}
+.head .ttl{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;margin:0 0 6px}.head .ttl h1{margin:0}.head .ttl .dm{margin:0}
+.ccw{position:relative}.ccw > .cc{height:100%}
+/* The New form's line beside Save draft: the draft is kept in this browser only (Prompt 9). */
+.saved-here{color:var(--ink3);font-size:13px}
+.ccw > .dm{position:absolute;left:10px;top:89px;margin:0;pointer-events:none;transition:transform .12s}.ccw:hover > .dm{transform:translateY(-2px)}

@@ -223,7 +223,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
         </Button>
       )}
       {/* The draft autosaves while the form differs from its defaults, and only to this browser (Prompt 9). */}
-      {isNew && dirty && <span style={{ color: 'var(--ink3)', fontSize: 13 }}>{F.savedHere}</span>}
+      {isNew && dirty && <span className="saved-here">{F.savedHere}</span>}
       <span
         id="cf-hint"
         role={notice ? 'alert' : undefined}

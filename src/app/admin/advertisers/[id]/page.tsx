@@ -51,12 +51,8 @@ export default async function AdvertiserPage({ params }: { params: Promise<{ id:
     <>
       <PageHead
         crumb={[{ label: SHELL.groups.platform }, { label: A.crumb, href: '/admin/advertisers' }, { label: d.name }]}
-        title={
-          <>
-            {d.name}
-            {d.demo && <DemoPill />}
-          </>
-        }
+        title={d.name}
+        badge={d.demo && <DemoPill />}
         lead={D.lead(d.type, m.name, d.owner ?? D.noOwner, d.since)}
         actions={
           <>

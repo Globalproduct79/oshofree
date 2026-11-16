@@ -43,7 +43,7 @@ export function Switcher({
             >
               <span className="min-w-0 flex-1">
                 <b>{w.name}</b>
-                {w.demo && <DemoPill />}
+                {w.demo && <> <DemoPill /></>}
                 <small>{s.sub(w.type, countryName(w.country))}</small>
               </span>
               <span className={`st st-${w.status}`}>{COPY.status[w.status]}</span>

@@ -26,7 +26,8 @@ export default async function AdvertisersPage() {
       <Link href={`/admin/advertisers/${r.id}`}>
         <b>{r.name}</b>
       </Link>
-      {r.demo && <DemoPill />}
+      {/* Beside the link, not in it: the link is named by the workspace alone. */}
+      {r.demo && <> <DemoPill /></>}
       {r.owner && (
         <>
           <br />
