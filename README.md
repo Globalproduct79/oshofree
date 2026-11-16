@@ -26,6 +26,15 @@ check, so use it only on a database you have emptied yourself. To start again fr
 - `npm run db:reset` wipes the development database, applies every migration and seeds it. Run it yourself
   in a terminal; Prisma refuses a reset started by an AI agent.
 
+### Development notes
+
+- **Restart `npm run dev` after renaming or deleting a file.** `next dev` keeps its module graph across edits, and
+  after a file under `src/` is renamed or deleted it can go on importing the old one: every page then answers 500
+  until the server is restarted. A restart is also needed after `prisma generate` (a migration), so the server
+  loads the new client.
+- Pages show a skeleton (`loading.tsx` in the console and on Platform) while they load, and every form's submit is
+  off and marked busy until its action answers (`SubmitButton` in `src/components/og`).
+
 ## Logins
 
 Every seeded login uses the password `password`. The seed prints it with the logins when it finishes.
@@ -35,7 +44,7 @@ Every seeded login uses the password `password`. The seed prints it with the log
 | `admin@oshofree.demo` | Global | Review (two campaigns and SunFresh waiting), Advertisers, Rates, settlement, the rewards ledger with held payouts, Phoenix API |
 | `tunde@kolabright.demo` | Owner, Kola Bright | A brand in Nigeria: Buy 2 get 1 live, August multipack ended, December draw teaser in review; last month's invoice paid |
 | `ada@kolabright.demo` | Manager, Kola Bright | The same workspace as a Manager |
-| `dolapo@mediaspec.demo` | Owner, MediaSpec (agency) | An agency with five client brands in Kenya, Senegal, Tanzania and Nigeria (two live, one in review, one paused, one ended); last month's invoice due |
+| `dolapo@mediaspec.demo` | Owner, MediaSpec (agency) | An agency with five client brands in Kenya, Senegal, Tanzania and Nigeria (two live, one in review, one paused, one ended); last month's invoice due on the 15th, overdue after it |
 | `chidi@mediaspec.demo` | Manager, MediaSpec (agency) | The agency as a Manager |
 | `kemi@mediaspec.demo` | Viewer, MediaSpec (agency) | The agency read-only |
 | `wanjiru@pesalink.demo` | Owner, Pesa Link | A brand in Kenya with one live campaign and an overdue invoice, close to its $500 limit |
@@ -65,7 +74,7 @@ The seed leaves four invoices:
 | --- | --- | --- | --- |
 | INV-0037 | MediaSpec | Paid | Two months back, older than any seeded campaign: the seed issues it at the prototype's amount |
 | INV-0041 | Kola Bright | Paid | Last month's close, at whatever Kola Bright's charges came to; Global marks it paid three days later |
-| INV-0044 | MediaSpec | Due | Last month's close, at whatever MediaSpec's charges came to |
+| INV-0044 | MediaSpec | Due until the 15th, then Overdue | Last month's close, at whatever MediaSpec's charges came to (due on the 15th) |
 | INV-0046 | Pesa Link | Overdue | Older than any seeded campaign: the seed issues it at the prototype's amount |
 
 A row marked "(to date)" on an Invoices page is not an invoice. It is this month's charges so far, which the
@@ -208,10 +217,50 @@ npm run test:e2e
 ```
 
 It migrates, empties and seeds `oshofree_test` (at `SEED_SCALE=0.2`), starts its own Next server on port
-3101 (build output in `.next-e2e`), and runs 13 Playwright flows: sign-up, approval, sharing from the wall
-and a friend's claim, pause and end, credit limits, people, the command palette and Global's switcher. The
-flows change the data as they go, so always run the whole script: a bare `npx playwright test` without the
-reseed is not supported. It never touches the dev server on 3100 or the development database.
+3101 (build output in `.next-e2e`), and runs 17 Playwright flows: sign-up, approval, sharing from the wall
+and a friend's claim, pause and end, credit limits, people, onboarding, the command palette, Global's switcher,
+and the three-user journeys. The flows change the data as they go, so always go through the script, which reseeds
+first: a bare `npx playwright test` is not supported. It never touches the dev server on 3100 or the development
+database.
+
+**The journeys** (`tests/e2e/journeys.spec.ts`) are the product as three people use it, one after another, each step
+checked by what the person sees:
+
+1. *Owner*: signs up, creates the workspace, waits under the pending banner until Global approves it, finds the
+   home live, opens Organisation, invites a Manager and copies the link.
+2. *Member*: opens that link in a browser of their own, creates an account, lands in the workspace with New
+   campaign but no Invite user, and finds themselves in Organisation's Team.
+3. *Advertiser* (that Manager): fills an offer, uploads the seed's JPG, previews the Wall card and the landing
+   page, reviews and submits it; Global approves it; Phoenix finds it on `/api/v1/offers`, reports an impression
+   and an open, takes a claim code and shares it; a friend opens the shared page and claims; Sharing shows the
+   friend, the campaign's Recent activity the chain, and the Rewards ledger the reward owed.
+
+Arguments after `--` go to Playwright, after the reseed:
+
+```sh
+npm run test:e2e -- journeys                    # the three journeys alone
+npm run test:e2e -- journeys -g "Owner"         # the owner's journey alone
+npm run test:e2e -- journeys -g "Owner|Member"  # up to the member's
+```
+
+Each journey builds on the one before it (the member joins through the owner's link, and the advertiser is that
+member), so a later journey runs with the ones before it; the file runs in order and stops at the first failure.
+
+There is no jsdom here (its install was refused), so components are tested as logic and as server-rendered
+markup in Vitest, and their behaviour in the browser by these flows.
+
+**The dead-end sweep** (`scripts/ux-sweep.ts`) signs in as Global, an Owner, a Manager and a Viewer (and visits
+the public pages signed out), opens every page the console links to, presses every control that is not
+destructive, and writes a table of anything that did nothing, errored, showed no pending state while its action
+ran, or landed on a blank or error screen:
+
+```sh
+npm run dev:test                 # the test server on 3101 (after npm run test:e2e, or a reseed)
+npx tsx scripts/ux-sweep.ts      # writes .superpowers/ux/sweep.md; SWEEP_ROLES=Owner,Viewer for fewer roles
+```
+
+It changes the test data the way a person clicking around would, so reseed before the next e2e run (the script
+does).
 
 ## Production build
 
@@ -251,6 +300,8 @@ then make sure the daily job is in cron:
   `ChannelEvent` while it builds).
   `20261116090000_demo_flags` adds
   the demo-data marks, false for every row already there. Never run the seed or `npm run demo:remove` in production.
+  `20261116120000_account_manager_named` drops the prototype's fixed account manager ("Obinna A."): a workspace
+  still carrying it names the Global who approved it, or nobody until Global approves it.
 - `npm run bootstrap` creates what production needs before anyone signs in, and only what is missing:
   the Global user, the Phoenix channel (live in all five markets), Phoenix's rate card, FX and 55 % share
   (the seed's reference figures, from `src/lib/reference-rates.ts`), the three fraud rules and the aggregator
