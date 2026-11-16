@@ -44,29 +44,43 @@ export const loc = (cents: number, country: Country, fxPerUsd: number): string =
 
 export const pct = (a: number, b: number): string => (b === 0 ? '0%' : ((a / b) * 100).toFixed(1) + '%')
 
-export const fd = (d: Date, tz: string): string =>
-  new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: tz }).format(d)
+// One formatter per pattern and zone, made on first use and kept: a page of dated lines formats every line with the
+// same few (building an Intl.DateTimeFormat costs far more than using one).
+const PATTERNS = {
+  day: ['en-GB', { day: 'numeric', month: 'short' }],
+  year: ['en-GB', { day: 'numeric', month: 'short', year: 'numeric' }],
+  time: ['en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }],
+  hour: ['en-GB', { hour: 'numeric', hourCycle: 'h23' }],
+  iso: ['en-US', { hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }],
+} as const satisfies Record<string, readonly [string, Intl.DateTimeFormatOptions]>
+const formatters = new Map<string, Intl.DateTimeFormat>()
+
+function formatter(pattern: keyof typeof PATTERNS, tz: string): Intl.DateTimeFormat {
+  const key = `${pattern}|${tz}`
+  let f = formatters.get(key)
+  if (!f) {
+    const [locale, options] = PATTERNS[pattern]
+    f = new Intl.DateTimeFormat(locale, { ...options, timeZone: tz })
+    formatters.set(key, f)
+  }
+  return f
+}
+
+export const fd = (d: Date, tz: string): string => formatter('day', tz).format(d)
 
 // The 24-hour time on the wall clock of `tz`: '09:05'.
-export const hm = (d: Date, tz: string): string =>
-  new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz }).format(d)
+export const hm = (d: Date, tz: string): string => formatter('time', tz).format(d)
 
 // fd with the time, for an event: '14 Nov, 09:05' (en-GB's 'Sept' read as 'Sep').
 export const fdt = (d: Date, tz: string): string => `${fd(d, tz).replace(/\bSept\b/, 'Sep')}, ${hm(d, tz)}`
 
 // fd with the year, for a date that may be in another year: '3 Sep 2026' (en-GB's 'Sept' read as 'Sep').
-export const longDate = (d: Date, tz: string): string =>
-  new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: tz })
-    .format(d)
-    .replace(/\bSept\b/, 'Sep')
+export const longDate = (d: Date, tz: string): string => formatter('year', tz).format(d).replace(/\bSept\b/, 'Sep')
 
 // An instant as ISO 8601 on the wall clock of `tz`, with that zone's offset: 2026-11-17T00:00:00+03:00.
 // Whole seconds; the instant is unchanged, so new Date() of the result is the same moment.
 export function isoInZone(d: Date, tz: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  }).formatToParts(d)
+  const parts = formatter('iso', tz).formatToParts(d)
   const p = (t: Intl.DateTimeFormatPartTypes) => parts.find((x) => x.type === t)!.value
   const wall = Date.UTC(+p('year'), +p('month') - 1, +p('day'), +p('hour'), +p('minute'), +p('second'))
   const offset = Math.round((wall - Math.floor(d.getTime() / 1000) * 1000) / 60_000)
@@ -78,7 +92,7 @@ export function isoInZone(d: Date, tz: string): string {
 // The hour of the day (0–23) on the wall clock in `tz`.
 export const hourIn = (d: Date, tz: string): number =>
   Number(
-    new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: tz })
+    formatter('hour', tz)
       .formatToParts(d)
       .find((p) => p.type === 'hour')?.value,
   )

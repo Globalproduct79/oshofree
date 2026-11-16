@@ -90,3 +90,30 @@ describe('fdt and hm', () => {
     expect(hm(new Date('2026-11-13T09:30:00Z'), 'Africa/Nairobi')).toBe('12:30')
   })
 })
+
+describe('the date formatters', () => {
+  it('build one Intl.DateTimeFormat per pattern and zone, however many dates they print', () => {
+    const Real = Intl.DateTimeFormat
+    const zones: (string | undefined)[] = []
+    Intl.DateTimeFormat = class extends Real {
+      constructor(locale?: Intl.LocalesArgument, options?: Intl.DateTimeFormatOptions) {
+        super(locale, options)
+        zones.push(options?.timeZone)
+      }
+    } as typeof Intl.DateTimeFormat
+    try {
+      const tz = 'Africa/Kampala'
+      for (let i = 0; i < 200; i++) {
+        const d = new Date(Date.UTC(2026, 10, 13, 0, i))
+        fd(d, tz)
+        fdt(d, tz)
+        hm(d, tz)
+      }
+      // fd's pattern and hm's: fdt uses both.
+      expect(zones.filter((z) => z === tz)).toHaveLength(2)
+      expect(fdt(new Date('2026-11-13T09:05:00Z'), tz)).toBe('13 Nov, 12:05')
+    } finally {
+      Intl.DateTimeFormat = Real
+    }
+  })
+})
