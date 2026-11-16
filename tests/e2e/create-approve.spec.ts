@@ -136,12 +136,14 @@ async function expectLandingPage(dialog: Locator, image: string) {
 // Save draft keeps the half-filled form and goes home, where it waits as a Draft card with its image; the card opens
 // the form again with everything restored.
 async function saveDraftAndReopen(page: Page, image: string) {
+  // The form says where the draft is kept (Prompt 9): this browser, not the account.
+  await expect(page.getByText(F.savedHere, { exact: true })).toBeVisible()
   await page.getByRole('button', { name: F.buttons.saveDraft }).click()
   await page.waitForURL((url) => url.pathname === '/app')
   await expectToast(page, F.toasts.draftSaved)
   const draft = homeCard(page, HARMATTAN.headline)
   await expect(draft.getByText(STATUS_LABEL.draft, { exact: true })).toBeVisible()
-  await expect(draft.getByText(HOME.draft.notSent, { exact: true })).toBeVisible()
+  await expect(draft.getByText(HOME.draft.savedHere, { exact: true })).toBeVisible()
   await expect(draft.locator('.cv')).toHaveAttribute('style', coverOf(image))
   await draft.click()
   await page.waitForURL((url) => url.pathname === '/app/campaigns/new')

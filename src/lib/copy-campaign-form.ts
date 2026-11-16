@@ -134,11 +134,14 @@ export const CAMPAIGN_FORM_COPY = {
     back: 'Back to edit',
     saveDraft: 'Save draft',
   },
+  // Ours (Prompt 9): beside "Save draft" while the New form holds a draft. The draft never reaches the server (Prompt 6
+  // ruling), so the form says where it is.
+  savedHere: 'Saved in this browser',
   toasts: {
     submitted: 'Submitted — Global reviews within one working day',
     resubmitted: 'Resubmitted — Global reviews within one working day',
-    // Ours (Prompt 6).
-    draftSaved: 'Draft saved — open it from Campaigns home to carry on',
+    // Ours (Prompt 6; Prompt 9 says where).
+    draftSaved: 'Draft saved in this browser — open it from Campaigns home to carry on',
   },
 
   // Ours (Prompt 6): a campaign is one offer on one market, said once over the New form.

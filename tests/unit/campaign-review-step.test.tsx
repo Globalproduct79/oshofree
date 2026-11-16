@@ -161,7 +161,7 @@ describe('formProblem: what stops the primary button', () => {
 })
 
 describe('the draft on Campaigns home', () => {
-  it('is a Draft card with its headline, the image it has, and the way back into the form', () => {
+  it('is a Draft card with its headline, the image it has, where it is kept, and the way back into the form', () => {
     expect(draftCard(filled())).toEqual({
       headline: 'Harmattan sale: 20% off 1L bottles',
       brand: 'Kola Bright',
@@ -172,7 +172,7 @@ describe('the draft on Campaigns home', () => {
       imageUrl: `/uploads/${IMAGE}`,
       color: tokens.tileColors[0],
       initials: 'KB',
-      mainLeft: 'Not submitted yet',
+      mainLeft: 'Saved in this browser',
       mainRight: 'Carry on',
     })
   })
