@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { rejectPayoutAction, releasePayoutAction, setFraudRuleAction, topUpAction } from '@/app/admin/rewards/actions'
 import RewardsLedgerPage from '@/app/admin/rewards/page'
-import { submitOnce } from '@/components/platform/EnterLink'
+import { submitGuard } from '@/components/platform/EnterLink'
 import { inAppPath } from '@/lib/nav'
 import { rewardLineHref } from '@/lib/activity-keys'
 import { auth } from '@/lib/auth'
@@ -153,14 +153,22 @@ describe('/admin/rewards', () => {
     expect(inAppPath(rewardLineHref(c.id, a.id))).toBe(rewardLineHref(c.id, a.id))
   })
 
-  it('enters the workspace once however often the button is pressed: later submits are stopped', () => {
-    const onSubmit = submitOnce()
+  it('enters the workspace once however often the button is pressed, and works again once a press settles', () => {
+    const guard = submitGuard()
     const press = () => {
       let stopped = false
-      onSubmit({ preventDefault: () => void (stopped = true) })
+      guard.onSubmit({ preventDefault: () => void (stopped = true) })
       return stopped
     }
+    // Pressed three times while the first is on its way: only the first goes.
     expect([press(), press(), press()]).toEqual([false, true, true])
+    // The action failed (the form is no longer pending) or the page came back from the cache: it works again, once.
+    guard.settle()
+    expect([press(), press()]).toEqual([false, true])
+    // Settling twice changes nothing.
+    guard.settle()
+    guard.settle()
+    expect([press(), press()]).toEqual([false, true])
   })
 
   it('release over the cap gives the toast and stays held', async () => {
