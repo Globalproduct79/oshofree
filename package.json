@@ -14,6 +14,7 @@
     "db:migrate": "dotenv -- prisma migrate dev",
     "db:seed": "dotenv -- tsx prisma/seed.ts",
     "db:reset": "dotenv -- prisma migrate reset --force",
+    "demo:remove": "dotenv -- tsx scripts/demo-remove.ts",
     "job:daily": "dotenv -- tsx scripts/daily.ts",
     "bootstrap": "dotenv -- tsx scripts/bootstrap.ts",
     "docker:up": "docker compose up -d",
