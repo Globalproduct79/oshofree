@@ -32,7 +32,7 @@ function DeclineModal({ ws, open, onClose }: { ws: PendingWorkspace; open: boole
           <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} required />
         </label>
         <div className="row">
-          <Button type="submit" variant="primary" disabled={pending || !reason.trim()}>
+          <Button type="submit" aria-busy={pending || undefined} variant="primary" disabled={pending || !reason.trim()}>
             {D.confirm}
           </Button>
           <Button type="button" variant="ghost" disabled={pending} onClick={onClose}>

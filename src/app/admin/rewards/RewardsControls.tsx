@@ -48,7 +48,7 @@ export function TopUpForm() {
         <input type="number" step="100" value={amount} onChange={(e) => setAmount(e.target.value)} />
       </label>
       <div className="btns">
-        <Button type="submit" variant="primary" disabled={pending}>
+        <Button type="submit" aria-busy={pending || undefined} variant="primary" disabled={pending}>
           {R.topUpButton}
         </Button>
       </div>

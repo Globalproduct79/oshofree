@@ -52,7 +52,7 @@ export function RejectModal({
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} />
         </label>
         <div className="row">
-          <Button type="submit" variant="primary" disabled={pending || !code}>
+          <Button type="submit" aria-busy={pending || undefined} variant="primary" disabled={pending || !code}>
             {J.confirm}
           </Button>
           <Button type="button" variant="ghost" disabled={pending} onClick={onClose}>

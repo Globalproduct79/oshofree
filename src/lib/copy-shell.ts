@@ -51,6 +51,8 @@ export const SHELL = {
     },
     toCampaigns: 'Back to Campaigns',
     toReview: 'Back to Review',
+    // An address that matches no page at all, outside the console (the root not-found).
+    toStart: 'Go to OshoFree',
   },
   search: {
     label: 'Search',

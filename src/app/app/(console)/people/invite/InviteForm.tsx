@@ -90,7 +90,7 @@ export function InviteForm() {
           </select>
         </label>
         <div className="btns">
-          <Button type="submit" variant="primary" disabled={busy}>
+          <Button type="submit" aria-busy={busy || undefined} variant="primary" disabled={busy}>
             {PEOPLE.sendInvite}
           </Button>
         </div>

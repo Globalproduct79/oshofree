@@ -60,7 +60,7 @@ export function ChangePanel({ id, change, readOnly }: { id: string; change: Chan
           <input type="number" min={0} step={5} value={v.rewardLocal} disabled={readOnly} onChange={set('rewardLocal')} />
         </label>
         {!readOnly && (
-          <Button type="submit" variant="primary" disabled={!change.canSave || pending}>
+          <Button type="submit" aria-busy={pending || undefined} variant="primary" disabled={!change.canSave || pending}>
             {C.save}
           </Button>
         )}

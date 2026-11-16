@@ -195,7 +195,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
 
   const buttons = (
     <div className="full" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-      <Button ref={primary} type="submit" variant="primary" disabled={problem !== null || pending || uploading} aria-describedby="cf-hint">
+      <Button ref={primary} type="submit" aria-busy={pending || undefined} variant="primary" disabled={problem !== null || pending || uploading} aria-describedby="cf-hint">
         {!isNew ? F.buttons.saveResubmit : reviewing ? F.buttons.submit : F.buttons.review}
       </Button>
       {reviewing && (

@@ -1,8 +1,8 @@
 'use client'
 
-import { useFormStatus } from 'react-dom'
 import { pause, resume } from '@/app/app/(console)/campaigns/actions'
-import { Button, type ButtonSize } from '@/components/og/Button'
+import type { ButtonSize } from '@/components/og/Button'
+import { SubmitButton } from '@/components/og/SubmitButton'
 import { toast } from '@/components/shell/toast-store'
 import { CAMPAIGN } from '@/lib/copy-campaign'
 import { HOME } from '@/lib/copy-home'
@@ -17,24 +17,19 @@ export async function pauseOrResume(id: string, status: Running): Promise<void> 
   toast('error' in res ? res.error : status === 'live' ? CAMPAIGN.paused : CAMPAIGN.resumed)
 }
 
-function Submit({ status, size }: { status: Running; size?: ButtonSize }) {
-  const { pending } = useFormStatus()
-  return status === 'live' ? (
-    <Button type="submit" variant="ghost" size={size} disabled={pending}>
-      {HOME.pause}
-    </Button>
-  ) : (
-    <Button type="submit" variant="primary" size={size} disabled={pending}>
-      {HOME.resume}
-    </Button>
-  )
-}
-
 // Pause (white) or Resume (orange): large on the home hero, regular in the campaign page's head.
 export function PauseResume({ id, status, size }: { id: string; status: Running; size?: ButtonSize }) {
   return (
     <form action={() => pauseOrResume(id, status)}>
-      <Submit status={status} size={size} />
+      {status === 'live' ? (
+        <SubmitButton variant="ghost" size={size}>
+          {HOME.pause}
+        </SubmitButton>
+      ) : (
+        <SubmitButton variant="primary" size={size}>
+          {HOME.resume}
+        </SubmitButton>
+      )}
     </form>
   )
 }

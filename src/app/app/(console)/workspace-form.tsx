@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState } from 'react'
-import { Button } from '@/components/og'
+import { SubmitButton } from '@/components/og'
 import { COPY } from '@/lib/copy'
 import { COUNTRIES, MARKETS, type Country } from '@/lib/markets'
 
@@ -19,7 +19,7 @@ export function WorkspaceForm({
   submitLabel: string
   initial?: Values
 }) {
-  const [state, formAction, pending] = useActionState(action, null)
+  const [state, formAction] = useActionState(action, null)
   return (
     <form action={formAction} className="form">
       <label className="f full">
@@ -50,9 +50,7 @@ export function WorkspaceForm({
       )}
       {state?.saved && <p role="status" className="full">{COPY.workspace.saved}</p>}
       <div className="btns full">
-        <Button type="submit" variant="primary" disabled={pending}>
-          {submitLabel}
-        </Button>
+        <SubmitButton variant="primary">{submitLabel}</SubmitButton>
       </div>
     </form>
   )

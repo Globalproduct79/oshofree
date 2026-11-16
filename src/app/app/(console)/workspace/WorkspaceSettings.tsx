@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState, useEffect } from 'react'
-import { Button } from '@/components/og'
+import { SubmitButton } from '@/components/og'
 import { toast } from '@/components/shell/toast-store'
 import { COPY } from '@/lib/copy'
 import { COUNTRIES, MARKETS, type Country } from '@/lib/markets'
@@ -21,7 +21,7 @@ export function WorkspaceSettings({
   readOnly: boolean
   typeCountryLocked: boolean
 }) {
-  const [state, formAction, pending] = useActionState(action, null)
+  const [state, formAction] = useActionState(action, null)
   useEffect(() => {
     if (state?.saved) toast(COPY.workspace.toastSaved)
   }, [state])
@@ -64,9 +64,7 @@ export function WorkspaceSettings({
       {state?.error === 'LOCKED' && <p role="alert">{COPY.workspace.locked}</p>}
       {!readOnly && (
         <div className="btns">
-          <Button variant="primary" type="submit" disabled={pending}>
-            {COPY.workspace.save}
-          </Button>
+          <SubmitButton variant="primary">{COPY.workspace.save}</SubmitButton>
         </div>
       )}
     </form>
