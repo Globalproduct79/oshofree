@@ -158,7 +158,8 @@ const PAGES: Record<string, PageCase> = {
   '/app/people/invite': { as: 'owner', render: () => render(InvitePage()), head: { controls: ['People'] } },
   '/app/workspace': { as: 'owner', render: () => render(WorkspacePage()), head: { controls: ['People'] } },
   '/app/notifications': { as: 'owner', render: () => render(NotificationsPage()), head: { controls: ['Home'] } },
-  '/app/new-workspace': { as: 'newcomer', render: () => render(NewWorkspacePage()), head: { controls: [] } },
+  // Prompt 10: someone with no workspace (a new sign-up, a member removed from their only one) can sign out from here.
+  '/app/new-workspace': { as: 'newcomer', render: () => render(NewWorkspacePage()), head: { controls: ['Sign out'] } },
   '/admin/review': { as: 'admin', render: () => render(ReviewPage()), head: { controls: [] } },
   '/admin/advertisers': { as: 'admin', render: () => render(AdvertisersPage()), head: { controls: ['Close month'] } },
   '/admin/advertisers/[id]': {
