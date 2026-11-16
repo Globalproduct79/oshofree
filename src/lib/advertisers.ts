@@ -108,7 +108,7 @@ export type AdvertiserDetail = {
   owner: string | null
   since: string
   registrationNumber: string | null
-  accountManager: string
+  accountManager: string | null
   termsDays: number
   creditLimitCents: number
   cards: LiveCard[]

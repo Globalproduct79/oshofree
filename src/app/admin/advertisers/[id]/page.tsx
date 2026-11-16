@@ -96,7 +96,7 @@ export default async function AdvertiserPage({ params }: { params: Promise<{ id:
             },
             {
               label: D.manager,
-              value: <CommitInput value={d.accountManager} width={180} label={D.manager} save={updateFactAction.bind(null, d.id, 'accountManager')} />,
+              value: <CommitInput value={d.accountManager ?? ''} width={180} label={D.manager} save={updateFactAction.bind(null, d.id, 'accountManager')} />,
             },
             { label: D.terms, value: D.termsValue(d.termsDays) },
             { label: D.since, value: d.since },

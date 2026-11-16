@@ -7,6 +7,7 @@ import { MARKETS } from '@/lib/markets'
 import { creditSummary, monthBounds, statement, statementMonths } from '@/lib/money'
 import { can, requireMember } from '@/lib/permissions'
 import { currentFx } from '@/lib/rates'
+import { accountManagerShown } from '@/lib/workspaces'
 import { RequestCredit } from './RequestCredit'
 import { StatementBox, type MonthLink } from './StatementBox'
 
@@ -73,7 +74,7 @@ export default async function BillingPage({ searchParams }: { searchParams?: Pro
                 { label: B.currencyKey, value: m.currency },
                 { label: B.termsKey, value: B.terms(ws.termsDays) },
                 { label: B.nextInvoiceKey, value: `1 ${next}` },
-                { label: B.accountManagerKey, value: ws.accountManager },
+                { label: B.accountManagerKey, value: accountManagerShown(ws.accountManager) },
               ]}
             />
           </Box>

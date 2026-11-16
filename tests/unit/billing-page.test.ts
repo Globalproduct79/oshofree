@@ -132,9 +132,18 @@ describe('Billing page', () => {
     expect(t).toContain('Billing currency KES')
     expect(t).toContain('Terms Net 14')
     expect(t).toContain('Next invoice 1 Dec')
-    expect(t).toContain('Account manager Obinna A.')
+    // Approved straight in the database, so nobody is named yet; once Global is, Billing names them (Prompt 10).
+    expect(t).toContain('Account manager Named when Global approves you')
     expect(t).toContain('Need more credit?')
     expect(t).toContain('Request a higher limit')
+  })
+
+  it('names the account manager Global approved the workspace with', async () => {
+    const { ws } = await setup()
+    await db.workspace.update({ where: { id: ws.id }, data: { accountManager: 'Ama Mensah' } })
+    const { text: t } = await render()
+    expect(t).toContain('Account manager Ama Mensah')
+    expect(t).not.toContain('Named when Global approves you')
   })
 
   it('shows "—" without throwing when the market has no FX', async () => {

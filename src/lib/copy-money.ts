@@ -52,6 +52,8 @@ export const MONEY = {
     terms: (termsDays: number) => `Net ${termsDays}`,
     nextInvoiceKey: 'Next invoice',
     accountManagerKey: 'Account manager',
+    // Ours (Prompt 10): before Global approves the workspace, nobody is its account manager yet.
+    accountManagerNone: 'Named when Global approves you',
     moreTitle: 'Need more credit?',
     moreSub: 'Limits are raised after your first paid invoice, or on request for a committed plan.',
     moreAction: 'Request a higher limit',

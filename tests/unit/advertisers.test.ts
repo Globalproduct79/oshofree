@@ -223,7 +223,8 @@ describe('Platform › Advertisers › workspace', () => {
     for (const box of ['Facts', 'Campaigns', 'Invoices', 'Credit requests', 'History']) expect(t).toContain(box)
     expect(t).toContain('Terms Net 14')
     expect(t).toContain('Account manager')
-    expect(html).toContain('value="Obinna A."')
+    // Approved straight in the database, so nobody is named yet: the field is empty for Global to fill.
+    expect(html).toMatch(/aria-label="Account manager"[^>]*value=""/)
     expect(html).toContain('value="1500"')
     expect(t).toContain('Buy 2 get 1')
     expect(t).toContain('Next offer')
@@ -325,7 +326,7 @@ describe('Platform › Advertisers › workspace', () => {
       { before: { country: 'NG' }, after: { country: 'KE' } },
       { before: { type: 'Brand' }, after: { type: 'Agency' } },
       { before: { registrationNumber: null }, after: { registrationNumber: 'RC-1234' } },
-      { before: { accountManager: 'Obinna A.' }, after: { accountManager: 'Ada E.' } },
+      { before: { accountManager: null }, after: { accountManager: 'Ada E.' } },
     ]))
 
     for (const [field, value] of [['country', 'XX'], ['type', 'Shop'], ['accountManager', '  '], ['name', 'Hacked'], ['registrationNumber', 'x'.repeat(41)]]) {

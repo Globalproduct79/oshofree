@@ -1,5 +1,6 @@
 import type { Workspace, WorkspaceStatus, WorkspaceType } from '@prisma/client'
 import { audit } from '@/lib/audit'
+import { MONEY } from '@/lib/copy-money'
 import { NOTIFY } from '@/lib/copy-notifications'
 import { db, type Tx } from '@/lib/db'
 import type { Country } from '@/lib/markets'
@@ -57,7 +58,10 @@ async function approveFrom(from: 'pending' | 'declined', id: string, byUserId: s
   const ws = await db.$transaction(async (tx) => {
     const row = await decide(tx, id, from, { status: 'approved', approvedAt: now, declineReason: null })
     await tx.reviewAction.create({ data: { targetType: 'Workspace', targetId: id, action: 'Approve', byUserId, at: now } })
-    return row
+    // The Global who approves becomes the account manager, unless Global already named one (Prompt 10).
+    if (row.accountManager !== null) return row
+    const { name } = await tx.user.findUniqueOrThrow({ where: { id: byUserId }, select: { name: true } })
+    return tx.workspace.update({ where: { id }, data: { accountManager: name } })
   })
   await audit(byUserId, 'workspace.approve', { type: 'Workspace', id, workspaceId: id }, { status: from }, { status: 'approved' })
   const told = NOTIFY.workspaceApproved()
@@ -91,6 +95,11 @@ export async function declineWorkspace(id: string, byUserId: string, reason: str
   const told = NOTIFY.workspaceDeclined(why)
   await notifyWorkspace(id, 'approved', told.title, told.detail, WORKSPACE_PAGE)
   return ws
+}
+
+// Billing's "Account manager": the name, or that one is named when Global approves the workspace.
+export function accountManagerShown(name: string | null): string {
+  return name?.trim() || MONEY.billing.accountManagerNone
 }
 
 const since = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })

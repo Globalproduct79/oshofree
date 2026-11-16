@@ -13,7 +13,8 @@ describe('slice-2 schema', () => {
     const user = await db.user.create({ data: { email: 'a@b.co', passwordHash: 'x', name: 'A' } })
     const ws = await db.workspace.create({ data: { name: 'W', type: 'Brand', country: 'NG' } })
     expect(ws.creditLimitCents).toBe(50000)
-    expect(ws.accountManager).toBe('Obinna A.')
+    // Nobody until Global approves the workspace (Prompt 10; the prototype's fixed "Obinna A." is gone).
+    expect(ws.accountManager).toBeNull()
     expect(ws.termsDays).toBe(14)
     const channel = await db.channel.create({
       data: { key: 'ch', name: 'Ch', apiKeyHash: 'h', previousKeyHash: 'p', previousKeyValidUntil: day },
