@@ -172,11 +172,14 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
   await test.step("Global's held reward links into the brand's workspace, to its line in Recent activity", async () => {
     await admin.goto('/admin/rewards')
     const held = box(admin, REWARDS_LEDGER.heldTitle)
-    await held.getByRole('link', { name: OFFER.name }).click()
+    // Entering a workspace is an action: a button that reads as the campaign's name, pressed twice here and entered once.
+    await held.getByRole('button', { name: OFFER.name }).dblclick()
     await admin.waitForURL(/\/app\/campaigns\/[^/?]+\?line=reward-\w+$/)
     const lit = box(admin, ACTIVITY.title).locator('li[aria-current="true"]')
     await expect(lit).toHaveText(line(`₦[\\d,]+ airtime for ${SHARER} held — ${REWARDS_LEDGER.reasons.no_phone}`))
     await expect(lit).toBeInViewport()
+    // The page opens at that line, so it leads back to the newest.
+    await expect(box(admin, ACTIVITY.title).getByRole('link', { name: ACTIVITY.newest })).toBeVisible()
   })
 
   await test.step('an unknown link answers 410 Gone', async () => {

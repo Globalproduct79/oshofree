@@ -1,6 +1,7 @@
 import { Box, DataTable, LinkButton, MetricCard, StatusBadge } from '@/components/og'
 import { EnterLink } from '@/components/platform/EnterLink'
 import { PageHead } from '@/components/shell/PageHead'
+import { rewardLineHref } from '@/lib/activity-keys'
 import { REWARDS_LEDGER as R } from '@/lib/copy-rewards-ledger'
 import { SHELL } from '@/lib/copy-shell'
 import { FRAUD_RULES, ensureFraudRules } from '@/lib/fraud'
@@ -87,7 +88,7 @@ export default async function RewardsLedgerPage() {
         <DataTable
           head={[...R.heldHead, '']}
           rows={held.map((h) => [
-            <EnterLink key="c" workspaceId={h.workspaceId} href={`/app/campaigns/${h.campaignId}?line=reward-${h.id}`} title={R.seeActivity}>
+            <EnterLink key="c" workspaceId={h.workspaceId} href={rewardLineHref(h.campaignId, h.id)} title={R.seeActivity}>
               <b>{h.campaign}</b>
             </EnterLink>,
             h.sharer,

@@ -2,6 +2,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { rejectPayoutAction, releasePayoutAction, setFraudRuleAction, topUpAction } from '@/app/admin/rewards/actions'
 import RewardsLedgerPage from '@/app/admin/rewards/page'
+import { submitOnce } from '@/components/platform/EnterLink'
+import { inAppPath } from '@/lib/nav'
+import { rewardLineHref } from '@/lib/activity-keys'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 
@@ -141,9 +144,23 @@ describe('/admin/rewards', () => {
     await signIn(true)
     const { c, payout } = await world()
     const a = await payout('held', 500, 'no_phone')
-    expect(await render()).toContain(
-      `<a href="/app/campaigns/${c.id}?line=reward-${a.id}" title="See this reward in the campaign&#x27;s Recent activity"><b>Buy 2 get 1</b></a>`,
-    )
+    const html = await render()
+    // A form (entering is an audited action), its button reading as the campaign's name.
+    expect(html).toMatch(/<form class="enter" action="[^"]*">(<input[^>]*>)*<button type="submit" class="linkbtn" title="See this reward in the campaign&#x27;s Recent activity"><b>Buy 2 get 1<\/b><\/button><\/form>/)
+    expect(html).not.toContain(`href="/app/campaigns/${c.id}`)
+    // Where it lands: the reward's line, a path entering a workspace may follow.
+    expect(rewardLineHref(c.id, a.id)).toBe(`/app/campaigns/${c.id}?line=reward-${a.id}`)
+    expect(inAppPath(rewardLineHref(c.id, a.id))).toBe(rewardLineHref(c.id, a.id))
+  })
+
+  it('enters the workspace once however often the button is pressed: later submits are stopped', () => {
+    const onSubmit = submitOnce()
+    const press = () => {
+      let stopped = false
+      onSubmit({ preventDefault: () => void (stopped = true) })
+      return stopped
+    }
+    expect([press(), press(), press()]).toEqual([false, true, true])
   })
 
   it('release over the cap gives the toast and stays held', async () => {
