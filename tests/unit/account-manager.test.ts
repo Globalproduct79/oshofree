@@ -44,9 +44,11 @@ describe('account manager', () => {
     expect((await reapproveWorkspace(again.id, second.id)).accountManager).toBe('Second Global')
   })
 
-  it("Billing shows the manager's name, or that one is named when Global approves the workspace", () => {
-    expect(accountManagerShown('Gbenga Global')).toBe('Gbenga Global')
-    expect(accountManagerShown(null)).toBe(MONEY.billing.accountManagerNone)
-    expect(accountManagerShown('   ')).toBe(MONEY.billing.accountManagerNone)
+  it("Billing shows the manager's name; before approval, that one is named then; approved with nobody named, '—'", () => {
+    for (const status of ['pending', 'approved', 'declined'] as const) expect(accountManagerShown('Gbenga Global', status)).toBe('Gbenga Global')
+    expect(accountManagerShown(null, 'pending')).toBe(MONEY.billing.accountManagerNone)
+    expect(accountManagerShown('   ', 'declined')).toBe(MONEY.billing.accountManagerNone)
+    expect(accountManagerShown(null, 'approved')).toBe('—')
+    expect(accountManagerShown('  ', 'approved')).toBe('—')
   })
 })

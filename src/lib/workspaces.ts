@@ -97,9 +97,12 @@ export async function declineWorkspace(id: string, byUserId: string, reason: str
   return ws
 }
 
-// Billing's "Account manager": the name, or that one is named when Global approves the workspace.
-export function accountManagerShown(name: string | null): string {
-  return name?.trim() || MONEY.billing.accountManagerNone
+// Billing's "Account manager": the name; before approval, that one is named when Global approves; an approved workspace
+// with nobody named (Global cleared it, or it was approved before names were kept) shows "—".
+export function accountManagerShown(name: string | null, status: WorkspaceStatus): string {
+  const named = name?.trim()
+  if (named) return named
+  return status === 'approved' ? MONEY.billing.accountManagerUnnamed : MONEY.billing.accountManagerNone
 }
 
 const since = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })

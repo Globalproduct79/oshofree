@@ -132,10 +132,18 @@ describe('Billing page', () => {
     expect(t).toContain('Billing currency KES')
     expect(t).toContain('Terms Net 14')
     expect(t).toContain('Next invoice 1 Dec')
-    // Approved straight in the database, so nobody is named yet; once Global is, Billing names them (Prompt 10).
-    expect(t).toContain('Account manager Named when Global approves you')
+    // Approved straight in the database with nobody named: "—" (a pending workspace would say one is named on approval).
+    expect(t).toContain('Account manager —')
+    expect(t).not.toContain('Named when Global approves you')
     expect(t).toContain('Need more credit?')
     expect(t).toContain('Request a higher limit')
+  })
+
+  it('before approval, says the account manager is named when Global approves', async () => {
+    const { ws } = await setup()
+    await db.workspace.update({ where: { id: ws.id }, data: { status: 'pending' } })
+    const { text: t } = await render()
+    expect(t).toContain('Account manager Named when Global approves you')
   })
 
   it('names the account manager Global approved the workspace with', async () => {

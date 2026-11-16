@@ -74,7 +74,7 @@ export default async function BillingPage({ searchParams }: { searchParams?: Pro
                 { label: B.currencyKey, value: m.currency },
                 { label: B.termsKey, value: B.terms(ws.termsDays) },
                 { label: B.nextInvoiceKey, value: `1 ${next}` },
-                { label: B.accountManagerKey, value: accountManagerShown(ws.accountManager) },
+                { label: B.accountManagerKey, value: accountManagerShown(ws.accountManager, ws.status) },
               ]}
             />
           </Box>
