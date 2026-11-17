@@ -121,8 +121,8 @@ export function InviteRow({
   )
 }
 
-// The invites still to be taken up (People's Open invites, Overview's Pending invitations). Any Resend or Revoke
-// answer refreshes the page, so the list and its dates are the server's.
+// The invites still to be taken up (People's Open invites). Any Resend or Revoke answer refreshes the page, so the
+// list and its dates are the server's.
 export function InvitesList({ canManage, invites, empty }: { canManage: boolean; invites: InviteView[]; empty: string }) {
   const router = useRouter()
   if (invites.length === 0) return <p className="sub">{empty}</p>

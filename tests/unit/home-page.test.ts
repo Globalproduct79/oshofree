@@ -251,6 +251,23 @@ describe('Campaigns home', () => {
     expect(markup.indexOf('class="cc new"')).toBeLessThan(markup.indexOf('class="box empty"'))
   })
 
+  it('the empty state offers "Invite your team" to whoever manages people, and to no one else', async () => {
+    const { ws, owner } = await workspace('GH', 'SunFresh Juices', { status: 'pending' })
+    clock('2026-11-14T12:00:00Z')
+    const link = /<div class="box empty">[^]*?<a [^>]*href="\/app\/people\/invite"[^>]*>Invite your team<\/a>/
+    signIn(owner, ws.id)
+    expect((await home()).markup).toMatch(link)
+    for (const role of ['Manager', 'Viewer'] as const) {
+      const who = await mkUser(`${role} Person`)
+      await join(who.id, ws.id, role)
+      signIn(who, ws.id)
+      const { markup } = await home()
+      expect(markup).toContain('class="box empty"')
+      expect(markup).not.toMatch(link)
+      expect(markup).not.toContain('Invite your team')
+    }
+  })
+
   it("prints the hero's eyebrow, four stats and pace note from the stored rows", async () => {
     const { ws, owner } = await workspace()
     signIn(owner, ws.id)

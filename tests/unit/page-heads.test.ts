@@ -19,7 +19,6 @@ import NewCampaignPage from '@/app/app/(console)/campaigns/new/page'
 import InvoicePrintPage from '@/app/app/(console)/invoices/[id]/print/page'
 import InvoicesPage from '@/app/app/(console)/invoices/page'
 import NotificationsPage from '@/app/app/(console)/notifications/page'
-import OrganisationPage from '@/app/app/(console)/organisation/page'
 import HomePage from '@/app/app/(console)/page'
 import { InviteSent, sendInvite } from '@/app/app/(console)/people/invite/InviteForm'
 import InvitePage from '@/app/app/(console)/people/invite/page'
@@ -153,7 +152,6 @@ const PAGES: Record<string, PageCase> = {
   '/app/billing': { as: 'owner', render: () => render(BillingPage(search)), head: { controls: ['Invoices'] } },
   '/app/invoices': { as: 'owner', render: () => render(InvoicesPage()), head: { controls: ['Billing & credit'] } },
   '/app/invoices/[id]/print': { as: 'owner', render: (w) => render(InvoicePrintPage(params(w.invoiceId))), head: { controls: ['Print'] } },
-  '/app/organisation': { as: 'owner', render: () => render(OrganisationPage()), head: { controls: ['Invite user'], primary: 'Invite user' } },
   '/app/people': { as: 'owner', render: () => render(PeoplePage()), head: { controls: ['Invite user'], primary: 'Invite user' } },
   '/app/people/invite': { as: 'owner', render: () => render(InvitePage()), head: { controls: ['People'] } },
   '/app/workspace': { as: 'owner', render: () => render(WorkspacePage()), head: { controls: ['People'] } },
@@ -222,7 +220,6 @@ describe('page heads', () => {
     expect(head(await render(HomePage(search))).labels).toEqual([])
     expect(head(await render(RewardsPage())).labels).toEqual([])
     expect(head(await render(PeoplePage())).labels).toEqual([])
-    expect(head(await render(OrganisationPage())).labels).toEqual([])
     expect(head(await render(NotificationsPage())).labels).toEqual(['Home'])
   })
 
@@ -232,7 +229,6 @@ describe('page heads', () => {
     expect(head(await render(HomePage(search))).primaries).toEqual(['+ New campaign'])
     expect(head(await render(RewardsPage())).primaries).toEqual(['New campaign'])
     expect(head(await render(PeoplePage())).labels).toEqual([])
-    expect(head(await render(OrganisationPage())).labels).toEqual([])
   })
 })
 
@@ -246,8 +242,9 @@ describe('the two new pages', () => {
     expect(people).not.toContain('name@company.com')
 
     const invite = await render(InvitePage())
-    expect(text(invite)).toContain('Kola Bright › Organisation › Invite')
-    expect(invite).toMatch(/<div class="crumb">[^]*?<a [^>]*href="\/app\/organisation"[^>]*>Organisation<\/a>/)
+    expect(text(invite)).toContain('Kola Bright › Organisation › People › Invite')
+    expect(invite).toMatch(/<div class="crumb">[^]*?<a [^>]*href="\/app\/people"[^>]*>People<\/a>/)
+    expect(invite).not.toContain('/app/organisation')
     expect(invite).toContain('placeholder="name@company.com"')
     expect(invite).toMatch(/<select[^>]*>[^]*?<option[^>]*>Manager<\/option>/)
     expect(invite).toContain('Send invite')
@@ -278,10 +275,10 @@ describe('the two new pages', () => {
     const box = renderToStaticMarkup(createElement(InviteSent, { sent: sent!, onAnother: () => {} }))
     expect(text(box)).toBe(
       `Pending invitation Invite sent to ada@x.test. Copy the link and send it to them. ` +
-        `A ada@x.test Viewer · expires ${expires} Resend Revoke Link Copy Invite another Back to Organisation`,
+        `A ada@x.test Viewer · expires ${expires} Resend Revoke Link Copy Invite another Back to People`,
     )
     expect(box).toContain(`readOnly="" value="${inviteUrl(inv.token)}"`)
-    expect(box).toMatch(/<a [^>]*href="\/app\/organisation"[^>]*>Back to Organisation<\/a>/)
+    expect(box).toMatch(/<a [^>]*href="\/app\/people"[^>]*>Back to People<\/a>/)
     expect(box).toMatch(/<button [^>]*type="button"[^>]*>Invite another<\/button>/)
   })
 

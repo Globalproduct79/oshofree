@@ -227,9 +227,9 @@ database.
 checked by what the person sees:
 
 1. *Owner*: signs up, creates the workspace, waits under the pending banner until Global approves it, finds the
-   home live, opens Organisation, invites a Manager and copies the link.
+   home live and the workspace approved, goes on to People, invites a Manager and copies the link.
 2. *Member*: opens that link in a browser of their own, creates an account, lands in the workspace with New
-   campaign but no Invite user, and finds themselves in Organisation's Team.
+   campaign but no Invite user, and finds themselves in People's Members.
 3. *Advertiser* (that Manager): fills an offer, uploads the seed's JPG, previews the Wall card and the landing
    page, reviews and submits it; Global approves it; Phoenix finds it on `/api/v1/offers`, reports an impression
    and an open, takes a claim code and shares it; a friend opens the shared page and claims; Sharing shows the

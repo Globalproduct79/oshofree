@@ -10,7 +10,7 @@ import { InviteRow } from '../InvitesList'
 
 export type Sent = { id: string; email: string; role: Role; expires: string; url: string }
 
-const ORGANISATION_PATH = '/app/organisation'
+const PEOPLE_PATH = '/app/people'
 
 // Sends the invite. A refusal is its toast; success says so and hands back the pending invite and the link the
 // action made — only the inviter's own response carries it, so two people inviting the same address each see their own.
@@ -24,9 +24,9 @@ export async function sendInvite(email: string, role: string, act = inviteAction
   return { id: r.id, email: r.email, role: r.role, expires: r.expires, url: r.url }
 }
 
-// The invite just sent, as the pending row Organisation lists, with its link in a read-only field and Copy (never
-// in a toast: a toast outlives the page, and the link is a credential), Resend and Revoke; then Invite another
-// (an empty form) or Back to Organisation.
+// The invite just sent, as the open-invite row People lists, with its link in a read-only field and Copy (never in a
+// toast: a toast outlives the page, and the link is a credential), Resend and Revoke; then Invite another (an empty
+// form) or Back to People.
 export function InviteSent({ sent, onAnother }: { sent: Sent; onAnother: () => void }) {
   return (
     <Box title={PEOPLE.invitePage.pendingTitle}>
@@ -43,7 +43,7 @@ export function InviteSent({ sent, onAnother }: { sent: Sent; onAnother: () => v
           <Button type="button" variant="ghost" onClick={onAnother}>
             {PEOPLE.invitePage.another}
           </Button>
-          <LinkButton variant="ghost" href={ORGANISATION_PATH}>
+          <LinkButton variant="ghost" href={PEOPLE_PATH}>
             {PEOPLE.invitePage.back}
           </LinkButton>
         </div>

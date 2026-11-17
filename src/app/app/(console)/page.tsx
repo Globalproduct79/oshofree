@@ -44,9 +44,17 @@ export default async function CampaignsHome({ searchParams }: { searchParams: Pr
   const greeting = HOME.greeting(hourIn(now, MARKETS[ws.country].timezone))
   // The New form's draft, kept in this browser: a card in the grid, and the empty state gives way to it.
   const draft = canAct && { workspaceId: ws.id, defaults: newCampaignDefaults(ws, now) }
+  // A workspace with nothing on Phoenix yet: the first offer (the tile above), and for an Owner, the team to invite.
   const empty = (
     <EmptyState box title={HOME.empty.title}>
       {HOME.empty.line}
+      {can(role, 'people') && (
+        <div className="btns">
+          <LinkButton variant="ghost" href="/app/people/invite">
+            {HOME.empty.inviteTeam}
+          </LinkButton>
+        </div>
+      )}
     </EmptyState>
   )
 

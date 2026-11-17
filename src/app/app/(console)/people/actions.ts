@@ -9,11 +9,8 @@ import { inviteExpiry } from './invite-views'
 const ROLES: Role[] = ['Owner', 'Manager', 'Viewer']
 const isRole = (r: string): r is Role => (ROLES as string[]).includes(r)
 
-// Both pages that list the team and its invites.
-const revalidate = () => {
-  revalidatePath('/app/people')
-  revalidatePath('/app/organisation')
-}
+// The page that lists the team and its invites.
+const revalidate = () => revalidatePath('/app/people')
 
 export type InviteResult =
   | { ok: true; url: string; id: string; email: string; role: Role; expires: string }

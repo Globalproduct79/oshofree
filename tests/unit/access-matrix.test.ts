@@ -4,8 +4,8 @@ import { setCreditLimitAction } from '@/app/admin/advertisers/actions'
 import { requestCreditAction } from '@/app/app/(console)/billing/actions'
 import { submitAction } from '@/app/app/(console)/campaigns/actions'
 import ConsoleLayout from '@/app/app/(console)/layout'
-import OrganisationPage from '@/app/app/(console)/organisation/page'
 import HomePage from '@/app/app/(console)/page'
+import PeoplePage from '@/app/app/(console)/people/page'
 import { changeRoleAction, inviteAction, removeMemberAction } from '@/app/app/(console)/people/actions'
 import { updateWorkspaceAction } from '@/app/app/(console)/workspace/actions'
 import WorkspacePage from '@/app/app/(console)/workspace/page'
@@ -106,7 +106,7 @@ const render = async (node: Promise<React.ReactNode>) => renderToStaticMarkup(aw
 
 const WORKSPACE_NAV = [
   '/app', '/app/sharing', '/app/rewards', '/app/billing', '/app/invoices',
-  '/app/organisation', '/app/people', '/app/workspace', '/app/notifications',
+  '/app/workspace', '/app/people', '/app/notifications',
 ]
 const PLATFORM_NAV = ['/admin/review', '/admin/advertisers', '/admin/rates', '/admin/settlement', '/admin/rewards', '/admin/api']
 
@@ -128,8 +128,8 @@ const PRIMARIES: (Primary & Record<Role, boolean>)[] = [
     shown: (m) => headPrimaries(m).includes('+ New campaign'),
   },
   {
-    page: 'Organisation', label: 'Invite user', cap: 'people', Owner: Y, Manager: N, Viewer: N, Global: Y,
-    render: () => render(OrganisationPage()),
+    page: 'People', label: 'Invite user', cap: 'people', Owner: Y, Manager: N, Viewer: N, Global: Y,
+    render: () => render(PeoplePage()),
     shown: (m) => headPrimaries(m).includes('Invite user'),
   },
   {

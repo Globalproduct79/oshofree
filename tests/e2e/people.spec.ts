@@ -1,14 +1,12 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { COPY } from '@/lib/copy'
-import { ORGANISATION } from '@/lib/copy-organisation'
 import { INVITE_PAGE, PEOPLE } from '@/lib/copy-people'
 import { SHELL } from '@/lib/copy-shell'
 import { box, expectToast, KOLA, PASSWORD, signIn, TUNDE } from './helpers'
 
-// F5: Tunde opens Organisation › Overview and Invite user, invites a Manager and sees the pending invite with its
-// link. Back on the Overview, Resend gives a new link and the old one stops working. The invitee opens the new link
-// in a browser of their own, creates an account and lands in Kola Bright; the Overview's Team then lists them as a
-// Manager and no one is pending.
+// F5: Tunde opens People and Invite user, invites a Manager and sees the pending invite with its link. Back on
+// People, Resend gives a new link and the old one stops working. The invitee opens the new link in a browser of their
+// own, creates an account and lands in Kola Bright; People's Members then lists them as a Manager and no invite is open.
 
 const INVITEE = { name: 'Adaeze Obi', email: 'ada2@kolabright.demo' }
 
@@ -25,30 +23,28 @@ async function copyLink(page: Page, scope: Locator): Promise<string> {
   return shown
 }
 
-test('F5: an invite from the Overview, resent, brings a new Manager into the workspace', async ({ browser, baseURL }) => {
+test('F5: an invite from People, resent, brings a new Manager into the workspace', async ({ browser, baseURL }) => {
   const ownerContext = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] })
   const tunde = await ownerContext.newPage()
   await signIn(tunde, TUNDE)
-  const team = box(tunde, ORGANISATION.team.title)
-  const pending = box(tunde, ORGANISATION.pending.title)
+  const team = box(tunde, PEOPLE.members)
+  const pending = box(tunde, PEOPLE.openInvites)
 
-  await test.step('the sidebar opens Organisation › Overview: the company, its team, no one pending', async () => {
-    await tunde.getByRole('link', { name: SHELL.nav.overview, exact: true }).click()
-    await tunde.waitForURL((url) => url.pathname === '/app/organisation')
-    await expect(tunde.getByRole('heading', { name: ORGANISATION.title, exact: true })).toBeVisible()
-    await expect(box(tunde, ORGANISATION.company.title).getByText(KOLA, { exact: true })).toBeVisible()
+  await test.step('the sidebar opens People: the members, with Tunde marked as them, and no open invite', async () => {
+    await tunde.getByRole('link', { name: SHELL.nav.people, exact: true }).click()
+    await tunde.waitForURL((url) => url.pathname === '/app/people')
+    await expect(tunde.getByRole('heading', { name: PEOPLE.title, exact: true })).toBeVisible()
+    await expect(tunde.getByRole('button', { name: SHELL.switcher.label(KOLA) })).toBeVisible()
     await expect(team.getByRole('listitem').filter({ hasText: 'Tunde Okafor' }).getByText(PEOPLE.you, { exact: true })).toBeVisible()
-    await expect(pending.getByText(ORGANISATION.pending.empty)).toBeVisible()
+    await expect(pending.getByText(PEOPLE.noOpenInvites)).toBeVisible()
   })
 
-  await test.step('Invite user opens the invite page, under Organisation', async () => {
+  await test.step('Invite user opens the invite page, under People', async () => {
     await tunde.getByRole('link', { name: PEOPLE.inviteUser, exact: true }).click()
     await tunde.waitForURL('**/app/people/invite')
     await expect(tunde.getByRole('heading', { name: PEOPLE.invitePage.title, exact: true })).toBeVisible()
-    await expect(tunde.locator('.crumb').getByRole('link', { name: SHELL.groups.organisation })).toHaveAttribute(
-      'href',
-      '/app/organisation',
-    )
+    await expect(tunde.locator('.crumb').getByRole('link', { name: PEOPLE.crumb })).toHaveAttribute('href', '/app/people')
+    await expect(tunde.locator('.crumb').getByRole('link', { name: SHELL.groups.organisation })).toHaveCount(0)
   })
   const form = box(tunde, PEOPLE.invite)
 
@@ -74,20 +70,20 @@ test('F5: an invite from the Overview, resent, brings a new Manager into the wor
     expect(baseURL).toBeTruthy()
     expect(new URL(oldLink).origin).toBe(new URL(baseURL!).origin)
     expect(new URL(oldLink).pathname).toMatch(/^\/invite\/\S+$/)
-    await expect(sent.getByRole('link', { name: PEOPLE.invitePage.back })).toHaveAttribute('href', '/app/organisation')
+    await expect(sent.getByRole('link', { name: PEOPLE.invitePage.back })).toHaveAttribute('href', '/app/people')
   })
 
-  await test.step('Invite another brings back an empty form; the crumb leads back to the Overview', async () => {
+  await test.step('Invite another brings back an empty form; the crumb leads back to People', async () => {
     await tunde.getByRole('button', { name: PEOPLE.invitePage.another, exact: true }).click()
     await expect(form.getByLabel(PEOPLE.emailLabel)).toHaveValue('')
     await expect(form.getByLabel(PEOPLE.roleLabel)).toHaveValue('Manager')
     await expect(tunde.getByLabel(PEOPLE.linkLabel, { exact: true })).toHaveCount(0)
-    await tunde.locator('.crumb').getByRole('link', { name: SHELL.groups.organisation }).click()
-    await tunde.waitForURL((url) => url.pathname === '/app/organisation')
+    await tunde.locator('.crumb').getByRole('link', { name: PEOPLE.crumb }).click()
+    await tunde.waitForURL((url) => url.pathname === '/app/people')
   })
 
   let newLink = ''
-  await test.step('the Overview lists the pending invite, with no link until Resend shows a new one', async () => {
+  await test.step('People lists the open invite, with no link until Resend shows a new one', async () => {
     const row = pending.getByRole('listitem').filter({ hasText: INVITEE.email })
     await expect(row.getByText(/^Manager · invited by Tunde Okafor · expires \d+ \w+$/)).toBeVisible()
     await expect(row.getByLabel(PEOPLE.linkLabel, { exact: true })).toHaveCount(0)
@@ -122,13 +118,13 @@ test('F5: an invite from the Overview, resent, brings a new Manager into the wor
     await inviteeContext.close()
   })
 
-  await test.step("the Overview's Team lists them as a Manager, and no one is pending", async () => {
+  await test.step("People's Members lists them as a Manager, and no invite is open", async () => {
     await tunde.reload()
     const row = team.getByRole('listitem').filter({ hasText: INVITEE.name })
     await expect(row.getByText(INVITEE.email)).toBeVisible()
     await expect(row.getByRole('combobox')).toHaveValue('Manager')
     await expect(pending.getByText(INVITEE.email)).toHaveCount(0)
-    await expect(pending.getByText(ORGANISATION.pending.empty)).toBeVisible()
+    await expect(pending.getByText(PEOPLE.noOpenInvites)).toBeVisible()
   })
 
   await ownerContext.close()

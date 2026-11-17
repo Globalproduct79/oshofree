@@ -7,7 +7,6 @@ import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { COMPONENTS, STATUS_LABEL } from '@/lib/copy-components'
 import { HOME } from '@/lib/copy-home'
 import { NOTIFY } from '@/lib/copy-notifications'
-import { ORGANISATION } from '@/lib/copy-organisation'
 import { INVITE_PAGE, PEOPLE } from '@/lib/copy-people'
 import { CAMPAIGN_COPY, PREVIEW_COPY as P } from '@/lib/copy-report'
 import { REVIEW } from '@/lib/copy-review'
@@ -21,9 +20,9 @@ import {
 
 // Prompt 10: the product as three people use it, end to end, each step checked by what the person sees.
 //  1. Owner: signs up, creates the workspace, waits under the pending banner until Global approves it, finds it live,
-//     opens Organisation, invites a Manager and copies the link.
+//     finds the workspace approved, goes on to People, invites a Manager and copies the link.
 //  2. Member: opens that link in a browser of their own, creates an account, lands in the workspace, has New campaign
-//     but not Invite user, and finds themselves in Organisation's Team.
+//     but not Invite user, and finds themselves in People's Members.
 //  3. Advertiser (that Manager): makes an offer with the seed's JPG, previews it as the Wall card and its landing page,
 //     reviews and submits it; Global approves it and it goes live; Phoenix finds it on /api/v1/offers, reports an
 //     impression and an open, takes a claim code and shares it; a friend opens the shared page and claims; Sharing shows
@@ -86,7 +85,7 @@ test.afterAll(async () => {
   for (const c of contexts) await c.close()
 })
 
-test('Owner: signs up, is approved, and invites a Manager from Organisation', async () => {
+test('Owner: signs up, is approved, and invites a Manager from People', async () => {
   test.setTimeout(240_000)
 
   await test.step('signs up and lands on New workspace', async () => {
@@ -108,9 +107,10 @@ test('Owner: signs up, is approved, and invites a Manager from Organisation', as
     await owner.waitForURL((url) => url.pathname === '/app')
     await inWorkspace(owner)
     await expect(pendingBanner(owner)).toBeVisible()
-    // Greeted by name, with nothing on Phoenix yet.
+    // Greeted by name, with nothing on Phoenix yet: the first offer to make, and the team to invite.
     await expect(owner.getByRole('heading', { level: 1, name: new RegExp(`, ${OWNER.name.split(' ')[0]}$`) })).toBeVisible()
     await expect(owner.getByText(HOME.empty.title)).toBeVisible()
+    await expect(owner.getByRole('link', { name: HOME.empty.inviteTeam, exact: true })).toHaveAttribute('href', '/app/people/invite')
   })
 
   await test.step('Global approves the workspace on Review', async () => {
@@ -135,15 +135,18 @@ test('Owner: signs up, is approved, and invites a Manager from Organisation', as
     await owner.keyboard.press('Escape')
   })
 
-  await test.step('Organisation shows the company approved and the owner alone in the team', async () => {
-    await sideLink(owner, SHELL.nav.overview).click()
-    await owner.waitForURL((url) => url.pathname === '/app/organisation')
-    await expect(owner.getByRole('heading', { name: ORGANISATION.title, exact: true })).toBeVisible()
-    await expect(box(owner, ORGANISATION.company.title).getByText(COPY.status.approved, { exact: true })).toBeVisible()
-    const team = box(owner, ORGANISATION.team.title).getByRole('listitem')
+  await test.step('Workspace shows the company approved; its head leads on to People, where the owner is alone', async () => {
+    await sideLink(owner, SHELL.nav.workspace).click()
+    await owner.waitForURL((url) => url.pathname === '/app/workspace')
+    await expect(owner.getByRole('heading', { name: COPY.workspace.title, exact: true })).toBeVisible()
+    await expect(box(owner, COPY.workspace.statusBox).getByText(COPY.status.approved, { exact: true })).toBeVisible()
+    await owner.locator('.head').getByRole('link', { name: SHELL.nav.people, exact: true }).click()
+    await owner.waitForURL((url) => url.pathname === '/app/people')
+    await expect(owner.getByRole('heading', { name: PEOPLE.title, exact: true })).toBeVisible()
+    const team = box(owner, PEOPLE.members).getByRole('listitem')
     await expect(team).toHaveCount(1)
     await expect(team.first()).toContainText(OWNER.email)
-    await expect(box(owner, ORGANISATION.pending.title).getByText(ORGANISATION.pending.empty)).toBeVisible()
+    await expect(box(owner, PEOPLE.openInvites).getByText(PEOPLE.noOpenInvites)).toBeVisible()
   })
 
   await test.step('invites a Manager: the invite page shows the pending invitation and its link', async () => {
@@ -167,10 +170,10 @@ test('Owner: signs up, is approved, and invites a Manager from Organisation', as
     expect(await owner.evaluate(() => navigator.clipboard.readText())).toBe(shared.link)
   })
 
-  await test.step("Organisation lists the invitation as pending", async () => {
+  await test.step('Back to People: the invite is listed as open', async () => {
     await owner.getByRole('link', { name: PEOPLE.invitePage.back }).click()
-    await owner.waitForURL((url) => url.pathname === '/app/organisation')
-    await expect(box(owner, ORGANISATION.pending.title).getByText(MEMBER.email)).toBeVisible()
+    await owner.waitForURL((url) => url.pathname === '/app/people')
+    await expect(box(owner, PEOPLE.openInvites).getByText(MEMBER.email)).toBeVisible()
   })
 })
 
@@ -204,18 +207,18 @@ test('Member: opens the link, creates an account and lands in the workspace as a
     await expect(member.locator('.head').getByRole('link', { name: HOME.newCampaign, exact: true })).toBeVisible()
   })
 
-  await test.step('opens Organisation: no Invite user, and they are in the Team, marked as them', async () => {
-    await sideLink(member, SHELL.nav.overview).click()
-    await member.waitForURL((url) => url.pathname === '/app/organisation')
-    await expect(member.getByRole('heading', { name: ORGANISATION.title, exact: true })).toBeVisible()
+  await test.step('opens People: no Invite user, and they are in Members, marked as them', async () => {
+    await sideLink(member, SHELL.nav.people).click()
+    await member.waitForURL((url) => url.pathname === '/app/people')
+    await expect(member.getByRole('heading', { name: PEOPLE.title, exact: true })).toBeVisible()
     await expect(inviteUser(member)).toHaveCount(0)
-    const me = box(member, ORGANISATION.team.title).getByRole('listitem').filter({ hasText: MEMBER.email })
+    const me = box(member, PEOPLE.members).getByRole('listitem').filter({ hasText: MEMBER.email })
     await expect(me).toContainText(MEMBER.name)
     await expect(me.getByText(PEOPLE.you, { exact: true })).toBeVisible()
     await expect(me.getByText('Manager', { exact: true })).toBeVisible()
     // The owner is in the team too, and the invitation is no longer pending.
-    await expect(box(member, ORGANISATION.team.title).getByRole('listitem').filter({ hasText: OWNER.email })).toHaveCount(1)
-    await expect(box(member, ORGANISATION.pending.title).getByText(ORGANISATION.pending.empty)).toBeVisible()
+    await expect(box(member, PEOPLE.members).getByRole('listitem').filter({ hasText: OWNER.email })).toHaveCount(1)
+    await expect(box(member, PEOPLE.openInvites).getByText(PEOPLE.noOpenInvites)).toBeVisible()
   })
 })
 

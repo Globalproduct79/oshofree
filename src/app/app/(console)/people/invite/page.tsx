@@ -9,8 +9,8 @@ import { InviteForm } from './InviteForm'
 
 const PEOPLE_PATH = '/app/people'
 
-// Organisation › Invite: the invite form on a page of its own, beside what each role can do; once sent, the pending
-// invite with its link, Resend and Revoke, and the way back to Organisation. Owners and Global only; anyone else is
+// Organisation › People › Invite: the invite form on a page of its own, beside what each role can do; once sent, the
+// pending invite with its link, Resend and Revoke, and the way back to People. Owners and Global only; anyone else is
 // sent back to People. No open invite's link is sent to this page: the only links it shows are the ones its own
 // invite and resend actions hand back.
 export default async function InvitePage() {
@@ -21,7 +21,8 @@ export default async function InvitePage() {
       <PageHead
         crumb={[
           { label: workspace.name },
-          { label: SHELL.groups.organisation, href: '/app/organisation' },
+          { label: SHELL.groups.organisation },
+          { label: PEOPLE.crumb, href: PEOPLE_PATH },
           { label: PEOPLE.invitePage.crumb },
         ]}
         title={PEOPLE.invitePage.title}

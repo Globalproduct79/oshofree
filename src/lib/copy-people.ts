@@ -1,9 +1,9 @@
-// People page (ADV §9), the invite page, and the team and invite lists People shares with Organisation › Overview.
+// People page (ADV §9): the one place for the team and its invites; and the invite page under it.
 export const PEOPLE = {
   crumb: 'People',
   title: 'People',
   lead: 'Owners manage billing and people. Managers create and submit campaigns. Viewers see reports.',
-  // The head's primary (People and Organisation › Overview) and the invite page's title.
+  // People's head primary and the invite page's title.
   inviteUser: 'Invite user',
   members: 'Members',
   openInvites: 'Open invites',
@@ -45,8 +45,8 @@ export const PEOPLE = {
   inviteGone: 'That invite was already accepted or revoked.',
   lastOwner: "The last Owner can't be demoted.",
   lastOwnerRemove: "The last Owner can't be removed.",
-  // Organisation › Invite (/app/people/invite). After sending, the pending invite and its link show on the page,
-  // never in a toast.
+  // Organisation › People › Invite (/app/people/invite). After sending, the pending invite and its link show on the
+  // page, never in a toast.
   invitePage: {
     crumb: 'Invite',
     title: 'Invite user',
@@ -54,7 +54,7 @@ export const PEOPLE = {
     pendingTitle: 'Pending invitation',
     sent: (email: string) => `Invite sent to ${email}. Copy the link and send it to them.`,
     another: 'Invite another',
-    back: 'Back to Organisation',
+    back: 'Back to People',
   },
   rolesBox: 'What each role can do',
   roleDescriptions: [

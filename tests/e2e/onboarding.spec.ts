@@ -1,14 +1,13 @@
 import { expect, type Page, test } from '@playwright/test'
 import { COPY } from '@/lib/copy'
 import { HOME } from '@/lib/copy-home'
-import { ORGANISATION } from '@/lib/copy-organisation'
 import { INVITE_PAGE, PEOPLE } from '@/lib/copy-people'
 import { REVIEW } from '@/lib/copy-review'
 import { SHELL } from '@/lib/copy-shell'
 import { ADMIN, box, expectToast, signIn } from './helpers'
 
 // F6, onboarding: a new owner signs up and creates a workspace, which waits under the banner until Global approves
-// it on Review. The owner invites a Manager and a Viewer from Organisation. The Manager opens their link, creates
+// it on Review. The owner invites a Manager and a Viewer from People. The Manager opens their link, creates
 // an account and lands in the workspace with New campaign but no Invite user. On the same browser the Viewer's link
 // sees the Manager is already in (and offers the workspace, not the invite); "Sign in as someone else" leads to
 // sign-in and on to sign-up, and the Viewer lands with neither. The owner makes the Viewer a Manager (their next
@@ -48,10 +47,10 @@ async function signUpFromInvite(page: Page, who: { name: string; email: string }
   await expect.poll(() => new URL(page.url()).search).toBe('')
 }
 
-// Organisation › Overview, drawn.
-async function organisation(page: Page) {
-  await page.goto('/app/organisation')
-  await expect(page.getByRole('heading', { name: ORGANISATION.title, exact: true })).toBeVisible()
+// People, drawn.
+async function people(page: Page) {
+  await page.goto('/app/people')
+  await expect(page.getByRole('heading', { name: PEOPLE.title, exact: true })).toBeVisible()
 }
 
 test('F6: a new owner is approved, invites a Manager and a Viewer, and each sees what their role allows', async ({ browser }) => {
@@ -101,9 +100,9 @@ test('F6: a new owner is approved, invites a Manager and a Viewer, and each sees
   })
 
   const links = { Manager: '', Viewer: '' }
-  await test.step('the owner invites a Manager and a Viewer from Organisation', async () => {
-    await owner.getByRole('link', { name: SHELL.nav.overview, exact: true }).click()
-    await owner.waitForURL((url) => url.pathname === '/app/organisation')
+  await test.step('the owner invites a Manager and a Viewer from People', async () => {
+    await owner.getByRole('link', { name: SHELL.nav.people, exact: true }).click()
+    await owner.waitForURL((url) => url.pathname === '/app/people')
     await inviteUser(owner).click()
     await owner.waitForURL('**/app/people/invite')
     for (const [role, who] of [['Manager', MANAGER], ['Viewer', VIEWER]] as const) {
@@ -129,7 +128,7 @@ test('F6: a new owner is approved, invites a Manager and a Viewer, and each sees
   await test.step('the Manager sees New campaign, but not Invite user', async () => {
     await expect(sideNewCampaign(desk)).toBeVisible()
     await expect(headNewCampaign(desk)).toBeVisible()
-    await organisation(desk)
+    await people(desk)
     await expect(inviteUser(desk)).toHaveCount(0)
   })
 
@@ -154,18 +153,18 @@ test('F6: a new owner is approved, invites a Manager and a Viewer, and each sees
   await test.step('the Viewer sees neither New campaign nor Invite user', async () => {
     await expect(sideNewCampaign(desk)).toHaveCount(0)
     await expect(headNewCampaign(desk)).toHaveCount(0)
-    await organisation(desk)
+    await people(desk)
     await expect(inviteUser(desk)).toHaveCount(0)
   })
 
-  const team = box(owner, ORGANISATION.team.title)
-  await test.step("the owner makes the Viewer a Manager on Organisation; the Viewer's next page load offers New campaign", async () => {
-    await organisation(owner)
+  const team = box(owner, PEOPLE.members)
+  await test.step("the owner makes the Viewer a Manager on People; the Viewer's next page load offers New campaign", async () => {
+    await people(owner)
     const select = team.getByRole('combobox', { name: PEOPLE.roleFor(VIEWER.name) })
     await expect(select).toHaveValue('Viewer')
     // The change is stored when its server action (a POST to this page) answers.
     await Promise.all([
-      owner.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/app/organisation'),
+      owner.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/app/people'),
       select.selectOption('Manager'),
     ])
     await expect(select).toHaveValue('Manager')
@@ -178,7 +177,7 @@ test('F6: a new owner is approved, invites a Manager and a Viewer, and each sees
   await test.step('the owner removes them; their next page load lands on New workspace', async () => {
     const row = team.getByRole('listitem').filter({ hasText: VIEWER.email })
     await Promise.all([
-      owner.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/app/organisation'),
+      owner.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/app/people'),
       row.getByRole('button', { name: PEOPLE.remove, exact: true }).click(),
     ])
     await expect(team.getByText(VIEWER.email)).toHaveCount(0)

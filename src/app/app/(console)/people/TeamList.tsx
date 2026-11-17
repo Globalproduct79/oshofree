@@ -11,7 +11,7 @@ import type { MemberView } from '@/lib/invitations'
 import { changeRoleAction, removeMemberAction } from './actions'
 
 // Every member: initials, name (and "you"), email and role. Those who manage people get the role select and
-// Remove; the last Owner can be neither demoted nor removed. People and Organisation › Overview both show it.
+// Remove; the last Owner can be neither demoted nor removed.
 export function TeamList({ canManage, members, meId }: { canManage: boolean; members: MemberView[]; meId: string }) {
   const router = useRouter()
   const [busy, start] = useTransition()

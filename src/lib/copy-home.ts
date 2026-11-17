@@ -28,6 +28,8 @@ export const HOME = {
   empty: {
     title: 'Nothing on Phoenix yet',
     line: 'Create your first offer. It takes about five minutes.',
+    // Ours: a new workspace's other first step, for those who manage people (Owners and Global).
+    inviteTeam: 'Invite your team',
   },
   // Ours (Prompt 6): the New form's draft, kept in this browser, as a card that opens the form again. It says where it is
   // kept (Prompt 9): only this browser has it, not the account.

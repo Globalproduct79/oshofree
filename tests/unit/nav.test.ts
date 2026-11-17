@@ -12,10 +12,10 @@ describe('navFor', () => {
     expect(labels(groups)).toEqual(['Campaigns', 'Growth', 'Money', 'Organisation'])
     expect(hrefs(groups)).toEqual([
       '/app', '/app/campaigns/new', '/app/sharing', '/app/rewards', '/app/billing', '/app/invoices',
-      '/app/organisation', '/app/people', '/app/workspace', '/app/notifications',
+      '/app/workspace', '/app/people', '/app/notifications',
     ])
     expect(groups.flatMap((g) => g.items.map((i) => i.label))).toEqual([
-      'Campaigns', 'New campaign', 'Sharing', 'Rewards', 'Billing & credit', 'Invoices', 'Overview', 'People', 'Workspace',
+      'Campaigns', 'New campaign', 'Sharing', 'Rewards', 'Billing & credit', 'Invoices', 'Workspace', 'People',
       'Notifications',
     ])
   })
@@ -24,25 +24,25 @@ describe('navFor', () => {
     const items = (role: 'Owner' | 'Manager' | 'Viewer' | 'Global') =>
       navFor({ role, inWorkspace: true, counts: zero }).filter((g) => g.label !== 'Platform').flatMap((g) => g.items)
     for (const role of ['Owner', 'Manager', 'Global'] as const) {
-      expect(items(role)).toHaveLength(10)
+      expect(items(role)).toHaveLength(9)
       expect(items(role).map((i) => i.href)).toContain('/app/campaigns/new')
     }
     const viewer = items('Viewer')
-    expect(viewer).toHaveLength(9)
+    expect(viewer).toHaveLength(8)
     expect(viewer.map((i) => i.label)).not.toContain('New campaign')
     expect(viewer.map((i) => i.href)).not.toContain('/app/campaigns/new')
     expect(navFor({ role: 'Viewer', inWorkspace: true, counts: zero })[0].items.map((i) => i.label)).toEqual(['Campaigns'])
   })
 
-  it('opens ORGANISATION with Overview, for every role in a workspace', () => {
+  it('ORGANISATION is Workspace, People, Notifications — no overview page — for every role in a workspace', () => {
     for (const role of ['Owner', 'Manager', 'Viewer', 'Global'] as const) {
       const org = navFor({ role, inWorkspace: true, counts: zero }).find((g) => g.label === 'Organisation')!
       expect(org.items.map((i) => [i.label, i.href, i.icon])).toEqual([
-        ['Overview', '/app/organisation', 'building'],
-        ['People', '/app/people', 'people'],
         ['Workspace', '/app/workspace', 'cog'],
+        ['People', '/app/people', 'people'],
         ['Notifications', '/app/notifications', 'bell'],
       ])
+      expect(org.items.map((i) => i.href)).not.toContain('/app/organisation')
     }
   })
 
@@ -109,8 +109,8 @@ describe('isCurrent', () => {
     expect(isCurrent('/app/invoices/i1/print', '/app/invoices')).toBe(true)
     expect(isCurrent('/admin/advertisers/w1', '/admin/advertisers')).toBe(true)
     expect(isCurrent('/admin/rewards', '/admin/review')).toBe(false)
-    expect(isCurrent('/app/organisation', '/app/organisation')).toBe(true)
-    expect(isCurrent('/app/people/invite', '/app/organisation')).toBe(false)
+    expect(isCurrent('/app/people', '/app/people')).toBe(true)
+    expect(isCurrent('/app/people/invite', '/app/workspace')).toBe(false)
     expect(isCurrent(null, '/app')).toBe(false)
   })
 })

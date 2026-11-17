@@ -128,3 +128,15 @@ Rulings made while running the owner's ten "Incremental UX Implementation" promp
 21. [P9] kept demo persons lose Global and get an unusable password hash on demo:remove — costs nothing (bootstrap makes the real Global).
 22. [P10] the sweep script is pinned to port 3101 by code, not convention — it mutates data — costs nothing.
 23. [P10] Live-now cards on Platform link to the advertiser page (works without a workspace cookie) rather than a campaign page that bounces Global — costs one href.
+
+## Organisation without an overview (17 Nov 2026)
+
+The owner asked for the Organisation › Overview page and its link to go, and for the flow from onboarding on to be simpler. Same form: what — why — cost.
+
+1. /app/organisation is deleted outright (page, copy, nav item, icon, unit test) rather than redirected — every fact it showed is already on Workspace (company, status, client brands) or People (members, invites); a redirect would keep a dead address alive — costs any old bookmark landing on the product's "This page isn't here" (the root not-found, outside the shell, as any unknown address does).
+2. People is the one place for the team and its invites; Workspace is the one place for the company — one page per thing, so a change is made where the thing is read — costs nothing visible.
+3. The Organisation group runs Workspace → People → Notifications, the order a new workspace meets them (who you are, who works here, what happened); the group's label stays — costs retrained muscle memory for the demo logins.
+4. The invite page sits under People: its crumb is Organisation › People › Invite with People the link, and "Back to Organisation" becomes "Back to People" — the way back is the page the invite is listed on — costs one copy change.
+5. The Workspace head keeps its one white control, People — from the company page the next step in setting up is the team, and the journeys spec now walks that link — costs nothing.
+6. A workspace with nothing on Phoenix yet shows its two first steps on the first screen: the New campaign tile (as before) and, for whoever manages people, an "Invite your team" link in the empty state — the only other way to People was the sidebar — costs one link that disappears with the first campaign.
+7. Sign-up → Create your workspace → home → first campaign / invite the team is left as the onboarding path; nothing is added before the home — the prompt asked for simpler, not more — costs nothing.

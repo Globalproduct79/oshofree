@@ -188,7 +188,7 @@ describe('people actions', () => {
   })
 })
 
-// One invite's row on People, Overview and the invite page: what a Resend or Revoke answer does to it.
+// One invite's row on People and the invite page: what a Resend or Revoke answer does to it.
 describe('an invite row', () => {
   beforeEach(() => {
     vi.clearAllMocks()
