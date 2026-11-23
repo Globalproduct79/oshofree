@@ -21,13 +21,18 @@ type Props = {
 // tile colour. Inline (no `color`), the file at its own size; as a cover (`color`), the box the cards and the review
 // queue draw, with the image as its background (the prototype's cover()) and a video filling it.
 export function CreativeMedia({ image, video, labels, color, className, controls, fallback, children }: Props) {
-  const clip =
-    video &&
-    (controls ? (
-      <video src={`${video}#t=0.1`} aria-label={labels.video} controls playsInline preload="metadata" className={color === undefined ? className : undefined} />
-    ) : (
-      <video src={`${video}#t=0.1`} aria-label={labels.video} muted playsInline preload="metadata" className={color === undefined ? className : undefined} />
-    ))
+  // One element either way: a playable clip has its controls and sound; any other is muted, a still first frame.
+  const clip = video && (
+    <video
+      src={`${video}#t=0.1`}
+      aria-label={labels.video}
+      controls={controls || undefined}
+      muted={!controls || undefined}
+      playsInline
+      preload="metadata"
+      className={color === undefined ? className : undefined}
+    />
+  )
   if (color !== undefined) {
     return (
       <div className={className} style={coverStyle(video ? null : image, color)}>

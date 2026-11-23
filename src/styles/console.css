@@ -136,6 +136,8 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
    preview (dimmed) over the bar; once chosen, the creative itself (a video at a size its controls fit) with
    Replace and Remove under it; then the message (red when refused) with Retry. A splash shows in the phone at 40%. */
 .f + .drop{margin-top:6px}
+/* The empty zone is a real button filling the dashed box (the box keeps the drop). */
+.drop .pick{display:block;width:calc(100% + 28px);margin:-14px;padding:14px;background:none;border:0;border-radius:9px;font:inherit;color:inherit;text-align:center;cursor:pointer}
 .drop[data-state=uploading],.drop[data-state=chosen]{cursor:default}.drop[data-over]{border-color:var(--phx);background:var(--phx2)}
 .drop[data-state=chosen] video{max-height:200px;max-width:100%}.drop[data-state=uploading] img,.drop[data-state=uploading] video{opacity:.6}
 .drop .bar{height:5px;max-width:240px;background:var(--line2);border-radius:3px;overflow:hidden;margin:8px auto 2px}.drop .bar i{display:block;height:100%;background:var(--phx);transition:width .15s}

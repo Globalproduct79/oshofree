@@ -1,6 +1,7 @@
 import type { ComponentProps } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import type { Marked } from '@/components/campaign/form/field'
 import { PlacementFields } from '@/components/campaign/form/PlacementFields'
 import { newCampaignDefaults, type FormValues } from '@/components/campaign/form/values'
 import { CreativePicker } from '@/components/og'
@@ -30,35 +31,40 @@ const buttons = (m: string) => [...m.matchAll(/<button\b[^>]*>(.*?)<\/button>/g)
 // What the live region says: present from the start (empty), so a screen reader hears what lands in it.
 const live = (m: string) => /<span aria-live="polite">([^<]*)<\/span>/.exec(m)?.[1]
 const zone = (m: string) => /<div class="drop"[^>]*>/.exec(m)?.[0]
+// The empty zone's own button (a real <button>, filling the dashed box).
+const pick = (m: string) => /<button type="button" class="pick"[^>]*>/.exec(m)?.[0]
+const ZONE = 'Upload imagedrag a JPG, PNG or WebP here, or choose a file'
 const images = (m: string) => [...m.matchAll(/<img\b[^>]*>/g)].map((i) => ({ src: attr(i[0], 'src'), alt: attr(i[0], 'alt') }))
 const videos = (m: string) => [...m.matchAll(/<video\b[^>]*>/g)].map((v) => v[0])
 const progressbar = (m: string) => /<div class="bar" role="progressbar"[^>]*>/.exec(m)?.[0]
 
 describe('CreativePicker', () => {
-  it("idle: the label names the file input, the zone is a button, the input takes only the placement's types", () => {
+  it("idle: the label names the file input, the zone holds a real button, the input takes only the placement's types", () => {
     const m = html()
     const input = /<input [^>]*type="file"[^>]*>/.exec(m)?.[0]
     expect(attr(/<label [^>]*>/.exec(m)?.[0], 'for')).toBe(attr(input, 'id'))
     expect(text(/<label [^>]*>.*?<\/label>/.exec(m)![0])).toBe('Ad image — optional. Square or landscape works best.')
     expect(attr(input, 'accept')).toBe('image/jpeg,image/png,image/webp')
     expect(input).toContain('hidden=""')
-    expect([attr(zone(m), 'role'), attr(zone(m), 'tabindex'), attr(zone(m), 'data-state')]).toEqual(['button', '0', 'idle'])
-    expect(text(m)).toContain('Upload imagedrag a JPG, PNG or WebP here, or choose a file')
+    // The box is only the drop target; the button inside it is what a keyboard or a screen reader reaches.
+    expect([attr(zone(m), 'role'), attr(zone(m), 'tabindex'), attr(zone(m), 'data-state')]).toEqual([undefined, undefined, 'idle'])
+    expect(pick(m)).toBeDefined()
+    expect(attr(pick(m), 'aria-invalid')).toBeUndefined()
     expect(live(m)).toBe('')
-    expect(buttons(m)).toEqual([])
+    expect(buttons(m)).toEqual([ZONE])
   })
 
   it('a refused file: the sentence is read out in red, the zone stays a button, and there is no Retry', () => {
     const m = html({ status: { state: 'error', message: 'That file is a GIF. Use a JPG, PNG or WebP.', retry: false } })
     expect(m).toContain('class="dmsg bad"')
     expect(live(m)).toBe('That file is a GIF. Use a JPG, PNG or WebP.')
-    expect(attr(zone(m), 'role')).toBe('button')
-    expect(buttons(m)).toEqual([])
+    expect(buttons(m)).toEqual([ZONE])
   })
 
   it('uploading: the file itself under a progress bar; "Uploading…" is read once, the percentage is on the bar', () => {
     const m = html({ status: { state: 'uploading', percent: 42, preview: { url: 'blob:abc', kind: 'image' } } })
-    expect([attr(zone(m), 'data-state'), attr(zone(m), 'aria-busy'), attr(zone(m), 'role')]).toEqual(['uploading', 'true', undefined])
+    expect([attr(zone(m), 'data-state'), attr(zone(m), 'aria-busy')]).toEqual(['uploading', 'true'])
+    expect(pick(m)).toBeUndefined()
     expect(images(m)).toEqual([{ src: 'blob:abc', alt: 'The image you chose' }])
     const bar = progressbar(m)
     expect([attr(bar, 'aria-label'), attr(bar, 'aria-valuenow'), attr(bar, 'aria-valuemin'), attr(bar, 'aria-valuemax')]).toEqual([
@@ -74,7 +80,7 @@ describe('CreativePicker', () => {
   it('a failed upload: the message, with Retry', () => {
     const m = html({ status: { state: 'error', message: "The upload didn't finish. Try again.", retry: true } })
     expect(live(m)).toBe('The upload didn&#x27;t finish. Try again.')
-    expect(buttons(m)).toEqual(['Retry'])
+    expect(buttons(m)).toEqual([ZONE, 'Retry'])
   })
 
   it('a failed replace keeps the creative already chosen, with its buttons', () => {
@@ -88,7 +94,8 @@ describe('CreativePicker', () => {
 
   it('a chosen image: the image itself, then Replace and Remove; the zone is no longer a button', () => {
     const m = html({ chosen: { url: '/uploads/a.png', kind: 'image' }, status: { state: 'idle', note: 'Image attached.' } })
-    expect([attr(zone(m), 'data-state'), attr(zone(m), 'role')]).toEqual(['chosen', undefined])
+    expect(attr(zone(m), 'data-state')).toBe('chosen')
+    expect(pick(m)).toBeUndefined()
     expect(images(m)).toEqual([{ src: '/uploads/a.png', alt: 'The image you chose' }])
     expect(buttons(m)).toEqual(['Replace', 'Remove'])
     expect(live(m)).toBe('Image attached.')
@@ -116,6 +123,18 @@ describe('CreativePicker', () => {
     expect(buttons(m)).toEqual(['Replace', 'Remove', 'View full size'])
   })
 
+  it("the form's refusal marks the control there to fix it: the empty zone, else Replace", () => {
+    const empty = html({ invalid: 'cf-err-creative' })
+    expect([attr(pick(empty), 'aria-invalid'), attr(pick(empty), 'aria-describedby')]).toEqual(['true', 'cf-err-creative'])
+    const chosen = html({ invalid: 'cf-err-creative', chosen: { url: '/uploads/a.png', kind: 'image' } })
+    const replace = /<button [^>]*>Replace<\/button>/.exec(chosen)?.[0]
+    expect([attr(replace, 'aria-invalid'), attr(replace, 'aria-describedby')]).toEqual(['true', 'cf-err-creative'])
+    const remove = /<button [^>]*>Remove<\/button>/.exec(chosen)?.[0]
+    expect(attr(remove, 'aria-invalid')).toBeUndefined()
+    // Not marked: nothing says invalid.
+    expect(html({ chosen: { url: '/uploads/a.png', kind: 'image' } })).not.toContain('aria-invalid')
+  })
+
   it('a note (a placement switch took the creative off) is read out, not as an error', () => {
     const m = html({ status: { state: 'idle', note: 'The video was removed — a Wall card shows an image.' } })
     expect(m).toContain('class="dmsg"')
@@ -134,7 +153,7 @@ describe('PlacementFields: the picker each placement asks for', () => {
     description: 'd', rewardLabel: 'Earn ₦50 airtime', redeemMethod: 'code', endsAt: '2026-12-01T23:00:00.000Z', country: 'NG',
     sampleLink: 'http://localhost:3101/o/preview',
   }
-  const draw = (patch: Partial<FormValues>, offer: PreviewCampaign = mine) =>
+  const draw = (patch: Partial<FormValues>, offer: PreviewCampaign = mine, marked: Marked = null) =>
     renderToStaticMarkup(
       <PlacementFields
         values={values(patch)}
@@ -145,6 +164,7 @@ describe('PlacementFields: the picker each placement asks for', () => {
         remove={vi.fn()}
         mine={{ ...offer, placement: patch.placement ?? 'card' }}
         loadLive={async () => []}
+        marked={marked}
       />,
     )
   const accept = (m: string) => attr(/<input [^>]*type="file"[^>]*>/.exec(m)?.[0], 'accept')
@@ -201,5 +221,16 @@ describe('PlacementFields: the picker each placement asks for', () => {
     expect(m).not.toContain('phone-thumb')
     expect(text(m)).toContain('Upload creativedrag an image or an MP4 here, or choose a file')
     expect(text(m)).not.toContain('(demo)')
+  })
+
+  it("a refused creative: the zone the refusal focuses is marked and described by the sentence under the picker", () => {
+    const refusal = { field: 'creative' as const, message: 'Video and splash need a creative attached.' }
+    const m = draw({ placement: 'video', creative: null }, mine, refusal)
+    expect([attr(pick(m), 'aria-invalid'), attr(pick(m), 'aria-describedby')]).toEqual(['true', 'cf-err-creative'])
+    expect(m).toContain('<span class="hint bad" id="cf-err-creative">Video and splash need a creative attached.</span>')
+    // The focus lands inside the creative's group (focusField looks there for the first button).
+    expect(m.indexOf('id="cf-field-creative"')).toBeLessThan(m.indexOf('class="pick"'))
+    // Another field's refusal leaves the picker alone.
+    expect(pick(draw({ placement: 'video', creative: null }, mine, { field: 'budgetUsd', message: 'x' }))).not.toContain('aria-invalid')
   })
 })

@@ -5,7 +5,7 @@ import { COMPONENTS } from '@/lib/copy-components'
 import { tokens } from '@/lib/tokens'
 import { Button } from './Button'
 import { CreativeMedia } from './CreativeMedia'
-import { droppedFile, PickerMemory, zoneKey } from './picker-logic'
+import { droppedFile, PickerMemory } from './picker-logic'
 
 const C = COMPONENTS.drop
 
@@ -30,6 +30,9 @@ type Props = {
   frame?: ReactNode
   // Buttons after Replace and Remove (a splash's View full size).
   actions?: ReactNode
+  // The id of the form's sentence saying why it refuses the creative (none attached, or the wrong kind): the
+  // picker's control (the empty zone, else Replace) is marked invalid and described by it.
+  invalid?: string
   // A file picked, dropped, or sent again by Retry (the picker keeps the last one).
   onPick: (file: File) => void
   onRemove: () => void
@@ -48,8 +51,8 @@ function Media({ media, still }: { media: PickerMedia; still?: boolean }) {
   )
 }
 
-// The creative upload (ADV §3): a `label.f` with its hint, then the dashed `.drop`. Empty, the zone is a button
-// (click, Enter or Space opens the file picker) and a file can be dropped on it. While a file uploads the zone
+// The creative upload (ADV §3): a `label.f` with its hint, then the dashed `.drop`, where a file can be dropped. Empty,
+// the zone holds a real button filling it (click, Enter or Space opens the file picker). While a file uploads the zone
 // shows it with a progress bar; once chosen, the creative itself (an image, a video with controls, or the
 // caller's frame) with Replace and Remove under it. The live region says "Uploading…" once and then the outcome
 // once; the percentage is on the progress bar (and shown beside the words, hidden from screen readers). When the
@@ -64,18 +67,18 @@ export function CreativePicker({
   status = { state: 'idle' },
   frame,
   actions,
+  invalid,
   onPick,
   onRemove,
 }: Props) {
   const id = useId()
   const input = useRef<HTMLInputElement>(null)
-  const zone = useRef<HTMLDivElement>(null)
+  const zone = useRef<HTMLButtonElement>(null)
   const replace = useRef<HTMLButtonElement>(null)
   const [over, setOver] = useState(false)
   const [memory] = useState(() => new PickerMemory())
 
   const busy = status.state === 'uploading'
-  const empty = !busy && !chosen
   useEffect(() => {
     const target = memory.settle(status.state, chosen !== null)
     if (target) (target === 'replace' ? replace.current : zone.current)?.focus()
@@ -89,6 +92,8 @@ export function CreativePicker({
     e.preventDefault()
     if (!busy) setOver(on)
   }
+  // The form's refusal, on whichever control is there to fix it.
+  const marked = invalid ? { 'aria-invalid': true, 'aria-describedby': invalid } : {}
   const message = busy ? C.uploading : status.state === 'error' ? status.message : (status.note ?? '')
 
   return (
@@ -97,17 +102,10 @@ export function CreativePicker({
         {label} <small>{hint}</small>
       </label>
       <div
-        ref={zone}
         className="drop"
         data-state={busy ? 'uploading' : chosen ? 'chosen' : 'idle'}
         data-over={over || undefined}
         aria-busy={busy || undefined}
-        {...(empty && {
-          role: 'button',
-          tabIndex: 0,
-          onClick: open,
-          onKeyDown: (e: React.KeyboardEvent) => zoneKey(e, open),
-        })}
         onDragOver={(e) => drag(e, true)}
         onDragLeave={(e) => {
           // Moving over the zone's own image or text is not leaving it.
@@ -135,16 +133,16 @@ export function CreativePicker({
         ) : chosen ? (
           (frame ?? <Media media={chosen} />)
         ) : (
-          <>
+          <button ref={zone} type="button" className="pick" onClick={open} {...marked}>
             <b style={{ color: tokens.ink }}>{zoneTitle}</b>
             <br />
             {zoneHint}
-          </>
+          </button>
         )}
       </div>
       {chosen && !busy && (
         <div className="btns dacts">
-          <Button ref={replace} size="s" type="button" onClick={open}>
+          <Button ref={replace} size="s" type="button" onClick={open} {...marked}>
             {C.replace}
           </Button>
           <Button

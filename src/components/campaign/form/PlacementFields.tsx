@@ -84,6 +84,8 @@ export function PlacementFields({ values: v, cpmCents, choose, status, pick, rem
               />
             ) : undefined
           }
+          // The zone (or Replace) is what the refusal focuses: it is marked, and described by the sentence below.
+          invalid={marked?.field === 'creative' ? errorId('creative') : undefined}
           onPick={pick}
           onRemove={remove}
         />

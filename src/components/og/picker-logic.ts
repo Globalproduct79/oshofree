@@ -1,14 +1,7 @@
-// The creative picker's decisions, kept apart from the DOM so the node test harness can run them: which keys open
-// the file picker, which dropped file is taken, what Retry sends, and where focus goes once an upload settles.
+// The creative picker's decisions, kept apart from the DOM so the node test harness can run them: which dropped file
+// is taken, what Retry sends, and where focus goes once an upload settles.
 
 export type PickerState = 'idle' | 'uploading' | 'error'
-
-// Enter or Space on the empty zone opens the file picker, as a button would.
-export function zoneKey(e: { key: string; preventDefault: () => void }, open: () => void): void {
-  if (e.key !== 'Enter' && e.key !== ' ') return
-  e.preventDefault()
-  open()
-}
 
 // The first file dropped on the zone, if any.
 export const droppedFile = (e: { dataTransfer: { files?: ArrayLike<File> | null } | null }): File | undefined =>

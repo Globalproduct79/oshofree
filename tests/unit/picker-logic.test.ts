@@ -1,26 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { droppedFile, PickerMemory, zoneKey } from '@/components/og/picker-logic'
+import { droppedFile, PickerMemory } from '@/components/og/picker-logic'
 
 // The creative picker's decisions (the component wires these to the DOM; e2e F1 checks the focus lands).
 
 const file = (name = 'card.png') => new File([new Uint8Array(8)], name, { type: 'image/png' })
-
-describe('zoneKey: the empty zone is a button', () => {
-  it('Enter and Space open the file picker and keep the page from scrolling; other keys do nothing', () => {
-    for (const key of ['Enter', ' ']) {
-      const open = vi.fn()
-      const preventDefault = vi.fn()
-      zoneKey({ key, preventDefault }, open)
-      expect([open.mock.calls.length, preventDefault.mock.calls.length]).toEqual([1, 1])
-    }
-    for (const key of ['Tab', 'Escape', 'a', 'ArrowDown']) {
-      const open = vi.fn()
-      const preventDefault = vi.fn()
-      zoneKey({ key, preventDefault }, open)
-      expect([open.mock.calls.length, preventDefault.mock.calls.length]).toEqual([0, 0])
-    }
-  })
-})
 
 describe('drag and drop', () => {
   it('takes the first file dropped, and none from a drop that carries no files', () => {
