@@ -32,8 +32,9 @@ check, so use it only on a database you have emptied yourself. To start again fr
   after a file under `src/` is renamed or deleted it can go on importing the old one: every page then answers 500
   until the server is restarted. A restart is also needed after `prisma generate` (a migration), so the server
   loads the new client.
-- Pages show a skeleton (`loading.tsx` in the console and on Platform) while they load, and every form's submit is
-  off and marked busy until its action answers (`SubmitButton` in `src/components/og`).
+- Every form's submit is off and marked busy until its action answers (`SubmitButton` in `src/components/og`). There
+  is no route-level `loading.tsx`: on Next 15.5 a layout-level loading boundary left about one navigation in twelve
+  never committing on the production build (vercel/next.js#98305), so a page stays until the next one is ready.
 
 ## Logins
 

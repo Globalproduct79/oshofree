@@ -3,15 +3,11 @@ import path from 'node:path'
 import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import AdminLoading from '@/app/admin/loading'
-import ConsoleLoading from '@/app/app/(console)/loading'
 import { pendingState, SubmitButton } from '@/components/og/SubmitButton'
-import { PageSkeleton } from '@/components/shell/PageSkeleton'
 import { savePref } from '@/app/app/(console)/notifications/PrefsClient'
 import { entersOnClick } from '@/components/platform/EnterCampaignCards'
 import { getToast, takeToast } from '@/components/shell/toast-store'
 import { NOTIFICATIONS_PAGE } from '@/lib/copy-notifications-page'
-import { SHELL } from '@/lib/copy-shell'
 
 // The notification settings' action module reads the session; nothing here signs in.
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }))
@@ -53,27 +49,6 @@ describe('SubmitButton', () => {
   })
 })
 
-// Route-level loading: the shell stays, the page's place holds a head and three boxes in the design system's grey, and a
-// screen reader hears that it is loading.
-describe('loading skeletons', () => {
-  const shape = (out: string) => {
-    expect(out).toContain('aria-busy="true"')
-    expect(out).toContain(`<span class="sr-only">${SHELL.loading}</span>`)
-    expect(out.match(/class="box sk-box"/g)).toHaveLength(3)
-    expect(out).toContain('class="head"')
-    expect(out).toContain('class="sk sk-h1"')
-  }
-
-  it('the page skeleton is a head and three boxes', () => {
-    shape(html(<PageSkeleton />))
-  })
-
-  it("the console and the Platform show it while a page loads", () => {
-    shape(html(<ConsoleLoading />))
-    shape(html(<AdminLoading />))
-  })
-})
-
 // Notification settings save on the flip with no toast (ADV §11); a flip that does not save goes back and says so,
 // instead of quietly undoing itself.
 describe('savePref', () => {
@@ -101,11 +76,6 @@ describe('console.css', () => {
   it('dims a submit on its way with the progress cursor, after the plain disabled look so it wins', () => {
     expect(css).toContain('.btn[aria-busy=true],button[aria-busy=true],.cc[aria-busy=true]{opacity:.6;cursor:progress}')
     expect(css.indexOf('.btn[aria-busy=true]')).toBeGreaterThan(css.indexOf('.btn:disabled{opacity:.4'))
-  })
-  it("draws the skeleton's grey blocks, still for anyone who asks for less motion", () => {
-    for (const sel of ['.sk{display:block', '.sk-h1{', '.sk-lead{', '.sk-box .sk-h3{', '.sk-line{', '.sk-short{', '@keyframes sk{'])
-      expect(css).toContain(sel)
-    expect(css).toContain('@media (prefers-reduced-motion:reduce){.sk{animation:none}}')
   })
 })
 
