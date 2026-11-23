@@ -28,6 +28,8 @@ export const PACE = {
   fast: 'Delivering faster than planned — budget will finish early.',
   onPace: 'On pace.',
   paused: 'Paused — not delivering. Resume any time.',
+  // Ours (Prompt 5): paused by the daily job at the credit limit, Resume is refused until the limit is back.
+  pausedOverCredit: 'Paused — credit limit reached. Resume once an invoice is paid or Global raises the limit.',
   review: 'Global reviews within one working day.',
 } as const
 

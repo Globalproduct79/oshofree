@@ -6,6 +6,7 @@ import { DEMO } from '@/lib/copy-demo'
 import { HOME } from '@/lib/copy-home'
 import { MONEY } from '@/lib/copy-money'
 import { NOTIFY } from '@/lib/copy-notifications'
+import { CAMPAIGN_COPY } from '@/lib/copy-report'
 import { SHELL } from '@/lib/copy-shell'
 import {
   ADMIN, BUY2, DOLAPO, dollars, expectToast, homeCard, KOLA, MEDIASPEC, metricValue, signIn, TUNDE,
@@ -91,6 +92,8 @@ test('F4: Tunde sees it paused, is told why, and cannot resume over the limit', 
   await expect(tunde.getByText(MONEY.limitReached)).toBeVisible()
 
   await openBuy2(tunde)
+  // The campaign page says why it stopped and what lets it resume.
+  await expect(tunde.getByText(CAMPAIGN_COPY.status.pausedOverCredit, { exact: true })).toBeVisible()
   await tunde.getByRole('button', { name: HOME.resume, exact: true }).click()
   await expectToast(tunde, MONEY.cantResume)
   await expect(tunde.getByRole('button', { name: HOME.resume, exact: true })).toBeVisible()

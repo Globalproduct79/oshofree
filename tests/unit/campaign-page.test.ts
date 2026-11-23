@@ -206,6 +206,18 @@ describe('the status line', () => {
     expect(statusLine((await page(c.id)).text)).toBe('Rejected Not available in market')
   })
 
+  it('paused at the credit limit: red, saying why it stopped and what lets it resume; paused by the advertiser: nothing', async () => {
+    const { ws } = await setup()
+    clock('2026-11-14T08:00:00Z')
+    const c = await mkCampaign(ws.id, 'paused', { pausedBy: 'credit' })
+    const { markup, text: t } = await page(c.id)
+    expect(statusLine(t)).toBe('Paused · credit limit reached — resumes once an invoice is paid or Global raises the limit')
+    expect(markup).toContain('<span class="note bad">· credit limit reached — resumes once an invoice is paid or Global raises the limit</span>')
+
+    await db.campaign.update({ where: { id: c.id }, data: { pausedBy: 'user' } })
+    expect((await page(c.id)).markup).not.toContain('class="note')
+  })
+
   it('live, scheduled and ended campaigns have nothing after the badge', async () => {
     const { ws } = await setup()
     clock('2026-11-14T08:00:00Z')

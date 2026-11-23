@@ -334,6 +334,12 @@ describe('Campaigns home', () => {
     expect(markup).toMatch(/<button[^>]* class="btn p lg"[^>]*>Resume<\/button>/)
     expect(t).toContain('Paused — not delivering. Resume any time.')
     expect(t).toContain('Paused Nigeria · Wall card · ends 22 Nov')
+    // Paused by the daily job at the credit limit, it cannot be resumed "any time": the note says why and what lifts it.
+    await db.campaign.update({ where: { id: c.id }, data: { pausedBy: 'credit' } })
+    ;({ text: t } = await home())
+    expect(t).toContain('Paused — credit limit reached. Resume once an invoice is paid or Global raises the limit.')
+    expect(t).not.toContain('Resume any time.')
+    await db.campaign.update({ where: { id: c.id }, data: { pausedBy: null } })
 
     const viewer = await mkUser('Kemi Balogun')
     await join(viewer.id, ws.id, 'Viewer')

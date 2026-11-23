@@ -76,6 +76,7 @@ function statusNote(c: Campaign, latest: CampaignRevision | undefined): Campaign
     const reason = rejection(c.rejectReasonCode, c.rejectReason)
     return reason ? { text: reason, bad: true } : null
   }
+  if (c.status === 'paused' && c.pausedBy === 'credit') return { text: C.status.pausedOverCredit, bad: true }
   if (!RUNNING.includes(c.status) || !latest) return null
   if (latest.status === 'review') return { text: C.status.revisionInReview, bad: false }
   if (latest.status === 'rejected') {

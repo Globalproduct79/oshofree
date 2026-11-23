@@ -505,8 +505,8 @@ export type CampaignFacts = {
 export const PACE_BAND = { slow: 0.8, fast: 1.2 }
 
 // The hero's note (ADV §1): bands < 0.8 slow and > 1.2 fast apply to live campaigns only.
-export function paceNote(status: CampaignStatus, pace: number): string {
-  if (status === 'paused') return PACE.paused
+export function paceNote(status: CampaignStatus, pace: number, pausedBy: string | null = null): string {
+  if (status === 'paused') return pausedBy === 'credit' ? PACE.pausedOverCredit : PACE.paused
   if (status === 'review') return PACE.review
   if (status !== 'live') return ''
   if (pace < PACE_BAND.slow) return PACE.slow
@@ -516,7 +516,7 @@ export function paceNote(status: CampaignStatus, pace: number): string {
 
 // Pace = (spend ÷ budget) ÷ max(0.05, elapsed ÷ flight), elapsed = now − start, flight = end − start.
 export async function campaignFacts(id: string, now = new Date()): Promise<CampaignFacts> {
-  const c = await db.campaign.findUnique({ where: { id }, select: { status: true, budgetUsd: true, startsAt: true, endsAt: true } })
+  const c = await db.campaign.findUnique({ where: { id }, select: { status: true, pausedBy: true, budgetUsd: true, startsAt: true, endsAt: true } })
   if (!c) throw 'NOT_FOUND'
   const spendCents = await campaignSpendCents(id)
   const budgetCents = toCents(c.budgetUsd)
@@ -531,6 +531,6 @@ export async function campaignFacts(id: string, now = new Date()): Promise<Campa
     leftCents: Math.max(0, budgetCents - spendCents),
     spendPct: spent * 100,
     pace,
-    paceNote: paceNote(c.status, pace),
+    paceNote: paceNote(c.status, pace, c.pausedBy),
   }
 }
