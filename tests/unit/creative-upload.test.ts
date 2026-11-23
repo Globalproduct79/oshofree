@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { checkCreativeFile, clearedNote, pickCreative, uploadCreative } from '@/components/campaign/form/upload'
+import { checkCreativeFile, clearedNote, pickCreative, switchPlacement, uploadCreative } from '@/components/campaign/form/upload'
+import { newCampaignDefaults, type FormValues } from '@/components/campaign/form/values'
 import { CreativePicker, type PickerStatus } from '@/components/og'
 import { MAX_IMAGE_BYTES, MAX_SPLASH_BYTES, MAX_VIDEO_BYTES } from '@/lib/image-rules'
 
@@ -181,7 +182,7 @@ describe('pickCreative: the picker states one pick goes through', () => {
       }),
     )
 
-  function run(f: File, placement: () => 'card' | 'video' | 'splash' = () => 'card') {
+  function run(f: File, placement: () => 'card' | 'video' | 'splash' = () => 'card', dropped?: () => string | null) {
     const statuses: PickerStatus[] = []
     const chosen: unknown[] = []
     const revoke = vi.fn()
@@ -190,6 +191,7 @@ describe('pickCreative: the picker states one pick goes through', () => {
       status: (s) => statuses.push(s),
       chosen: (c) => chosen.push(c),
       local: () => ({ url: 'blob:local', revoke }),
+      dropped,
     })
     return { statuses, chosen, revoke, done }
   }
@@ -242,6 +244,64 @@ describe('pickCreative: the picker states one pick goes through', () => {
     await r.done
     expect(r.chosen).toEqual([])
     expect(r.statuses.at(-1)).toEqual({ state: 'error', message: "The creative doesn't match the placement.", retry: false })
+  })
+
+  describe('a placement switch while a file uploads', () => {
+    const GONE = 'The image was removed — Video needs an MP4.'
+    it('a failed upload also says what the switch took off, since the zone is empty after it', async () => {
+      const r = run(png(), () => 'card', () => GONE)
+      ;(await request()).respond(503, '')
+      await r.done
+      expect(r.statuses.at(-1)).toEqual({ state: 'error', message: `The upload didn't finish. Try again. ${GONE}`, retry: true })
+    })
+
+    it('an upload that lands replaces the old creative anyway: only its own outcome is said', async () => {
+      const r = run(png(), () => 'card', () => GONE)
+      ;(await request()).respond(200, stored)
+      await r.done
+      expect(r.statuses.at(-1)).toEqual({ state: 'idle', note: 'Image attached.' })
+    })
+
+    it('nothing taken off, nothing added', async () => {
+      const r = run(png(), () => 'card', () => null)
+      ;(await request()).respond(503, '')
+      await r.done
+      expect(r.statuses.at(-1)).toEqual({ state: 'error', message: "The upload didn't finish. Try again.", retry: true })
+    })
+  })
+})
+
+describe('switchPlacement: a placement tile pressed', () => {
+  const MB = 1024 * 1024
+  const form = (patch: Partial<FormValues>): FormValues => ({
+    ...newCampaignDefaults({ name: 'Kola Bright', type: 'Brand', country: 'NG' }),
+    ...patch,
+  })
+  const image = { key: 'k.png', kind: 'image' as const, url: '/uploads/k.png', bytes: 1024 }
+  const video = { key: 'k.mp4', kind: 'video' as const, url: '/uploads/k.mp4', bytes: 1024 }
+
+  it('the placement already chosen changes nothing, so a refusal on the picker stays', () => {
+    expect(switchPlacement(form({ placement: 'card', creative: image }), 'card')).toBeNull()
+    expect(switchPlacement(form({ placement: 'video', creative: null }), 'video')).toBeNull()
+  })
+
+  it('keeps a creative the new placement takes, and says nothing', () => {
+    expect(switchPlacement(form({ placement: 'card', creative: image }), 'featured')).toEqual({
+      values: form({ placement: 'featured', creative: image }), gone: null,
+    })
+    expect(switchPlacement(form({ placement: 'video', creative: video }), 'splash')?.gone).toBeNull()
+    expect(switchPlacement(form({ placement: 'card', creative: null }), 'video')?.gone).toBeNull()
+  })
+
+  it('takes off a creative it cannot take, and says why', () => {
+    expect(switchPlacement(form({ placement: 'card', creative: image }), 'video')).toEqual({
+      values: form({ placement: 'video', creative: null }), gone: 'The image was removed — Video needs an MP4.',
+    })
+    expect(switchPlacement(form({ placement: 'video', creative: video }), 'card')?.gone).toBe('The video was removed — a Wall card shows an image.')
+    const big = { ...image, bytes: 3 * MB }
+    expect(switchPlacement(form({ placement: 'splash', creative: big }), 'card')?.gone).toBe(
+      'The image was removed — a Wall card takes images up to 2 MB.',
+    )
   })
 })
 

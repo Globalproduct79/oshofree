@@ -2,7 +2,7 @@ import type { PickerStatus } from '@/components/og'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import type { PlacementKey } from '@/lib/copy-components'
 import { capFor, IMAGE_TYPES, VIDEO_TYPES } from '@/lib/image-rules'
-import { fits, type Creative } from './values'
+import { fits, type Creative, type FormValues } from './values'
 
 // The creative upload (spec §6.3): the picker refuses in the browser what the placement can't take (type) or its
 // kind can't hold (size: an image 2 MB, a splash image 4 MB, an MP4 25 MB) and a video outside 6–15 s; then the
@@ -124,6 +124,9 @@ export type PickRun = {
   chosen: (c: Creative) => void
   // A local URL for the file's own preview while it uploads (an object URL in the browser), revoked after.
   local?: (file: File) => { url: string; revoke: () => void }
+  // Why a placement switch took the creative off while this file uploaded (switchPlacement's `gone`), read when the
+  // upload fails: the zone is empty then, and the failure alone would not say where the old creative went.
+  dropped?: () => string | null
 }
 
 // One pick, through the picker's states: refused at once, or uploading (with the file's own preview and the
@@ -142,8 +145,9 @@ export async function pickCreative(file: File, run: PickRun): Promise<void> {
   } finally {
     local?.revoke()
   }
-  if (!res.ok) return run.status({ state: 'error', message: res.message, retry: res.retry })
-  if (!fits(run.placement(), res.creative)) return run.status({ state: 'error', message: F.validation.creativeMismatch, retry: false })
+  const said = (message: string) => [message, run.dropped?.()].filter(Boolean).join(' ')
+  if (!res.ok) return run.status({ state: 'error', message: said(res.message), retry: res.retry })
+  if (!fits(run.placement(), res.creative)) return run.status({ state: 'error', message: said(F.validation.creativeMismatch), retry: false })
   run.chosen(res.creative)
   run.status({ state: 'idle', note: U.attached[res.creative.kind] })
 }
@@ -154,4 +158,15 @@ export function clearedNote(c: Creative, placement: PlacementKey): string {
   if (c.kind === 'video') return U.cleared.video(name)
   if (placement === 'video') return U.cleared.image
   return U.cleared.tooLarge(name, limitText(capFor('image', placement)))
+}
+
+// A placement tile pressed. Null for the placement already chosen: nothing changes, so a refusal on the picker stays.
+// Otherwise the new placement, without a creative it cannot take, and why that creative went (null when it stayed).
+export function switchPlacement(v: FormValues, placement: PlacementKey): { values: FormValues; gone: string | null } | null {
+  if (placement === v.placement) return null
+  const keeps = fits(placement, v.creative)
+  return {
+    values: { ...v, placement, creative: keeps ? v.creative : null },
+    gone: keeps || !v.creative ? null : clearedNote(v.creative, placement),
+  }
 }

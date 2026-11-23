@@ -21,7 +21,7 @@ import { PlacementFields } from './form/PlacementFields'
 import { formProblem, type FormStage } from './form/problem'
 import { ReviewStep } from './form/ReviewStep'
 import { TermsFields } from './form/TermsFields'
-import { clearedNote, pickCreative } from './form/upload'
+import { pickCreative, switchPlacement } from './form/upload'
 import { fits, offerInput, sameValues, toInput, type FormValues } from './form/values'
 
 export type FormMode =
@@ -120,17 +120,23 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     setValues((v) => ({ ...v, ...patch }))
     setNotice(null)
   }
+  // Why a placement switch took the creative off while a file uploaded: said with that upload's failure.
+  const droppedNote = useRef<string | null>(null)
   // A creative the new placement cannot take (a video on a card, a 3 MB splash image on a card) goes, and the
-  // picker says why. An upload under way keeps its progress; pickCreative judges it against the new placement.
+  // picker says why: at once, or, while a file uploads (its progress stays), if that upload fails. Pressing the
+  // placement already chosen changes nothing.
   const choose = (placement: PlacementKey) => {
-    const gone = values.creative && !fits(placement, values.creative) ? values.creative : null
-    setValues((v) => ({ ...v, placement, creative: fits(placement, v.creative) ? v.creative : null }))
-    setCreativeStatus((s) => (s.state === 'uploading' ? s : { state: 'idle', note: gone ? clearedNote(gone, placement) : undefined }))
+    const next = switchPlacement(values, placement)
+    if (!next) return
+    setValues(next.values)
+    if (uploading) droppedNote.current = next.gone ?? droppedNote.current
+    else setCreativeStatus({ state: 'idle', note: next.gone ?? undefined })
     setNotice(null)
   }
   // The placement may have changed while the file uploaded: a creative it cannot take is discarded.
   function pick(file: File) {
     setNotice(null)
+    droppedNote.current = null
     return pickCreative(file, {
       placement: () => latest.current.placement,
       status: setCreativeStatus,
@@ -139,6 +145,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
         const url = URL.createObjectURL(f)
         return { url, revoke: () => URL.revokeObjectURL(url) }
       },
+      dropped: () => droppedNote.current,
     })
   }
   function removeCreative() {
@@ -150,7 +157,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     setHasDraft(false)
     setNotice(null)
     setMarks(NO_MARKS)
-    if (!uploading) setCreativeStatus({ state: 'idle' })
+    setCreativeStatus({ state: 'idle' })
   }
   // The confirmation is for what was reviewed: going back to change anything asks for it again. `field` gets the
   // cursor (an Edit's field, or the one a press on Review was refused for, which is `refused` and marked).
@@ -266,8 +273,9 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
       >
         {hint}
       </span>
+      {/* Not while a file uploads: it would land in the emptied form (Save draft waits for it too). */}
       {isNew && !reviewing && dirty && (
-        <Button type="button" variant="ghost" onClick={onStartOver}>
+        <Button type="button" variant="ghost" disabled={uploading} onClick={onStartOver}>
           {F.buttons.startOver}
         </Button>
       )}
