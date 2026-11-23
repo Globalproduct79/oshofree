@@ -7,6 +7,7 @@ import { campaignActivity, workspaceSharers } from '@/lib/activity'
 import { campaignReport } from '@/lib/campaign-report'
 import { hashKey } from '@/lib/channels'
 import { ACTIVITY } from '@/lib/copy-activity'
+import { CAMPAIGN_COPY } from '@/lib/copy-report'
 import { db } from '@/lib/db'
 import { localAmount, maskPhone } from '@/lib/format'
 import { previousMarketDay, runDaily } from '@/lib/jobs/daily'
@@ -37,8 +38,9 @@ async function world() {
     },
   })
   await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: hashKey(KEY), isLive: true } })
-  // The market's rate moved after submission; the campaign's snapshot prices its rewards.
-  await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1600, effectiveFrom: new Date(Date.now() - DAY) } })
+  // The market's rate moved after submission, far enough to change the cents (₦50 at ₦1,000 is 5 cents, at the
+  // campaign's ₦1,550 it is 3): the campaign's snapshot prices its rewards.
+  await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1000, effectiveFrom: new Date(Date.now() - DAY) } })
   await topUpAggregator(10_000, global.id)
   return { ws, campaign }
 }
@@ -55,6 +57,13 @@ const share = (offerId: string) =>
     headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' },
     body: JSON.stringify({ offer_id: offerId, session_id: SESSION, via: 'whatsapp', msisdn: MSISDN }),
   }))
+// The daily job, replayed for yesterday. Only its payouts duty is this journey's: the others act on the real date (the
+// month close on the 1st, the weekly digest on a Monday…), so only the payouts count and the payouts duty's errors are read.
+async function sendRun(now: Date) {
+  const run = await runDaily(previousMarketDay(now), now, { replay: true })
+  if (run.skipped) throw new Error('A replay is never skipped')
+  return { payouts: run.payouts, errors: run.errors.filter((e) => e.duty === 'payouts') }
+}
 const balance = async () => (await db.aggregatorAccount.findUniqueOrThrow({ where: { id: 'reloadly' } })).balanceCents
 const rewardLines = (campaignId: string) => db.ledgerEntry.findMany({ where: { campaignId, kind: 'reward' } })
 
@@ -85,7 +94,7 @@ describe('the referral journey', () => {
     const claimEvent = await db.linkEvent.findFirstOrThrow({ where: { linkId: link.id, type: 'Claim' } })
     const [payout, ...more] = await db.rewardPayout.findMany()
     expect(more).toEqual([])
-    // ₦50 at the campaign's ₦1,550 (not the market's ₦1,600 now) is 3.23 cents: 3.
+    // ₦50 at the campaign's ₦1,550 is 3.23 cents: 3 (the market's ₦1,000 now would make it 5).
     expect(payout).toMatchObject({
       campaignId: campaign.id, workspaceId: ws.id, shareLinkId: link.id, claimEventKey: claimEvent.id,
       sharerConsumerId: link.consumerId, sharerSessionId: SESSION, amountLocal: 50, amountCents: 3, status: 'queued', reason: null,
@@ -109,7 +118,7 @@ describe('the referral journey', () => {
     const metrics = await campaignMetrics(campaign.id, new Date())
     expect(metrics).toMatchObject({ sOpens: 1, sClaims: 1, shares: 1, rewardCents: 3, rewardLocal: 50 })
     const report = await campaignReport(campaign, ws, new Date())
-    expect(report.sharing.cards.find((c) => c.title === 'Rewards paid')?.sub).toBe(`${reward} airtime`)
+    expect(report.sharing.cards.find((c) => c.title === CAMPAIGN_COPY.sharingBox.rewardsPaid)?.sub).toBe(`${reward} airtime`)
     expect(await workspaceSharing(ws.id)).toMatchObject({ shares: 1, sOpens: 1, sClaims: 1, rewardCents: 3 })
     const before = (await workspaceSharers(ws.id)).rows
     expect(before).toMatchObject([{ who: sharer, opened: 1, claimed: 1, rewards: `${reward} queued` }])
@@ -118,7 +127,7 @@ describe('the referral journey', () => {
 
     // 6. The daily job sends it: sent, dated, and the aggregator balance down by exactly its cents.
     const now = new Date()
-    expect(await runDaily(previousMarketDay(now), now, { replay: true })).toMatchObject({ payouts: 1, errors: [] })
+    expect(await sendRun(now)).toEqual({ payouts: 1, errors: [] })
     expect(await db.rewardPayout.findUniqueOrThrow({ where: { id: payout.id } })).toMatchObject({ status: 'sent', sentAt: now })
     expect(await balance()).toBe(10_000 - 3)
     expect((await workspaceSharers(ws.id)).rows).toMatchObject([{ who: sharer, rewards: `${reward} sent` }])
@@ -133,7 +142,7 @@ describe('the referral journey', () => {
     expect((await campaignMetrics(campaign.id, new Date())).rewardCents).toBe(-lines2[0].amountCents)
 
     // 8. A second run sends nothing again.
-    expect(await runDaily(previousMarketDay(now), now, { replay: true })).toMatchObject({ payouts: 0 })
+    expect(await sendRun(now)).toEqual({ payouts: 0, errors: [] })
     expect(await balance()).toBe(10_000 - 3)
   })
 })
