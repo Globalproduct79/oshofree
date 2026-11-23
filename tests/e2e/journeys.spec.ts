@@ -373,9 +373,9 @@ test('Advertiser: the Manager publishes an offer, Phoenix shares it, a friend cl
     await expect(row).toContainText(WORKSPACE)
     await expect(row.getByRole('cell').nth(2)).toHaveText('1')
     await expect(row.getByRole('cell').nth(3)).toHaveText(REWARD_AMOUNT)
-    // Owed: ₦50 at the seed's Nigerian rate (₦1,550 to the dollar) is 3 cents, and the ledger prints money in
-    // whole dollars, as the prototype does — so a real ₦50 payout reads "$0" here.
-    await expect(row.getByRole('cell').nth(4)).toHaveText('$0')
+    // Owed: ₦50 at the seed's Nigerian rate (₦1,550 to the dollar) is 3 cents. Money that is not a whole dollar
+    // prints to the cent (the controller's ruling, Prompt 5), so a real ₦50 payout reads "$0.03", never "$0".
+    await expect(row.getByRole('cell').nth(4)).toHaveText('$0.03')
     // Nothing about it is held.
     await expect(box(admin, REWARDS_LEDGER.heldTitle).getByText(OFFER.name)).toHaveCount(0)
   })

@@ -19,7 +19,7 @@ describe('estimate: the Kola Bright defaults', () => {
     expect(e.successfulShares).toBeCloseTo(427.68, 2)
     expect(fmt(e.successfulShares)).toBe('428')
     expect(e.rewardCents).toBe(1380)
-    expect(usd(e.rewardCents)).toBe('$14')
+    expect(usd(e.rewardCents)).toBe('$13.80')
   })
   it('cap and budget in both currencies', () => {
     expect(e.capCents).toBe(6000)

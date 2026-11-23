@@ -478,7 +478,7 @@ describe('the pages', () => {
     expect(html).toContain('<span class="big">—</span>')
     expect(html).toContain('<div class="b">Kola Bright · Nigeria · 14d</div><div class="row"><span>Link to your site</span></div>')
     expect(html).toContain('<b>200.0k</b><small>about 14.3k a day for 14 days · ~7.2k opens</small>')
-    expect(html).toContain('<span>Share rewards (est. 428 × ₦50)</span><span>$14</span>')
+    expect(html).toContain('<span>Share rewards (est. 428 × ₦50)</span><span>$13.80</span>')
     expect(html).toContain('<span><b>$300</b> · ₦465,000</span>')
     expect(html).toContain('$1,200 left')
     expect(html).toContain('Give the campaign a name.')

@@ -85,11 +85,11 @@ describe('validateCampaign', () => {
 
   it('the credit rule states the limit and the excess', () => {
     expect(check({}, { creditLimitCents: 150_000, creditInUseCents: 120_202 })).toBe(
-      'Over your credit limit of $1,500 by $2. Pay an open invoice or ask Global to raise it.',
+      'Over your credit limit of $1,500 by $2.02. Pay an open invoice or ask Global to raise it.',
     )
     expect(check({}, { creditLimitCents: 150_000, creditInUseCents: 120_000 })).toBeNull()
     expect(check({ budgetUsd: 1500 }, { creditLimitCents: 150_000, creditInUseCents: 120_202 })).toBe(
-      'Over your credit limit of $1,500 by $1,202. Pay an open invoice or ask Global to raise it.',
+      'Over your credit limit of $1,500 by $1,202.02. Pay an open invoice or ask Global to raise it.',
     )
   })
 

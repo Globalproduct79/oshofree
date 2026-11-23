@@ -121,7 +121,7 @@ test("F4: Global marks MediaSpec's open invoice paid and Dolapo's credit in use 
   await expect(row.getByText(new RegExp(`^(${STATUS_LABEL.due}|${STATUS_LABEL.overdue})$`))).toBeVisible()
   // The invoice's columns: number, period, status, due, USD, local, action.
   const amount = dollars(await row.getByRole('cell').nth(4).textContent())
-  // Large enough that a drop of nothing cannot pass for it within the rounding allowance below.
+  // Large enough that a drop of nothing cannot pass for it.
   expect(amount).toBeGreaterThanOrEqual(5)
   await row.getByRole('button', { name: D.markPaid }).click()
   await expectToast(admin, D.paid(INVOICE))
@@ -131,7 +131,7 @@ test("F4: Global marks MediaSpec's open invoice paid and Dolapo's credit in use 
   await dolapo.reload()
   await expect(dolapo.getByText(MONEY.paidLine(INVOICE))).toBeVisible()
   const after = dollars(await metricValue(dolapo, B.inUseTitle).textContent())
-  // Whole dollars on both pages, so the two roundings may differ by one.
-  expect(Math.abs(after - (before - amount))).toBeLessThanOrEqual(1)
+  // Both pages print to the cent (whole dollars whole), so in use drops by exactly the invoice.
+  expect(after).toBeCloseTo(before - amount, 2)
   await dolapo.context().close()
 })

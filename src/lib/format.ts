@@ -13,6 +13,7 @@ import { MARKETS, type Country } from './markets'
 
 const MINUS = '−'
 const grouped = new Intl.NumberFormat('en-US')
+const toTheCent = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // 57600 → '57.6k', 1330000 → '1.33M', 317 → '317'
 export const fmt = (n: number): string => {
@@ -27,12 +28,17 @@ const money = (symbol: string, whole: number): string => {
   return whole < 0 ? MINUS + body : body
 }
 
-export const usdFromDollars = (n: number): string => {
-  const whole = Math.round(n)
-  return money('$', whole === 0 ? 0 : whole)
+// The controller's ruling (Prompt 5): whole dollars print whole ('$50', '$1,115'); anything else prints to the
+// cent ('$0.03', '$12.50'), so a real ₦50 payout never reads "$0". Rounded to the cent (half away from zero) first.
+export const usd = (cents: number): string => {
+  const c = Math.round(Math.abs(cents)) * Math.sign(cents)
+  if (c === 0) return '$0'
+  if (c % 100 === 0) return money('$', c / 100)
+  const body = `$${toTheCent.format(Math.abs(c) / 100)}`
+  return c < 0 ? MINUS + body : body
 }
 
-export const usd = (cents: number): string => usdFromDollars(cents / 100)
+export const usdFromDollars = (n: number): string => usd(n * 100)
 
 // An amount already in the market's currency, whole units: 50 → '₦50', 1000 → '₦1,000', 'KSh10'.
 export const localAmount = (whole: number, country: Country): string => {

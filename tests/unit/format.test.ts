@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ageLabel, daysLeft, fd, fdt, fmt, hm, initials, isoInZone, loc, longDate, maskPhone, pct, usd, usdFromDollars } from '@/lib/format'
+import { ageLabel, daysLeft, fd, fdt, fmt, hm, initials, isoInZone, loc, localAmount, longDate, maskPhone, pct, usd, usdFromDollars } from '@/lib/format'
 
 describe('prototype formatting', () => {
   it('fmt abbreviates counts', () => {
@@ -8,10 +8,29 @@ describe('prototype formatting', () => {
     expect(fmt(1330000)).toBe('1.33M')
     expect(fmt(317)).toBe('317')
   })
-  it('usd rounds to whole dollars with a true minus', () => {
+  it('usd prints whole dollars whole and anything else to the cent, with a true minus', () => {
     expect(usd(111500)).toBe('$1,115')
     expect(usd(-55700)).toBe('−$557')
-    expect(usdFromDollars(1234.4)).toBe('$1,234')
+    expect(usd(5000)).toBe('$50')
+    expect(usd(0)).toBe('$0')
+    expect(usd(-0)).toBe('$0')
+    // The controller's ruling (Prompt 5): a real ₦50 payout is 3 cents, never "$0".
+    expect(usd(3)).toBe('$0.03')
+    expect(usd(1250)).toBe('$12.50')
+    expect(usd(-3)).toBe('−$0.03')
+    expect(usd(123456789)).toBe('$1,234,567.89')
+    expect(usdFromDollars(1234.4)).toBe('$1,234.40')
+    expect(usdFromDollars(50)).toBe('$50')
+    // Dollars are rounded to the cent first: a float a hair off a whole dollar is that dollar.
+    expect(usdFromDollars(0.1 + 0.2 + 49.7)).toBe('$50')
+    expect(usdFromDollars(0.004)).toBe('$0')
+  })
+  it('localAmount prints whole local units, grouped, with a true minus', () => {
+    expect(localAmount(50, 'NG')).toBe('₦50')
+    expect(localAmount(90000, 'NG')).toBe('₦90,000')
+    expect(localAmount(1000, 'KE')).toBe('KSh1,000')
+    expect(localAmount(-49.6, 'NG')).toBe('−₦50')
+    expect(localAmount(-0.4, 'NG')).toBe('₦0')
   })
   it('loc converts and rounds in local currency', () => {
     expect(loc(30000, 'NG', 1550)).toBe('₦465,000')
