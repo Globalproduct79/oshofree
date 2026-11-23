@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ageGated, BRAND_MAX, campaignDates, campaignDraftInput, campaignInput, checkCampaign, DESCRIPTION_MAX, firstRefusal,
-  flightDays, HEADLINE_MAX, isBettingOrDraw, isHttpsLink, MAX_REWARD_LOCAL, NAME_MAX, NAME_MIN, validateCampaign,
+  flightDays, HEADLINE_MAX, isBettingOrDraw, isHttpsLink, MAX_REWARD_LOCAL, NAME_MAX, NAME_MIN, rewardLabel, validateCampaign,
   type CampaignInput, type ValidationContext,
 } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY } from '@/lib/copy-campaign-form'
@@ -298,5 +298,15 @@ describe('campaignInput', () => {
   it('a draft may be saved with the confirmation unticked; a submission may not', () => {
     expect(campaignDraftInput.safeParse({ ...valid, termsAccepted: false }).success).toBe(true)
     expect(campaignInput.safeParse({ ...valid, termsAccepted: false }).success).toBe(false)
+  })
+})
+
+describe('the reward label', () => {
+  it('groups thousands in the stored wall label and in the Cost box line (the controller, Prompt 5)', () => {
+    expect(rewardLabel('NG', 50)).toBe('Earn ₦50 airtime')
+    expect(rewardLabel('NG', 1000)).toBe('Earn ₦1,000 airtime')
+    expect(rewardLabel('TZ', 25000)).toBe('Earn TSh25,000 airtime')
+    expect(CAMPAIGN_FORM_COPY.cost.rewards('428', '₦', 50)).toBe('Share rewards (est. 428 × ₦50)')
+    expect(CAMPAIGN_FORM_COPY.cost.rewards('12', 'TSh', 25000)).toBe('Share rewards (est. 12 × TSh25,000)')
   })
 })

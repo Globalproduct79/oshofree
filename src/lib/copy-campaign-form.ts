@@ -1,3 +1,5 @@
+import { num } from '@/lib/format'
+
 // The campaign form's words, split out of copy.ts to keep that file readable. Reached through COPY.campaignForm.
 // The prototype's New campaign page (ADV §3) is the `head` … `toasts` keys, strings verbatim; the keys
 // after them are ours (spec §6.3: custom flights, real uploads, Edit offer on a running campaign, and the
@@ -119,7 +121,7 @@ export const CAMPAIGN_FORM_COPY = {
     perDay: (perDay: string, days: number, opens: string) => `about ${perDay} a day for ${days} days · ~${opens} opens`,
     placementCountry: (placement: string, country: string) => `${placement} · ${country}`,
     cpm: (dollars: string) => `$${dollars} per 1,000`,
-    rewards: (shares: string, symbol: string, reward: number) => `Share rewards (est. ${shares} × ${symbol}${reward})`,
+    rewards: (shares: string, symbol: string, reward: number) => `Share rewards (est. ${shares} × ${symbol}${num(reward)})`,
     cap: 'Rewards cap',
     capValue: '20% of budget',
     budget: 'Budget',

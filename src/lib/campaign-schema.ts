@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { CAMPAIGN_FORM_COPY as COPY } from '@/lib/copy-campaign-form'
-import { usd } from '@/lib/format'
+import { localAmount, usd } from '@/lib/format'
 import { CATEGORIES, COUNTRIES, MARKETS, type Country } from '@/lib/markets'
 import { IMAGE_KEY_RE, VIDEO_KEY_RE } from '@/lib/image-rules'
 import { tokens } from '@/lib/tokens'
@@ -221,9 +221,10 @@ export function ymd(at: Date, country: Country): string {
 
 export const todayIn = (country: Country, now = new Date()) => ymd(now, country)
 
-// The label the wall shows, derived from the reward so the two can never disagree.
+// The label the wall shows, derived from the reward so the two can never disagree; thousands grouped ('Earn ₦1,000
+// airtime'). Stored on the campaign, so an existing one changes only when its reward is edited.
 export const rewardLabel = (country: Country, rewardLocal: number) =>
-  `Earn ${MARKETS[country].symbol}${rewardLocal} airtime`
+  `Earn ${localAmount(rewardLocal, country)} airtime`
 
 // ---- The New campaign form and Edit offer, on both sides of the wire ----
 
