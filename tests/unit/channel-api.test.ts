@@ -345,6 +345,20 @@ describe('POST /api/v1/events', () => {
     expect(await db.channelBatch.count()).toBe(1)
   })
 
+  it('ignores events for an offer that never went live, so nothing is stored or billed for it', async () => {
+    const channel = await seedChannel()
+    const live = await seedCampaign()
+    const paused = await seedCampaign({ status: 'paused' })
+    const ended = await seedCampaign({ status: 'ended' })
+    const never = await Promise.all(
+      (['draft', 'review', 'scheduled', 'rejected'] as const).map((status) => seedCampaign({ status, cpmCents: 220 })),
+    )
+    const res = await events({ channel: 'phoenix', events: [live, paused, ended, ...never].map((c) => ev(c.id)) })
+    expect(await res.json()).toEqual({ accepted: 3, deduped: 0, ignored: 4 })
+    const rows = await db.channelEvent.findMany({ where: { channelId: channel.id }, select: { campaignId: true } })
+    expect(rows.map((r) => r.campaignId).sort()).toEqual([live.id, paused.id, ended.id].sort())
+  })
+
   it('dedupes the same session, offer and type within an hour, and ignores unknown offers', async () => {
     await seedChannel()
     const c = await seedCampaign()
