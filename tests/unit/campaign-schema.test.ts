@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ageGated, campaignDates, campaignDraftInput, campaignInput, flightDays, MAX_REWARD_LOCAL, validateCampaign,
-  type CampaignInput, type ValidationContext,
+  ageGated, campaignDates, campaignDraftInput, campaignInput, checkCampaign, firstRefusal, flightDays, isBettingOrDraw,
+  isHttpsLink, MAX_REWARD_LOCAL, validateCampaign, type CampaignInput, type ValidationContext,
 } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY } from '@/lib/copy-campaign-form'
 import { MAX_LIMIT_CENTS } from '@/lib/money'
@@ -72,9 +72,10 @@ describe('validateCampaign', () => {
   it('reports the first failing rule when several fail', () => {
     const bad = { name: '', brand: '', headline: '', budgetUsd: 10, termsAccepted: false as unknown as true }
     expect(check(bad)).toBe('Give the campaign a name.')
-    expect(check({ ...bad, name: 'x' })).toBe('Which brand is this for?')
-    expect(check({ ...bad, name: 'x', brand: 'y' })).toBe('Write the offer headline.')
-    expect(check({ ...bad, name: 'x', brand: 'y', headline: 'h' })).toBe('Minimum budget is $50.')
+    expect(check({ ...bad, name: 'x' })).toBe('Give the campaign a name of 2 to 80 characters.')
+    expect(check({ ...bad, name: 'xy' })).toBe('Which brand is this for?')
+    expect(check({ ...bad, name: 'xy', brand: 'y' })).toBe('Write the offer headline.')
+    expect(check({ ...bad, name: 'xy', brand: 'y', headline: 'h' })).toBe('Minimum budget is $50.')
     expect(check({ placement: 'video', budgetUsd: 10 })).toBe('Video and splash need a creative attached.')
     expect(check({ budgetUsd: 10 }, { creditLimitCents: 0 })).toBe('Minimum budget is $50.')
     expect(check({ termsAccepted: false as unknown as true }, { creditLimitCents: 0 })).toMatch(/^Over your credit limit/)
@@ -133,6 +134,108 @@ describe('ageGated', () => {
     expect(ageGated({ category: 'Retail', headline: 'Bet on it' })).toBe(true)
     expect(ageGated({ category: 'Retail', headline: 'Win the draw' })).toBe(false)
     expect(ageGated({ category: 'Food & drink', headline: 'Buy one' })).toBe(false)
+  })
+
+  it('reads "bet" as a word: a better deal is not a bet', () => {
+    for (const headline of ['Bets from ₦100', 'Sports betting week', 'Bet9ja welcome bonus', 'Megajackpot weekend'])
+      expect(ageGated({ category: 'Retail', headline })).toBe(true)
+    for (const headline of ['Better data deals', 'Between 2 and 4pm', 'Alphabet soup, 2 for 1'])
+      expect(ageGated({ category: 'Telecom & data', headline })).toBe(false)
+  })
+})
+
+describe('isBettingOrDraw', () => {
+  it('reads "draw" as a word: free withdrawals are not a draw', () => {
+    for (const headline of ['Win in our draw', 'Weekly draws', 'Prize drawing on Friday', 'Jackpot Friday'])
+      expect(isBettingOrDraw({ category: 'Retail', headline })).toBe(true)
+    for (const headline of ['Free withdrawals this week', 'Withdraw at any agent', 'A free drawer organiser'])
+      expect(isBettingOrDraw({ category: 'Banking & fintech', headline })).toBe(false)
+    expect(check({ category: 'Banking & fintech', headline: 'Free withdrawals this week' })).toBeNull()
+  })
+})
+
+describe('isHttpsLink', () => {
+  it('takes an https address with a real host and nothing else', () => {
+    for (const ok of ['https://kolabright.com', 'https://kolabright.com/offer?x=1', 'HTTPS://Kolabright.com', ' https://a.ng '])
+      expect(isHttpsLink(ok)).toBe(true)
+    for (const bad of [undefined, '', 'https://', 'https://kola bright', 'https://kolabright', 'http://kolabright.com', 'kolabright.com', 'https://.com'])
+      expect(isHttpsLink(bad)).toBe(false)
+  })
+})
+
+describe('firstRefusal: each rule names its field, in the order the form shows them', () => {
+  const X = CAMPAIGN_FORM_COPY.invalid
+  const V = CAMPAIGN_FORM_COPY.validation
+  const first = (patch: Partial<CampaignInput>, c: Partial<ValidationContext> = {}) =>
+    firstRefusal({ ...valid, ...patch }, { ...ctx, ...c })
+
+  it.each([
+    ['empty name', { name: ' ' }, 'name', V.name],
+    ['one-letter name', { name: 'E' }, 'name', X.name],
+    ['empty brand', { brand: '' }, 'brand', V.brand],
+    ['long brand', { brand: 'b'.repeat(81) }, 'brand', X.brand],
+    ['empty headline', { headline: '' }, 'headline', V.headline],
+    ['long headline', { headline: 'h'.repeat(49) }, 'headline', X.headline],
+    ['empty description', { description: '' }, 'description', V.description],
+    ['long description', { description: 'd'.repeat(241) }, 'description', X.description],
+    ['licence', { category: 'Betting' }, 'description', V.licence],
+    ['http link', { redeemMethod: 'link', linkUrl: 'http://acme.com' }, 'linkUrl', V.link],
+    ['bare https://', { redeemMethod: 'link', linkUrl: 'https://' }, 'linkUrl', V.linkInvalid],
+    ['a space in the host', { redeemMethod: 'link', linkUrl: 'https://acme foods.com' }, 'linkUrl', V.linkInvalid],
+    ['video without creative', { placement: 'video' }, 'creative', V.creative],
+    ['budget under 50', { budgetUsd: 49 }, 'budgetUsd', V.budget],
+    ['empty budget', { budgetUsd: Number.NaN }, 'budgetUsd', V.budget],
+    ['budget in cents', { budgetUsd: 55.5 }, 'budgetUsd', X.budgetUsd],
+    ['empty reward', { rewardLocal: Number.NaN }, 'rewardLocal', X.rewardLocal],
+    ['negative reward', { rewardLocal: -5 }, 'rewardLocal', X.rewardLocal],
+    ['fractional reward', { rewardLocal: 2.5 }, 'rewardLocal', X.rewardLocal],
+    ['reward too large', { rewardLocal: MAX_REWARD_LOCAL + 1 }, 'rewardLocal', V.rewardTooLarge],
+    ['empty start date', { startsAt: '' }, 'startsAt', X.startsAt],
+    ['start date not on the calendar', { startsAt: '2026-02-30' }, 'startsAt', X.startsAt],
+    ['empty end date', { runsForDays: undefined, endsAt: '' }, 'endsAt', X.endsAt],
+    ['end before start', { runsForDays: undefined, endsAt: '2026-11-30' }, 'endsAt', V.flight],
+    ['mismatched creative', { creativeVideoKey: 'v.mp4' }, 'creative', V.creativeMismatch],
+    ['credit', { budgetUsd: 2000 }, 'budgetUsd', 'Over your credit limit of $1,500 by $500. Pay an open invoice or ask Global to raise it.'],
+    ['terms', { termsAccepted: false as unknown as true }, 'termsAccepted', V.terms],
+  ] as const)('%s', (_n, patch, field, message) => expect(first(patch as Partial<CampaignInput>)).toEqual({ field, message }))
+
+  it('an empty start date is asked for, not called past', () => {
+    expect(first({ startsAt: '' }, { today: '2026-11-14' })?.message).toBe('Pick a start date.')
+    expect(first({ startsAt: '2026-11-01' }, { today: '2026-11-14' })).toEqual({ field: 'startsAt', message: V.startPast })
+  })
+
+  it("a field's own shape is judged in its place: a one-letter name is said before an empty headline", () => {
+    expect(first({ name: 'E', headline: '' })?.field).toBe('name')
+    expect(first({ budgetUsd: 55.5, rewardLocal: -1, startsAt: '' })?.field).toBe('budgetUsd')
+    expect(first({ rewardLocal: -1, startsAt: '' })?.field).toBe('rewardLocal')
+  })
+})
+
+describe('checkCampaign: every refusal is a sentence from the copy file', () => {
+  const sentences = new Set<unknown>([...Object.values(CAMPAIGN_FORM_COPY.validation), ...Object.values(CAMPAIGN_FORM_COPY.invalid)])
+  const refused = (raw: unknown) => {
+    const r = checkCampaign(raw, ctx)
+    if (r.ok) throw new Error('expected a refusal')
+    return r
+  }
+
+  it('answers what only a crafted request can send with the copy, naming the field where there is one', () => {
+    expect(refused({ ...valid, country: 'ZZ' })).toEqual({ ok: false, field: 'country', message: CAMPAIGN_FORM_COPY.invalid.other })
+    expect(refused({ ...valid, tileColor: 'red' })).toEqual({ ok: false, field: 'tileColor', message: CAMPAIGN_FORM_COPY.invalid.other })
+    expect(refused({ ...valid, runsForDays: 9 })).toEqual({ ok: false, field: 'runsFor', message: CAMPAIGN_FORM_COPY.invalid.other })
+    expect(refused({ ...valid, creativeImageKey: '../etc/passwd' }).field).toBe('creative')
+  })
+
+  it('never shows the schema its own words, whatever arrives', () => {
+    for (const raw of [
+      null, 'x', {}, { ...valid, name: 7 }, { ...valid, budgetUsd: '300' }, { ...valid, rewardLocal: '50' },
+      { ...valid, startsAt: 20261201 }, { ...valid, runsForDays: undefined }, { ...valid, endsAt: '2026-12-09' },
+      { ...valid, placement: 'billboard' }, { ...valid, redeemMethod: 'sms' }, { ...valid, claimCode: '' },
+    ]) {
+      const r = checkCampaign(raw, ctx)
+      expect(r.ok).toBe(false)
+      if (!r.ok) expect(sentences.has(r.message)).toBe(true)
+    }
   })
 })
 

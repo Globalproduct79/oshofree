@@ -73,10 +73,12 @@ describe('form values to input', () => {
   })
   it('an empty budget is refused by the budget rule, not read as 0', () => {
     const ctx = ruleContext('Brand', { limitCents: 150_000, inUseCents: 0 }, 'NG', undefined, NOW)
-    expect(checkCampaign(toInput({ ...filled(), budgetUsd: '' }), ctx)).toEqual({ ok: false, message: 'Minimum budget is $50.' })
-    expect(checkCampaign(toInput({ ...filled(), budgetUsd: '55.5' }), ctx)).toEqual({ ok: false, message: 'Budget is in whole dollars.' })
+    expect(checkCampaign(toInput({ ...filled(), budgetUsd: '' }), ctx)).toEqual({ ok: false, field: 'budgetUsd', message: 'Minimum budget is $50.' })
+    expect(checkCampaign(toInput({ ...filled(), budgetUsd: '55.5' }), ctx)).toEqual({
+      ok: false, field: 'budgetUsd', message: 'Budget is in whole dollars.',
+    })
     expect(checkCampaign(toInput({ ...filled(), name: 'E' }), ctx)).toEqual({
-      ok: false, message: 'Give the campaign a name of 2 to 80 characters.',
+      ok: false, field: 'name', message: 'Give the campaign a name of 2 to 80 characters.',
     })
     expect(checkCampaign(toInput(filled()), ctx).ok).toBe(true)
   })
@@ -108,9 +110,9 @@ describe('revisionInput', () => {
       ...newCampaignDefaults(kola, NOW), name: 'Old run', headline: 'h', description: 'd', linkUrl: 'https://x.ng',
       budgetUsd: '40', runsFor: 'custom' as const, startsAt: '2026-01-01', endsAt: '2026-12-01', termsAccepted: true,
     }
-    expect(checkCampaign(toInput(v), ctx)).toEqual({ ok: false, message: 'Minimum budget is $50.' })
+    expect(checkCampaign(toInput(v), ctx)).toEqual({ ok: false, field: 'budgetUsd', message: 'Minimum budget is $50.' })
     expect(checkCampaign(revisionInput(v), ctx).ok).toBe(true)
-    expect(checkCampaign(revisionInput({ ...v, headline: '' }), ctx)).toEqual({ ok: false, message: 'Write the offer headline.' })
+    expect(checkCampaign(revisionInput({ ...v, headline: '' }), ctx)).toEqual({ ok: false, field: 'headline', message: 'Write the offer headline.' })
   })
 })
 

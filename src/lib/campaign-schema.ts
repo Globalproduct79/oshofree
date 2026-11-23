@@ -63,11 +63,15 @@ export const campaignDraftInput = base.extend({ termsAccepted: z.boolean() }).re
 export type CampaignInput = z.infer<typeof campaignInput>
 
 const LICENCE = /licen|approv|NLRC|BCLB|LONASE|GBT/i
-const DRAW = /draw|jackpot/i
+// The prototype's /draw|jackpot/i and /jackpot|bet/i, read as words: "bet", "bets", "betting", "Bet9ja", "draw",
+// "draws", "drawing" count; "better", "between", "alphabet", "withdraw" and "drawer" do not (a fintech's "Free
+// withdrawals" is not a draw, a data bundle's "Better rates" is not a bet).
+const DRAW = /jackpot|\bdraw(s|ing)?(?![a-z])/i
+const BET = /jackpot|\bbet(s|ting)?(?![a-z])/i
 
 // The 18+ badge and flag. Not the licence rule, which also matches "draw".
 export function ageGated(i: { category: string; headline: string }): boolean {
-  return i.category === 'Betting' || /jackpot|bet/i.test(i.headline)
+  return i.category === 'Betting' || BET.test(i.headline)
 }
 
 // What a placement can show: an image on a card or tile, an MP4 on video, one of either on splash.
@@ -103,31 +107,73 @@ export type ValidationContext = {
   today?: string
 }
 
-// The first failing rule, in the order the New campaign form shows them (ADV §3), or null.
-export function validateCampaign(i: CampaignInput, ctx: ValidationContext): string | null {
+// The form field a refusal is about (the form's own names: FormValues has the same keys), so the form can mark
+// it, move the cursor to it and say why beside it. null: nothing on the form fixes it (a missing rate).
+export type CampaignField =
+  | 'name' | 'brand' | 'country' | 'category' | 'tileColor' | 'headline' | 'description' | 'placement' | 'creative'
+  | 'redeemMethod' | 'linkUrl' | 'budgetUsd' | 'runsFor' | 'startsAt' | 'endsAt' | 'rewardLocal' | 'termsAccepted'
+export type Refusal = { field: CampaignField | null; message: string }
+
+// An address Phoenix users can open: https, and a host with a dot in it ("https://" alone, or a name with a space
+// in it, is not one).
+export function isHttpsLink(raw: string | undefined): boolean {
+  if (!raw?.trim()) return false
+  try {
+    const u = new URL(raw.trim())
+    return u.protocol === 'https:' && u.hostname.includes('.') && !u.hostname.startsWith('.') && !u.hostname.endsWith('.')
+  } catch {
+    return false
+  }
+}
+
+const isWhole = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n)
+const within = (s: string, min: number, max: number) => s.trim().length >= min && s.trim().length <= max
+
+// The first failing rule, in the order the New campaign form shows them (ADV §3), and the field it is about. Each
+// field's own shape (a name's length, a whole-dollar budget, a real date) is judged in that field's place, so the
+// form walks top to bottom and never jumps back to a field it has already passed.
+export function firstRefusal(i: CampaignInput, ctx: ValidationContext): Refusal | null {
   const V = COPY.validation
-  if (!i.name.trim()) return V.name
-  if (!i.brand.trim()) return V.brand
-  if (!i.headline.trim()) return V.headline
-  if (!i.description.trim()) return V.description
-  if (needsLicence(i)) return V.licence
-  if (i.redeemMethod === 'link' && !i.linkUrl?.trim().startsWith('https://')) return V.link
-  if (i.placement === 'video' && !i.creativeVideoKey) return V.creative
-  if (i.placement === 'splash' && !i.creativeImageKey && !i.creativeVideoKey) return V.creative
-  if (!(i.budgetUsd >= 50)) return V.budget
-  if (i.rewardLocal > MAX_REWARD_LOCAL) return V.rewardTooLarge
-  if (!ctx.isEdit && ctx.today && i.startsAt < ctx.today) return V.startPast
+  const X = COPY.invalid
+  const no = (field: CampaignField, message: string): Refusal => ({ field, message })
+  if (!i.name.trim()) return no('name', V.name)
+  if (!within(i.name, 2, 80)) return no('name', X.name)
+  if (!i.brand.trim()) return no('brand', V.brand)
+  if (!within(i.brand, 1, 80)) return no('brand', X.brand)
+  if (!i.headline.trim()) return no('headline', V.headline)
+  if (!within(i.headline, 1, 48)) return no('headline', X.headline)
+  if (!i.description.trim()) return no('description', V.description)
+  if (!within(i.description, 1, 240)) return no('description', X.description)
+  if (needsLicence(i)) return no('description', V.licence)
+  if (i.redeemMethod === 'link') {
+    if (!i.linkUrl?.trim().toLowerCase().startsWith('https://')) return no('linkUrl', V.link)
+    if (!isHttpsLink(i.linkUrl)) return no('linkUrl', V.linkInvalid)
+  }
+  if (i.placement === 'video' && !i.creativeVideoKey) return no('creative', V.creative)
+  if (i.placement === 'splash' && !i.creativeImageKey && !i.creativeVideoKey) return no('creative', V.creative)
+  if (!(i.budgetUsd >= 50)) return no('budgetUsd', V.budget)
+  if (!isWhole(i.budgetUsd)) return no('budgetUsd', X.budgetUsd)
+  if (!isWhole(i.rewardLocal) || i.rewardLocal < 0) return no('rewardLocal', X.rewardLocal)
+  if (i.rewardLocal > MAX_REWARD_LOCAL) return no('rewardLocal', V.rewardTooLarge)
+  if (!isRealDay(i.startsAt)) return no('startsAt', X.startsAt)
+  if (!ctx.isEdit && ctx.today && i.startsAt < ctx.today) return no('startsAt', V.startPast)
   if (i.endsAt !== undefined) {
+    if (!isRealDay(i.endsAt)) return no('endsAt', X.endsAt)
     const days = flightDays(i.startsAt, i.endsAt)
-    if (!(days >= 1 && days <= 90)) return V.flight
+    if (!(days >= 1 && days <= 90)) return no('endsAt', V.flight)
   }
   // The form never pairs these (it drops a creative the placement cannot take); a crafted request might.
-  if (creativeMismatch(i)) return V.creativeMismatch
+  if (creativeMismatch(i)) return no('creative', V.creativeMismatch)
   const addedUsd = ctx.isEdit ? Math.max(0, i.budgetUsd - (ctx.previousBudgetUsd ?? 0)) : i.budgetUsd
   const excess = ctx.creditInUseCents + addedUsd * 100 - ctx.creditLimitCents
-  if (excess > 0) return V.credit(usd(ctx.creditLimitCents), usd(excess))
-  if (i.termsAccepted !== true) return V.terms
+  if (excess > 0) return no('budgetUsd', V.credit(usd(ctx.creditLimitCents), usd(excess)))
+  if (i.termsAccepted !== true) return no('termsAccepted', V.terms)
   return null
+}
+
+// The first failing rule's sentence, or null.
+export function validateCampaign(i: CampaignInput, ctx: ValidationContext): string | null {
+  return firstRefusal(i, ctx)?.message ?? null
 }
 
 // Milliseconds the market's clock is ahead of UTC at `at`. The five markets have no DST.
@@ -192,10 +238,11 @@ export function ruleContext(
 // ones (a budget under $50, a flight stretched past 90 days), which would otherwise lock the offer.
 export const REVISION_TERMS = { budgetUsd: 50, rewardLocal: 0, startsAt: '2000-01-01', runsForDays: 7 } as const
 
-export type Checked = { ok: true; input: CampaignInput } | { ok: false; message: string }
+export type Checked = { ok: true; input: CampaignInput } | ({ ok: false } & Refusal)
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '')
 const optStr = (v: unknown) => (typeof v === 'string' ? v : undefined)
+const num = (v: unknown) => (typeof v === 'number' ? v : Number.NaN)
 
 // Whatever arrives, typed so the rules can read it without throwing.
 function candidate(raw: unknown): CampaignInput {
@@ -204,21 +251,32 @@ function candidate(raw: unknown): CampaignInput {
     ...r,
     name: str(r.name), brand: str(r.brand), category: str(r.category), headline: str(r.headline),
     description: str(r.description), linkUrl: optStr(r.linkUrl), creativeImageKey: optStr(r.creativeImageKey),
-    creativeVideoKey: optStr(r.creativeVideoKey), budgetUsd: typeof r.budgetUsd === 'number' ? r.budgetUsd : Number.NaN,
+    creativeVideoKey: optStr(r.creativeVideoKey), budgetUsd: num(r.budgetUsd), rewardLocal: num(r.rewardLocal),
     startsAt: str(r.startsAt), endsAt: optStr(r.endsAt), termsAccepted: r.termsAccepted === true,
   } as unknown as CampaignInput
 }
 
-// The form's verdict: the first ADV §3 rule that fails, in order, then any field the schema refuses
-// that the rules do not name (a one-letter name, a date not on the calendar). Never throws.
+// The schema's names for the form's fields, where they differ.
+const SCHEMA_FIELD: Record<string, CampaignField> = {
+  creativeImageKey: 'creative', creativeVideoKey: 'creative', runsForDays: 'runsFor', claimCode: 'redeemMethod',
+}
+const FIELDS: readonly string[] = [
+  'name', 'brand', 'country', 'category', 'tileColor', 'headline', 'description', 'placement', 'redeemMethod', 'linkUrl',
+  'budgetUsd', 'startsAt', 'endsAt', 'rewardLocal', 'termsAccepted',
+]
+
+// The form's verdict: the first ADV §3 rule that fails, in order, then any field the schema refuses that the rules
+// do not name (a market or a colour the form never offers, sent past it). Never throws, and never says the schema's
+// own words: every refusal is a sentence from the copy file.
 export function checkCampaign(raw: unknown, ctx: ValidationContext): Checked {
   const parsed = campaignInput.safeParse(raw)
   if (parsed.success) {
-    const rule = validateCampaign(parsed.data, ctx)
-    return rule ? { ok: false, message: rule } : { ok: true, input: parsed.data }
+    const rule = firstRefusal(parsed.data, ctx)
+    return rule ? { ok: false, ...rule } : { ok: true, input: parsed.data }
   }
-  const rule = validateCampaign(candidate(raw), ctx)
-  if (rule) return { ok: false, message: rule }
-  const field = String(parsed.error.issues[0]?.path[0] ?? '') as keyof typeof COPY.invalid
-  return { ok: false, message: Object.hasOwn(COPY.invalid, field) ? COPY.invalid[field] : COPY.invalid.other }
+  const rule = firstRefusal(candidate(raw), ctx)
+  if (rule) return { ok: false, ...rule }
+  const key = String(parsed.error.issues[0]?.path[0] ?? '')
+  const field = SCHEMA_FIELD[key] ?? (FIELDS.includes(key) ? (key as CampaignField) : null)
+  return { ok: false, field, message: COPY.invalid.other }
 }

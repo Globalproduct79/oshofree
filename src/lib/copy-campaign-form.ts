@@ -100,6 +100,8 @@ export const CAMPAIGN_FORM_COPY = {
     // Ours: past the largest reward a campaign can store (MAX_REWARD_LOCAL). The campaign page's Change without
     // review and the Rewards page say the same.
     rewardTooLarge: 'That reward is too large.',
+    // Ours: an https link Phoenix users could not open ("https://" alone, a space in the address).
+    linkInvalid: "Phoenix users can't open that link. Check the address, like https://yourbrand.com/offer.",
   },
   previewBox: {
     title: 'Card preview',
@@ -166,6 +168,10 @@ export const CAMPAIGN_FORM_COPY = {
     flight: 'Flight',
     flightValue: (start: string, end: string, days: number) => `${start} – ${end} · ${days} ${days === 1 ? 'day' : 'days'}`,
     reward: (amount: string) => `${amount} airtime per successful share`,
+    // Ours: each value's way back to its field on the edit step (the confirmation is asked for again).
+    edit: 'Edit',
+    none: 'None attached',
+    editLabel: (field: string) => `Edit ${field}`,
   },
 
   // Edit offer on a live, scheduled or paused campaign: the revision carries the offer only (spec §6.14.3).
@@ -202,10 +208,13 @@ export const CAMPAIGN_FORM_COPY = {
     invalidTransition: "That campaign can't change state right now.",
     workspaceDeclined: "Your workspace was declined, so campaigns can't be submitted.",
   },
-  // A field the schema refuses that no ADV §3 rule names.
+  // A field's own shape (its length, whole numbers, a real date), judged in that field's place among the ADV §3 rules;
+  // `other` is for what only a request crafted past the form can send (a market or colour the form never offers).
   invalid: {
     name: 'Give the campaign a name of 2 to 80 characters.',
     brand: 'Keep the brand to 80 characters.',
+    headline: 'Keep the headline to 48 characters.',
+    description: 'Keep the description to 240 characters.',
     budgetUsd: 'Budget is in whole dollars.',
     rewardLocal: 'Share reward is a whole number, 0 or more.',
     startsAt: 'Pick a start date.',
