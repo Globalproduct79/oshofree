@@ -273,12 +273,13 @@ describe('closeMonth', () => {
     const pesaInv = invoices.find((i) => i.workspaceId === pesa.id)!
     expect(kolaInv).toMatchObject({
       number: 'INV-0052', period: NG_OCT, amountCents: 14500, status: 'due', country: 'NG',
-      issuedAt: CLOSED_AT, dueAt: new Date(CLOSED_AT.getTime() + 14 * DAY),
+      // Terms run from the 1st in the market (Lagos midnight), not from the hour the close ran: due 15 Nov.
+      issuedAt: CLOSED_AT, dueAt: new Date(at('2026-10-31T23:00:00Z').getTime() + 14 * DAY),
     })
     expect(Number(kolaInv.fxPerUsd)).toBe(1550)
     expect(pesaInv).toMatchObject({
       number: 'INV-0053', period: KE_OCT, amountCents: 9300, status: 'due', country: 'KE',
-      dueAt: new Date(CLOSED_AT.getTime() + 7 * DAY),
+      dueAt: new Date(at('2026-10-31T21:00:00Z').getTime() + 7 * DAY), // Nairobi midnight on 1 Nov + 7 days
     })
     expect(Number(pesaInv.fxPerUsd)).toBe(129)
 
@@ -300,6 +301,20 @@ describe('closeMonth', () => {
       channelId: channel.id, period: at('2026-10-01T00:00:00Z'), amountCents: 12155, status: 'open',
     })
     expect(await db.auditEvent.count({ where: { action: 'invoice.issue' } })).toBe(2)
+  })
+
+  it("a close on the 2nd keeps the 1st's due date; one weeks late gives the full terms from its own issue", async () => {
+    const { user, kola } = await closeFixture()
+    const second = at('2026-11-02T02:00:00Z')
+    const [inv] = (await closeMonth(at('2026-10-01T00:00:00Z'), user.id, second)).invoices.filter((i) => i.workspaceId === kola.id)
+    expect(inv).toMatchObject({ issuedAt: second, dueAt: new Date(at('2026-10-31T23:00:00Z').getTime() + 14 * DAY) })
+
+    await line(kola.id, '2026-11-02T10:00:00Z', -100, 'Late — delivery')
+    // SunFresh has November charges too, so Ghana needs a rate for November to close.
+    await db.marketFx.create({ data: { country: 'GH', fxPerUsd: 15.5, effectiveFrom: at('2026-09-01T00:00:00Z') } })
+    const late = at('2026-12-20T09:00:00Z')
+    const [nov] = (await closeMonth(at('2026-11-01T00:00:00Z'), user.id, late)).invoices.filter((i) => i.workspaceId === kola.id)
+    expect(nov).toMatchObject({ issuedAt: late, dueAt: new Date(late.getTime() + 14 * DAY) })
   })
 
   it('run twice: one invoice per workspace and one statement', async () => {

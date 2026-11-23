@@ -405,6 +405,20 @@ describe('runDaily — closing the month', () => {
     expect(await db.auditEvent.findFirstOrThrow({ where: { action: 'invoice.issue' } })).toMatchObject({ actorId: null, targetId: invoice.id })
   })
 
+  it("on the 2nd closes a month the 1st missed, reports it closed, and dates it due as the 1st would have", async () => {
+    const { ws, phoenix } = await world()
+    await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1550, effectiveFrom: at('2026-10-01T00:00:00Z') } })
+    const c = await campaign(ws.id)
+    await events(phoenix.id, c.id, 'Impression', 1000, '2026-11-29T12:00:00Z')
+    // The 30th's run charges 29 Nov; the 1st's run never happens; the 2nd's closes November.
+    expect(await runDaily(at('2026-11-29T12:00:00Z'), at('2026-11-30T02:00:00Z'))).toMatchObject({ charged: 1, monthClose: 'skipped' })
+    expect(await runDaily(at('2026-12-01T12:00:00Z'), at('2026-12-02T02:00:00Z'))).toMatchObject({ monthClose: 'closed' })
+    const [inv] = await db.invoice.findMany()
+    expect(inv).toMatchObject({ amountCents: 120, issuedAt: at('2026-12-02T02:00:00Z') })
+    // Lagos midnight on 1 Dec + 14 days' terms: due 15 Dec, the day Invoices showed for the running month, not the 16th.
+    expect(inv.dueAt).toEqual(new Date(at('2026-11-30T23:00:00Z').getTime() + 14 * 86_400_000))
+  })
+
   it("on the 2nd reports a month the 1st already closed as skipped, and issues nothing twice", async () => {
     const { ws, phoenix } = await world()
     await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1550, effectiveFrom: at('2026-10-01T00:00:00Z') } })

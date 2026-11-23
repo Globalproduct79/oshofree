@@ -24,6 +24,18 @@ const DAY_MS = 86_400_000
 // too before it raises an uninvoiced delivery line, so a close never sums a line at one amount and tags it at another.
 export const INVOICE_LOCK = 805_200
 
+// The daily job closes a month on the 1st and retries on the 2nd: a close this soon after the month ended is the
+// month's own close, however late in that window it ran.
+const CLOSE_WINDOW_MS = 2 * DAY_MS
+
+// When an invoice falls due: its terms run from the 1st (the market's first local midnight after the month), so the
+// day is the one Invoices showed for the running month, whether the 1st's run issued it or the 2nd's. A close
+// later than that (Global's Close month, weeks on) gives the full terms from its own issue instead.
+export const invoiceDueAt = (monthEnd: Date, termsDays: number, issuedAt: Date): Date => {
+  const from = issuedAt.getTime() - monthEnd.getTime() <= CLOSE_WINDOW_MS ? monthEnd : issuedAt
+  return new Date(from.getTime() + termsDays * DAY_MS)
+}
+
 // The last instant before an exclusive end: lookups use effectiveFrom ≤ at.
 const lastInstant = (end: Date) => new Date(end.getTime() - 1)
 
@@ -291,7 +303,7 @@ export async function closeMonth(
           country: ws.country,
           status: 'due',
           issuedAt: now,
-          dueAt: new Date(now.getTime() + ws.termsDays * DAY_MS),
+          dueAt: invoiceDueAt(end, ws.termsDays, now),
         },
       })
       await tx.ledgerEntry.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { invoiceId: created.id } })

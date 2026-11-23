@@ -4,7 +4,7 @@ import { MONEY, periodLabel } from '@/lib/copy-money'
 import { SHELL } from '@/lib/copy-shell'
 import { fd, loc, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
-import { creditSummary, INVOICE_BADGE, invoiceStatus, monthBounds } from '@/lib/money'
+import { creditSummary, INVOICE_BADGE, invoiceDueAt, invoiceStatus, monthBounds } from '@/lib/money'
 import { db } from '@/lib/db'
 import { requireMember } from '@/lib/permissions'
 import { currentFx } from '@/lib/rates'
@@ -41,7 +41,8 @@ export default async function InvoicesPage() {
     ]
   })
   if (credit.unbilledCents > 0) {
-    const due = new Date(current.end.getTime() + ws.termsDays * 86_400_000)
+    // What the 1st's close will set (money.invoiceDueAt), so the running row and the invoice agree.
+    const due = invoiceDueAt(current.end, ws.termsDays, current.end)
     rows.unshift([
       <b key="n">{I.runningNumber}</b>,
       I.toDate(periodLabel(current.start, m.timezone)),
