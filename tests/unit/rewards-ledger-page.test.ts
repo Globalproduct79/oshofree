@@ -85,6 +85,9 @@ describe('/admin/rewards', () => {
     // Nothing held: the prototype's sentence alone.
     expect(html).toContain('0.0% still queued<')
     expect(html).not.toContain(' held<')
+    // A long runway is grouped like every other count: 2,000,000 / 1,000 = 2,000.
+    await db.aggregatorAccount.update({ where: { id: 'reloadly' }, data: { balanceCents: 2_000_000 } })
+    expect(await render()).toContain('about 2,000 days at current rate')
   })
 
   it('lists campaigns with Paid / Open', async () => {

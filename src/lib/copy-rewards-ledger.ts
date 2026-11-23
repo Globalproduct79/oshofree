@@ -1,3 +1,5 @@
+import { num } from '@/lib/format'
+
 // Rewards ledger strings (GLB §2.5), verbatim; the controller's additions are marked.
 export const REWARDS_LEDGER = {
   crumb: 'Rewards ledger',
@@ -11,7 +13,7 @@ export const REWARDS_LEDGER = {
     sentSub: (queued: string, held: string | null) => `${queued} still queued${held ? ` · ${held} held` : ''}`,
     balanceTitle: 'Aggregator balance',
     balanceLow: 'top up soon',
-    balanceDays: (n: number) => `about ${n} days at current rate`,
+    balanceDays: (n: number) => `about ${num(n)} days at current rate`,
     // Controller: no rewards earned this month, so there is no rate to divide by.
     balanceIdle: 'no rewards earned yet this month',
     pointsTitle: 'Points issued',
