@@ -117,6 +117,26 @@ describe('Billing page', () => {
     expect(t).not.toContain('INV-0040 paid')
   })
 
+  it("prints an invoiced line in local currency at its invoice's rate, and an unbilled one at today's", async () => {
+    const { ws } = await setup()
+    // The shilling moved on 1 Nov: October was invoiced at 129, November runs at 140.
+    await db.marketFx.create({ data: { country: 'KE', fxPerUsd: 140, effectiveFrom: at('2026-10-31T21:00:00Z') } })
+    const inv = await db.invoice.create({
+      data: { workspaceId: ws.id, number: 'INV-0052', period: at('2026-09-30T21:00:00Z'), amountCents: 10000, status: 'paid', fxPerUsd: 129, country: 'KE', issuedAt: at('2026-11-01T00:00:00Z'), dueAt: at('2026-11-15T00:00:00Z') },
+    })
+    await db.ledgerEntry.create({ data: { workspaceId: ws.id, at: at('2026-10-20T09:00:00Z'), amountCents: -10000, description: 'Send money free — delivery', kind: 'delivery', invoiceId: inv.id } })
+    await db.ledgerEntry.create({ data: { workspaceId: ws.id, at: at('2026-11-10T09:00:00Z'), amountCents: 10000, description: 'INV-0052 paid', kind: 'payment', invoiceId: inv.id } })
+    await ledger(ws.id, '2026-11-12T09:00:00Z', -10000, 'Send money free — delivery')
+
+    const oct = (await render('2026-10')).text
+    // $100 at 129 is KSh12,900, as on INV-0052; at 140 it would read KSh14,000.
+    expect(oct).toContain('−$100 −KSh12,900')
+    const nov = (await render()).text
+    // The payment is the invoice's own KSh12,900; the unbilled charge is at today's 140.
+    expect(nov).toContain('INV-0052 paid $100 KSh12,900')
+    expect(nov).toContain('−$100 −KSh14,000')
+  })
+
   it('offers the current month even with no rows, and an empty statement says so', async () => {
     await setup()
     const { markup, text: t } = await render()

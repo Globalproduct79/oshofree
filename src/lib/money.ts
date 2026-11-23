@@ -96,6 +96,9 @@ export type StatementRow = {
   amountCents: number
   kind: LedgerKind
   isPayment: boolean
+  // The rate of the invoice the row is on (a charge it billed, or the payment of it), so the row's local amount is the
+  // invoice's; null while the row is unbilled, or when the invoice was issued in another currency.
+  fxPerUsd: number | null
 }
 
 // The ledger rows of the workspace's local month containing `month`, newest first.
@@ -105,9 +108,11 @@ export async function statement(workspaceId: string, month: Date): Promise<State
   const rows = await db.ledgerEntry.findMany({
     where: { workspaceId, at: { gte: start, lt: end } },
     orderBy: [{ at: 'desc' }, { kind: 'asc' }, { id: 'asc' }],
+    include: { invoice: { select: { fxPerUsd: true, country: true } } },
   })
-  return rows.map(({ id, at, description, amountCents, kind }) => ({
+  return rows.map(({ id, at, description, amountCents, kind, invoice }) => ({
     id, at, description, amountCents, kind, isPayment: kind === 'payment',
+    fxPerUsd: invoice && invoice.country === country ? Number(invoice.fxPerUsd) : null,
   }))
 }
 

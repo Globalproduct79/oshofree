@@ -9,17 +9,21 @@ import { tokens } from '@/lib/tokens'
 
 export type MonthLink = { key: string; label: string }
 
-// The month's charges and payments, newest first, with a month selector. `fx` is null when the
-// market has no rate: the local column then shows "—".
+// The month's charges and payments, newest first, with a month selector. A row on an invoice is in local currency at
+// that invoice's rate; an unbilled one at today's `fx`, null when the market has no rate (the column then shows "—").
 export function StatementBox({
   rows, country, fx, months, selected,
 }: { rows: StatementRow[]; country: Country; fx: number | null; months: MonthLink[]; selected: string }) {
   const m = MARKETS[country]
+  const local = (r: StatementRow) => {
+    const rate = r.fxPerUsd ?? fx
+    return rate === null ? '—' : loc(r.amountCents, country, rate)
+  }
   const body = rows.map((r) => [
     fd(r.at, m.timezone),
     r.description,
     <b key="u" style={r.isPayment ? { color: tokens.green } : undefined}>{usd(r.amountCents)}</b>,
-    <span key="l" style={{ color: r.isPayment ? tokens.green : tokens.ink3 }}>{fx === null ? '—' : loc(r.amountCents, country, fx)}</span>,
+    <span key="l" style={{ color: r.isPayment ? tokens.green : tokens.ink3 }}>{local(r)}</span>,
   ])
   return (
     <Box title={MONEY.billing.statementTitle} sub={MONEY.billing.statementSub}>
