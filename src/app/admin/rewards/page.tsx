@@ -6,7 +6,7 @@ import { REWARDS_LEDGER as R } from '@/lib/copy-rewards-ledger'
 import { SHELL } from '@/lib/copy-shell'
 import { FRAUD_RULES, ensureFraudRules } from '@/lib/fraud'
 import { db } from '@/lib/db'
-import { fd, fmt, pct, usd } from '@/lib/format'
+import { fd, fmt, localAmount, pct, usd } from '@/lib/format'
 import { rewardsLedgerRows } from '@/lib/reports'
 import {
   FULL_BALANCE_CENTS, LOW_BALANCE_CENTS, aggregatorBalance, commonPointsPerShare, heldPayouts, monthTotals, pointsIssued, recentTopUps,
@@ -61,7 +61,7 @@ export default async function RewardsLedgerPage() {
               <b key="n">{r.name}</b>,
               r.workspaceName,
               fmt(r.successfulShares),
-              `${r.symbol}${r.rewardLocal}`,
+              localAmount(r.rewardLocal, r.country),
               <b key="o">{usd(r.owedCents)}</b>,
               <StatusBadge key="s" status={r.rechargeStatus === 'paid' ? 'paid' : 'issued'} />,
             ])}

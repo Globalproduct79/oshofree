@@ -467,7 +467,7 @@ export type RewardsLedgerRow = {
   workspaceName: string
   successfulShares: number
   rewardLocal: number
-  symbol: string
+  country: Country
   // Σ of the successful payouts.
   owedCents: number
   // 'paid' once the campaign has reward lines and every one is on a paid invoice.
@@ -499,7 +499,7 @@ export async function rewardsLedgerRows(): Promise<RewardsLedgerRow[]> {
       workspaceName: c.workspace.name,
       successfulShares: successful.get(c.id)!.n,
       rewardLocal: c.rewardLocal,
-      symbol: MARKETS[c.country].symbol,
+      country: c.country,
       owedCents: successful.get(c.id)!.cents,
       rechargeStatus: all > 0 && count(paidLines, c.id) === all ? 'paid' : 'open',
     }

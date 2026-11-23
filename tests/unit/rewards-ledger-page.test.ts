@@ -20,23 +20,25 @@ async function signIn(isGlobalAdmin: boolean) {
 
 const render = async () => renderToStaticMarkup(await RewardsLedgerPage())
 
-async function world(over: { budgetUsd?: number } = {}) {
+async function world(over: { budgetUsd?: number; rewardLocal?: number } = {}) {
   const ws = await db.workspace.create({ data: { name: 'Kola Bright', type: 'Brand', country: 'NG', status: 'approved' } })
   const c = await db.campaign.create({
     data: {
       workspaceId: ws.id, name: 'Buy 2 get 1', brand: 'K', country: 'NG', category: 'Food & drink', headline: 'h', description: 'd',
-      placement: 'card', redeemMethod: 'code', budgetUsd: over.budgetUsd ?? 100, shareRewardLabel: 'r', status: 'live', rewardLocal: 50,
+      placement: 'card', redeemMethod: 'code', budgetUsd: over.budgetUsd ?? 100, shareRewardLabel: 'r', status: 'live', rewardLocal: over.rewardLocal ?? 50,
       startsAt: new Date('2026-10-01T00:00:00Z'), endsAt: new Date('2026-12-30T00:00:00Z'),
     },
   })
   const channel = await db.channel.create({ data: { key: 'phoenix', name: 'Phoenix', apiKeyHash: 'h' } })
   const link = await db.shareLink.create({ data: { campaignId: c.id, channelId: channel.id, code: 'abc1', depth: 1, sharerType: 'Channel', sharerSessionId: 'sess-abcd1234' } as never })
   let k = 0
-  const payout = (status: 'queued' | 'sent' | 'held' | 'rejected', amountCents: number, reason: string | null = null, at = new Date()) =>
+  const payout = (
+    status: 'queued' | 'sent' | 'held' | 'rejected', amountCents: number, reason: string | null = null, at = new Date(), amountLocal = 50,
+  ) =>
     db.rewardPayout.create({
       data: {
         campaignId: c.id, workspaceId: ws.id, shareLinkId: link.id, sharerSessionId: 'sess-abcd1234', claimEventKey: `k${++k}`,
-        amountLocal: 50, amountCents, status, reason, createdAt: at,
+        amountLocal, amountCents, status, reason, createdAt: at,
       },
     })
   return { ws, c, payout }
@@ -129,13 +131,29 @@ describe('/admin/rewards', () => {
     expect(await render()).toContain('Same device claims own share')
   })
 
+  it('prints local amounts grouped, small payouts to the cent, and a sharer as Sharing and Recent activity name them', async () => {
+    await signIn(true)
+    const { payout } = await world({ rewardLocal: 90000 })
+    await payout('held', 5807, 'no_phone', new Date(), 90000)
+    await payout('sent', 3, null, new Date(), 50)
+    const html = await render()
+    // By campaign: per share in whole local units with a thousands separator; owed to the cent (₦50 is 3 cents).
+    expect(html).toContain('₦90,000')
+    expect(html).not.toContain('₦90000')
+    expect(html).toContain('$58.10')
+    // Held rewards: the reward's local amount and its dollars, and the sharer exactly as the other pages say it.
+    expect(html).toContain('₦90,000 · $58.07')
+    expect(html).toContain('Phoenix user ••1234')
+    expect(html).not.toContain('Phoenix user · ')
+  })
+
   it('held rewards: reason label, release, reject, and the cap refusal', async () => {
     await signIn(true)
     const { payout } = await world({ budgetUsd: 100 })
     const a = await payout('held', 500, 'no_phone')
     const html = await render()
     expect(html).toContain('No phone number')
-    expect(html).toContain('Phoenix user · ••1234')
+    expect(html).toContain('Phoenix user ••1234')
     expect(html).toContain('Release')
     expect(await releasePayoutAction(a.id)).toEqual({ toast: 'Reward released' })
     expect((await db.rewardPayout.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('queued')

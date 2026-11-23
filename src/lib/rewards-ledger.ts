@@ -1,6 +1,7 @@
+import { ACTIVITY } from '@/lib/copy-activity'
 import { db } from '@/lib/db'
-import { maskPhone } from '@/lib/format'
-import { MARKETS, type Country } from '@/lib/markets'
+import { localAmount, maskPhone } from '@/lib/format'
+import type { Country } from '@/lib/markets'
 import { monthBounds } from '@/lib/money'
 import { AGGREGATOR_ID } from '@/lib/rewards'
 
@@ -81,10 +82,11 @@ export async function heldPayouts(): Promise<HeldRow[]> {
   const phone = new Map(consumers.map((c) => [c.id, c.phone]))
   return rows.map((r) => {
     const p = r.sharerConsumerId ? phone.get(r.sharerConsumerId) : undefined
-    const sharer = p ? maskPhone(p) : `Phoenix user · ••${(r.sharerSessionId ?? r.shareLinkId).slice(-4)}`
+    // Named as Sharing and Recent activity name a sharer Phoenix gave no number for.
+    const sharer = p ? maskPhone(p) : ACTIVITY.phoenixUser((r.sharerSessionId ?? r.shareLinkId).slice(-4))
     return {
       id: r.id, campaignId: r.campaignId, workspaceId: r.workspaceId, campaign: r.campaign.name, workspace: r.workspace.name, sharer,
-      local: `${MARKETS[r.campaign.country as Country].symbol}${r.amountLocal}`,
+      local: localAmount(r.amountLocal, r.campaign.country as Country),
       amountCents: r.amountCents, reason: r.reason, createdAt: r.createdAt,
     }
   })

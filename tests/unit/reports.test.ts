@@ -377,11 +377,11 @@ describe('platform', () => {
 
     expect(await rewardsLedgerRows()).toEqual([
       // Held and not yet charged: nothing is on an invoice, so it is open.
-      { campaignId: heldOnly.id, name: 'Held only', workspaceName: 'MediaSpec', successfulShares: 1, rewardLocal: 100, symbol: 'F', owedCents: 16, rechargeStatus: 'open' },
-      { campaignId: a.id, name: 'Buy 2 get 1', workspaceName: 'Kola Bright', successfulShares: 8, rewardLocal: 50, symbol: '₦', owedCents: 24, rechargeStatus: 'open' },
+      { campaignId: heldOnly.id, name: 'Held only', workspaceName: 'MediaSpec', successfulShares: 1, rewardLocal: 100, country: 'SN', owedCents: 16, rechargeStatus: 'open' },
+      { campaignId: a.id, name: 'Buy 2 get 1', workspaceName: 'Kola Bright', successfulShares: 8, rewardLocal: 50, country: 'NG', owedCents: 24, rechargeStatus: 'open' },
       // One reward line paid, one still due.
-      { campaignId: d.id, name: 'Supa10 Jackpot', workspaceName: 'MediaSpec', successfulShares: 2, rewardLocal: 10, symbol: 'KSh', owedCents: 16, rechargeStatus: 'open' },
-      { campaignId: b.id, name: 'Pesa promo', workspaceName: 'Kola Bright', successfulShares: 1, rewardLocal: 10, symbol: 'KSh', owedCents: 8, rechargeStatus: 'paid' },
+      { campaignId: d.id, name: 'Supa10 Jackpot', workspaceName: 'MediaSpec', successfulShares: 2, rewardLocal: 10, country: 'KE', owedCents: 16, rechargeStatus: 'open' },
+      { campaignId: b.id, name: 'Pesa promo', workspaceName: 'Kola Bright', successfulShares: 1, rewardLocal: 10, country: 'KE', owedCents: 8, rechargeStatus: 'paid' },
     ])
   })
 })
