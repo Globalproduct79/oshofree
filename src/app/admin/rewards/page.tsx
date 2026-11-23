@@ -28,6 +28,8 @@ export default async function RewardsLedgerPage() {
   ])
   const enabled = new Map(rules.map((r) => [r.key, r.enabled]))
   const { earnedCents, sentCents, queuedCents } = totals
+  // Earned is sent + queued + held: what is neither sent nor queued waits for Global.
+  const heldCents = earnedCents - sentCents - queuedCents
   const balanceSub =
     balance < LOW_BALANCE_CENTS ? R.kpi.balanceLow
     : earnedCents > 0 ? R.kpi.balanceDays(Math.round(balance / (earnedCents / 30)))
@@ -47,7 +49,7 @@ export default async function RewardsLedgerPage() {
       />
       <div className="mgrid m4">
         <MetricCard title={R.kpi.earnedTitle} value={usd(earnedCents)} sub={R.kpi.earnedSub} fill={100} />
-        <MetricCard title={R.kpi.sentTitle} value={usd(sentCents)} sub={R.kpi.sentSub(pct(queuedCents, earnedCents))} fill={earnedCents ? (sentCents / earnedCents) * 100 : 0} />
+        <MetricCard title={R.kpi.sentTitle} value={usd(sentCents)} sub={R.kpi.sentSub(pct(queuedCents, earnedCents), heldCents > 0 ? pct(heldCents, earnedCents) : null)} fill={earnedCents ? (sentCents / earnedCents) * 100 : 0} />
         <MetricCard title={R.kpi.balanceTitle} value={usd(balance)} sub={balanceSub} fill={Math.max(0, Math.min(100, (balance / FULL_BALANCE_CENTS) * 100))} />
         <MetricCard title={R.kpi.pointsTitle} value={fmt(points)} sub={R.kpi.pointsSub(perShare)} fill={100} />
       </div>

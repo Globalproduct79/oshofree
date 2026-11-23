@@ -65,8 +65,8 @@ describe('/admin/rewards', () => {
     const html = await render()
     expect(html).toContain('$500') // earned 50000
     expect(html).toContain('$300') // sent
-    // Queued is what the next run sends (10000 of 50000 earned); a held reward waits for Global, not the queue.
-    expect(html).toContain('20.0% still queued')
+    // Sent 60% (the card's fill), queued 20% (what the next run sends) and held 20% (waiting for Global) make the 100%.
+    expect(html).toContain('20.0% still queued · 20.0% held')
     expect(html).toContain('top up soon')
     expect(html).toContain('1.5k')
     expect(html).toContain('10 per successful share')
@@ -78,7 +78,11 @@ describe('/admin/rewards', () => {
     await payout('sent', 30000)
     await db.aggregatorAccount.create({ data: { id: 'reloadly', balanceCents: 100000 } })
     // 100000 / (30000 / 30) = 100
-    expect(await render()).toContain('about 100 days at current rate')
+    const html = await render()
+    expect(html).toContain('about 100 days at current rate')
+    // Nothing held: the prototype's sentence alone.
+    expect(html).toContain('0.0% still queued<')
+    expect(html).not.toContain(' held<')
   })
 
   it('lists campaigns with Paid / Open', async () => {

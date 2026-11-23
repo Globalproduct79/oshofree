@@ -7,7 +7,8 @@ export const REWARDS_LEDGER = {
     earnedTitle: 'Rewards earned',
     earnedSub: 'all campaigns, this month',
     sentTitle: 'Sent via aggregator',
-    sentSub: (pct: string) => `${pct} still queued`,
+    // Controller (Prompt 4): with anything held, its share is named too, so sent, queued and held make the whole.
+    sentSub: (queued: string, held: string | null) => `${queued} still queued${held ? ` · ${held} held` : ''}`,
     balanceTitle: 'Aggregator balance',
     balanceLow: 'top up soon',
     balanceDays: (n: number) => `about ${n} days at current rate`,
