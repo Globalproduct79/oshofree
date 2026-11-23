@@ -750,10 +750,10 @@ describe('Recent activity', () => {
     expect(t).toContain('Recent activity Every event on this campaign, newest first, in Nigeria time. Hover a line for its record id.')
     expect(text(activity(markup)).trim()).toContain(
       [
-        '₦50 airtime for Phoenix user ••77ab held — No phone number · 13 Nov, 10:12',
-        'A friend of Phoenix user ••77ab took claim code PHX-•••• · 13 Nov, 10:12',
-        'A friend of Phoenix user ••77ab opened the offer · 13 Nov, 10:10',
-        'Phoenix user ••77ab shared via WhatsApp · 13 Nov, 10:00',
+        '₦50 airtime for Phoenix user · ••77ab held — No phone number · 13 Nov, 10:12',
+        'A friend of Phoenix user · ••77ab took claim code PHX-•••• · 13 Nov, 10:12',
+        'A friend of Phoenix user · ••77ab opened the offer · 13 Nov, 10:10',
+        'Phoenix user · ••77ab shared via WhatsApp · 13 Nov, 10:00',
       ].join(' '),
     )
     expect(markup).toContain(`<li id="act-reward-${held.id}" title="${held.id}">`)

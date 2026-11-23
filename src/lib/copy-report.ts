@@ -172,5 +172,4 @@ export const REPORT_COPY = {
     openRate: (rate: string) => `${rate} open rate`,
   },
   via: { whatsapp: 'WhatsApp', facebook: 'Facebook', x: 'X', sms: 'SMS' },
-  phoenixUser: (sessionTail: string) => `Phoenix user · ••${sessionTail}`,
 } as const

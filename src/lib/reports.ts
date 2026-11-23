@@ -2,6 +2,7 @@ import { Prisma, type Campaign, type CampaignStatus, type ChannelEventType, type
 import type { CardModel } from '@/components/og/CampaignCard'
 import { HOME_FILTERS, type HomeFilter } from '@/lib/campaign-filters'
 import { rejectReasonText } from '@/lib/copy-campaign'
+import { ACTIVITY } from '@/lib/copy-activity'
 import { REPORT_COPY } from '@/lib/copy-report'
 import { db } from '@/lib/db'
 import { CHARGED } from '@/lib/fraud'
@@ -130,7 +131,7 @@ async function topSharers(campaignId: string): Promise<Sharer[]> {
   const sharers = new Map<string, Sharer>()
   for (const l of links) {
     const key = l.consumer ? `consumer:${l.consumer.id}` : `session:${l.sharerSessionId ?? l.id}`
-    const phone = l.consumer ? maskPhone(l.consumer.phone) : REPORT_COPY.phoenixUser((l.sharerSessionId ?? '').slice(-4))
+    const phone = l.consumer ? maskPhone(l.consumer.phone) : ACTIVITY.phoenixUser((l.sharerSessionId ?? '').slice(-4))
     const seen = sharers.get(key) ?? { phone, claims: 0 }
     sharers.set(key, { phone, claims: seen.claims + (claimsOn.get(l.id) ?? 0) })
   }

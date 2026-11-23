@@ -42,8 +42,9 @@ export const ACTIVITY = {
     `${amount} airtime for ${sharer} ${ACTIVITY.status[status]}${reason ? ` — ${reason}` : ''}`,
   points: (n: number, sharer: string) =>
     n < 0 ? `${num(-n)} points taken back from ${sharer}` : `${num(n)} ${n === 1 ? 'point' : 'points'} for ${sharer}`,
-  // A sharer Phoenix gave no number for, by the end of their session id.
-  phoenixUser: (tail: string) => `Phoenix user ••${tail}`,
+  // A sharer Phoenix gave no number for, by the end of their session id: the slice-2 spec's words (sharer identity),
+  // the one label Top sharers, Sharing, Recent activity and the Rewards ledger all use.
+  phoenixUser: (tail: string) => `Phoenix user · ••${tail}`,
   someone: 'a sharer',
   channels: { phoenix: 'Phoenix', boomplay: 'Boomplay' } as Record<string, string>,
   channelList: (names: string[]) => names.join(' and '),

@@ -134,7 +134,7 @@ describe('/admin/rewards', () => {
     expect(await render()).toContain('Same device claims own share')
   })
 
-  it('prints local amounts grouped, small payouts to the cent, and a sharer as Sharing and Recent activity name them', async () => {
+  it('prints local amounts grouped, small payouts to the cent, and a sharer as every other page names them', async () => {
     await signIn(true)
     const { payout } = await world({ rewardLocal: 90000 })
     await payout('held', 5807, 'no_phone', new Date(), 90000)
@@ -146,8 +146,7 @@ describe('/admin/rewards', () => {
     expect(html).toContain('$58.10')
     // Held rewards: the reward's local amount and its dollars, and the sharer exactly as the other pages say it.
     expect(html).toContain('₦90,000 · $58.07')
-    expect(html).toContain('Phoenix user ••1234')
-    expect(html).not.toContain('Phoenix user · ')
+    expect(html).toContain('Phoenix user · ••1234')
   })
 
   it('held rewards: reason label, release, reject, and the cap refusal', async () => {
@@ -156,7 +155,7 @@ describe('/admin/rewards', () => {
     const a = await payout('held', 500, 'no_phone')
     const html = await render()
     expect(html).toContain('No phone number')
-    expect(html).toContain('Phoenix user ••1234')
+    expect(html).toContain('Phoenix user · ••1234')
     expect(html).toContain('Release')
     expect(await releasePayoutAction(a.id)).toEqual({ toast: 'Reward released' })
     expect((await db.rewardPayout.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('queued')

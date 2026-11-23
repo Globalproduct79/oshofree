@@ -82,7 +82,7 @@ export async function heldPayouts(): Promise<HeldRow[]> {
   const phone = new Map(consumers.map((c) => [c.id, c.phone]))
   return rows.map((r) => {
     const p = r.sharerConsumerId ? phone.get(r.sharerConsumerId) : undefined
-    // Named as Sharing and Recent activity name a sharer Phoenix gave no number for.
+    // Named as Top sharers, Sharing and Recent activity name a sharer Phoenix gave no number for.
     const sharer = p ? maskPhone(p) : ACTIVITY.phoenixUser((r.sharerSessionId ?? r.shareLinkId).slice(-4))
     return {
       id: r.id, campaignId: r.campaignId, workspaceId: r.workspaceId, campaign: r.campaign.name, workspace: r.workspace.name, sharer,

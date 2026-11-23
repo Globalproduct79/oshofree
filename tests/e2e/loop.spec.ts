@@ -151,8 +151,8 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
     await expect(metricValue(brand, S.friendsClaimed, sharing)).toHaveText('1')
   })
 
-  // The wall's session is a UUID: its sharer reads "Phoenix user ••" and the session's last four characters.
-  const SHARER = 'Phoenix user ••[0-9a-f]{4}'
+  // The wall's session is a UUID: its sharer reads "Phoenix user · ••" and the session's last four characters.
+  const SHARER = 'Phoenix user · ••[0-9a-f]{4}'
   const WHEN = ' · \\d{1,2} \\w{3}, \\d\\d:\\d\\d'
   const line = (what: string) => new RegExp(`^${what}${WHEN}$`)
   await test.step("Recent activity lists every step, newest first: the friend's claim attributed to the sharer, the held reward and why", async () => {

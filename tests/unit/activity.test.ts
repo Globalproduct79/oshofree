@@ -262,9 +262,9 @@ describe('campaignActivity', () => {
     const found = await campaignActivity(w.campaign, { line: `reward-${held.id}` })
     expect(found).toMatchObject({ line: `reward-${held.id}`, windowed: true, next: null })
     expect(texts(found.lines)).toEqual([
-      '₦50 airtime for Phoenix user ••9z9z held — No phone number · 10 Nov, 10:00',
-      'A friend of Phoenix user ••9z9z took claim code PHX-•••• · 10 Nov, 10:00',
-      'Phoenix user ••9z9z shared via WhatsApp · 10 Nov, 09:00',
+      '₦50 airtime for Phoenix user · ••9z9z held — No phone number · 10 Nov, 10:00',
+      'A friend of Phoenix user · ••9z9z took claim code PHX-•••• · 10 Nov, 10:00',
+      'Phoenix user · ••9z9z shared via WhatsApp · 10 Nov, 09:00',
     ])
     const top = await campaignActivity(w.campaign, { line: 'reward-nope' })
     expect(top).toMatchObject({ line: null, windowed: false })
@@ -307,9 +307,9 @@ describe('campaignActivity', () => {
     await payout(w, l.id, c.id, '2026-11-13T10:05:00Z', 'held', { session: 'anon-77ab', reason: 'no_phone' })
     expect(texts((await campaignActivity(w.campaign)).lines)).toEqual([
       'Someone followed the link to your site · 13 Nov, 11:30',
-      '₦50 airtime for Phoenix user ••77ab held — No phone number · 13 Nov, 11:05',
-      'A friend of Phoenix user ••77ab clicked through to your site · 13 Nov, 11:05',
-      'Phoenix user ••77ab shared via Facebook · 13 Nov, 11:04',
+      '₦50 airtime for Phoenix user · ••77ab held — No phone number · 13 Nov, 11:05',
+      'A friend of Phoenix user · ••77ab clicked through to your site · 13 Nov, 11:05',
+      'Phoenix user · ••77ab shared via Facebook · 13 Nov, 11:04',
       'Someone opened the offer page · 13 Nov, 11:02',
       'A Phoenix user clicked through to your site · 13 Nov, 11:00',
     ])
@@ -404,7 +404,7 @@ describe('workspaceSharers', () => {
     const first = await workspaceSharers(w.ws.id)
     expect(first.rows).toHaveLength(30)
     expect(first.more).toBe(true)
-    expect(first.rows[0]).toMatchObject({ who: 'Phoenix user ••busy', opened: 33, total: 33 })
+    expect(first.rows[0]).toMatchObject({ who: 'Phoenix user · ••busy', opened: 33, total: 33 })
     expect(first.rows[0].lines).toHaveLength(30)
     expect(first.rows[0].lines[0].text).toBe('A friend opened the offer · 13 Nov, 10:32')
     const all = await workspaceSharers(w.ws.id, { limit: 60 })
