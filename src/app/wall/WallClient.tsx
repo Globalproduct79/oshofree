@@ -108,7 +108,8 @@ export function WallClient({
                   headline: o.headline,
                   description: openId === o.id ? "" : o.description,
                   imageUrl: o.creative.image,
-                  videoUrl: o.creative.video,
+                  // Opened, the panel plays the clip; the card shows it once, there.
+                  videoUrl: openId === o.id ? null : o.creative.video,
                   color: o.creative.color,
                   rewardLabel: o.share.reward_label,
                   endsAt: new Date(o.ends_at),
