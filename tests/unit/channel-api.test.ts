@@ -8,6 +8,8 @@ import { withChannel } from '@/lib/api-responses'
 import { channelFromRequest, hashKey, rotateKey } from '@/lib/channels'
 import { db } from '@/lib/db'
 import { type EventInput, ingestEvents } from '@/lib/events'
+import { endCampaign } from '@/lib/campaigns'
+import { runDaily } from '@/lib/jobs/daily'
 import { recordOpen } from '@/lib/link-events'
 import { linkUrl, mintChannelLink, mintRootLink } from '@/lib/links'
 
@@ -347,16 +349,38 @@ describe('POST /api/v1/events', () => {
 
   it('ignores events for an offer that never went live, so nothing is stored or billed for it', async () => {
     const channel = await seedChannel()
-    const live = await seedCampaign()
+    const live = await seedCampaign({ cpmCents: 220 })
     const paused = await seedCampaign({ status: 'paused' })
     const ended = await seedCampaign({ status: 'ended' })
     const never = await Promise.all(
       (['draft', 'review', 'scheduled', 'rejected'] as const).map((status) => seedCampaign({ status, cpmCents: 220 })),
     )
-    const res = await events({ channel: 'phoenix', events: [live, paused, ended, ...never].map((c) => ev(c.id)) })
-    expect(await res.json()).toEqual({ accepted: 3, deduped: 0, ignored: 4 })
+    // Five impressions each, on 13 Nov in Lagos, so a charge would round to a whole cent.
+    const five = (c: { id: string }) => [1, 2, 3, 4, 5].map((n) => ev(c.id, { session_id: `s${n}` }))
+    const res = await events({ channel: 'phoenix', events: [live, paused, ended, ...never].flatMap(five) })
+    expect(await res.json()).toEqual({ accepted: 15, deduped: 0, ignored: 20 })
     const rows = await db.channelEvent.findMany({ where: { channelId: channel.id }, select: { campaignId: true } })
-    expect(rows.map((r) => r.campaignId).sort()).toEqual([live.id, paused.id, ended.id].sort())
+    expect([...new Set(rows.map((r) => r.campaignId))].sort()).toEqual([live.id, paused.id, ended.id].sort())
+    // The daily job charges that day: the live campaign's delivery line, none for the campaigns that never went live.
+    await runDaily(new Date('2026-11-13T12:00:00Z'), new Date('2026-11-14T02:00:00Z'), { replay: true })
+    const lines = await db.ledgerEntry.findMany({ where: { kind: 'delivery' }, select: { campaignId: true, amountCents: true } })
+    expect(lines).toEqual([{ campaignId: live.id, amountCents: -1 }])
+  })
+
+  it('stores and bills a late event from a run that went live, even once the campaign is back in review', async () => {
+    const channel = await seedChannel()
+    const admin = await db.user.create({ data: { email: 'g@x.test', name: 'G', passwordHash: 'x', isGlobalAdmin: true } })
+    const c = await seedCampaign({ cpmCents: 220 })
+    expect(await (await events({ channel: 'phoenix', events: [ev(c.id)] }, 'run-1')).json()).toMatchObject({ accepted: 1 })
+    await endCampaign(c.id, admin.id)
+    // Resubmitted after it ended, as submitCampaign leaves it: in review, with no end recorded.
+    await db.campaign.update({ where: { id: c.id }, data: { status: 'review', endedAt: null } })
+    const late = [1, 2, 3, 4].map((n) => ev(c.id, { session_id: `late-${n}`, ts: '2026-11-13T10:30:00Z' }))
+    expect(await (await events({ channel: 'phoenix', events: late }, 'run-1-late')).json()).toEqual({ accepted: 4, deduped: 0, ignored: 0 })
+    expect(await db.channelEvent.count({ where: { campaignId: c.id, channelId: channel.id } })).toBe(5)
+    await runDaily(new Date('2026-11-13T12:00:00Z'), new Date('2026-11-14T02:00:00Z'), { replay: true })
+    expect(await db.ledgerEntry.findMany({ where: { kind: 'delivery' }, select: { campaignId: true, amountCents: true } }))
+      .toEqual([{ campaignId: c.id, amountCents: -1 }])
   })
 
   it('dedupes the same session, offer and type within an hour, and ignores unknown offers', async () => {

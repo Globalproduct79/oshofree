@@ -16,10 +16,12 @@ const TYPES = {
 type WireType = keyof typeof TYPES
 
 const isKnown = (t: string): t is WireType => Object.hasOwn(TYPES, t)
-// The statuses of an offer Phoenix can have been given: live now, or live once and since paused or ended (a late
-// event for those is still counted, and billed). One that never went live (draft, review, scheduled, rejected) is
-// unknown to Phoenix, so an event naming it is ignored, never stored or charged for delivery.
+// An offer Phoenix can have been given has gone live: it is live now, or paused or ended since (only a live campaign
+// pauses or ends), or Phoenix has already reported on it — a run that went live and was then ended and resubmitted
+// (review, rejected) or resumed to a later start (scheduled). A late event from such a run is still counted and billed.
+// One that has never gone live is unknown to Phoenix, so an event naming it is ignored, never stored or charged.
 const SHOWN: CampaignStatus[] = ['live', 'paused', 'ended']
+const HAS_GONE_LIVE = { OR: [{ status: { in: SHOWN } }, { channelEvents: { some: {} } }] } satisfies Prisma.CampaignWhereInput
 // A friend's open or claim names the sharer's token, not the offer: the token's link says which offer.
 const byToken = (t: string) => t === 'share_open' || t === 'share_claim'
 
@@ -78,7 +80,7 @@ async function storedBatch(channelId: string, key: string): Promise<IngestResult
 // One event per (session, offer, type, UTC hour) per channel; a repeated batch key replays the stored counts.
 // share_open and share_claim are stored against the token's link (this channel's links only) and feed only
 // the channel's own link stats, never advertiser metrics (spec §6.14.2). Unknown types, unknown offers and
-// tokens that are not this channel's are ignored; so are events for an offer that never went live.
+// tokens that are not this channel's are ignored; so are events for an offer that has never gone live.
 export async function ingestEvents(channelId: string, batchKey: string, events: EventInput[]): Promise<IngestResult> {
   const stored = await storedBatch(channelId, batchKey)
   if (stored) return stored
@@ -88,7 +90,7 @@ export async function ingestEvents(channelId: string, batchKey: string, events: 
       const offerIds = [...new Set(events.flatMap((e) => (e.offer_id ? [e.offer_id] : [])))]
       const tokens = [...new Set(events.filter((e) => byToken(e.type)).flatMap((e) => tokenOf(e) ?? []))]
       const [known, links] = await Promise.all([
-        tx.campaign.findMany({ where: { id: { in: offerIds }, status: { in: SHOWN } }, select: { id: true } }),
+        tx.campaign.findMany({ where: { id: { in: offerIds }, ...HAS_GONE_LIVE }, select: { id: true } }),
         tx.shareLink.findMany({ where: { code: { in: tokens }, channelId }, select: { code: true, campaignId: true } }),
       ])
       const knownIds = new Set(known.map((c) => c.id))

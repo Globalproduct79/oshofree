@@ -47,7 +47,7 @@ export function contractBoxes(base: string): DocBox[] {
     {
       id: 'events',
       title: '2 · Events in',
-      sub: "Phoenix's SDK batches events and posts them at most every 60 seconds. We de-duplicate on `session_id + offer_id + type` per hour. Impressions must meet 50% in view for 1 s. `open` is a tap on the card; `claim` is the user taking a code or tapping a link offer's button. An event for an offer the feed never listed is counted as ignored.",
+      sub: "Phoenix's SDK batches events and posts them at most every 60 seconds. We de-duplicate on `session_id + offer_id + type` per hour. Impressions must meet 50% in view for 1 s. `open` is a tap on the card; `claim` is the user taking a code or tapping a link offer's button. An event for an offer that has never gone live is counted as ignored; one for an offer that has gone live is accepted and charged even after it leaves the feed (paused, ended or out of budget).",
       code: [
         `POST ${api}/events`,
         'Authorization: Bearer <channel key>   Idempotency-Key: <uuid>',
