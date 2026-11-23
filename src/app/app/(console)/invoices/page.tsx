@@ -60,11 +60,6 @@ export default async function InvoicesPage() {
         crumb={[{ label: ws.name }, { label: SHELL.groups.money }, { label: I.title }]}
         title={I.title}
         lead={I.lead}
-        actions={
-          <LinkButton variant="ghost" href="/app/billing">
-            {SHELL.nav.billing}
-          </LinkButton>
-        }
       />
       <Box>
         <DataTable head={I.head(m.currency)} rows={rows} emptyText={I.empty} align={[undefined, undefined, undefined, undefined, 'right', 'right']} />

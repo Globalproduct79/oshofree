@@ -36,7 +36,9 @@ export function navFor(ctx: { role: MemberRole; inWorkspace: boolean; counts: Na
       ] },
     )
   }
-  if (ctx.role === 'Global') {
+  // Platform is Global's own console. Inside a customer's workspace Global sees that customer's plain view (17 Nov):
+  // the banner's Back to Platform and the switcher lead back; the Platform pages are never a workspace's business.
+  if (ctx.role === 'Global' && !ctx.inWorkspace) {
     out.push({ label: groups.platform, items: [
       item(nav.review, '/admin/review', 'check', counts.review),
       item(nav.advertisers, '/admin/advertisers', 'grid'),

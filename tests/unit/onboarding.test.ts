@@ -273,7 +273,7 @@ describe('the invite page', () => {
     for (const who of [null, await mkUser('Kemi Balogun')]) {
       signIn(who)
       const html = await page(InvitePage({ params: Promise.resolve({ token: TOKEN }) }))
-      expect(text(html)).toBe(`${INVITE_PAGE.invalid} ${INVITE_PAGE.askForNew}`)
+      expect(text(html)).toContain(`${INVITE_PAGE.invalid} ${INVITE_PAGE.askForNew}`)
       expect(html).not.toMatch(/<a |<form|<button/)
     }
   })

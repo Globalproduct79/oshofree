@@ -261,3 +261,51 @@ form.enter{display:inline;margin:0}
 .sk-box .sk-h3{width:160px;height:16px;margin:0 0 14px}.sk-line{width:100%;height:12px;margin:0 0 10px}.sk-short{width:60%}
 @keyframes sk{50%{opacity:.5}}
 @media (prefers-reduced-motion:reduce){.sk{animation:none}}
+/* ---- Clean controls (17 Nov): one height, one look and one focus for every field, select and button, so a page
+   reads as one piece. A select draws its own chevron; a locked or read-only field sits on the page's grey instead
+   of the browser's; a hint under a field is a small grey line of its own. Buttons answer to hover. ---- */
+label.f input,label.f select,label.f textarea,.edit input,.edit select,.edit textarea{min-height:40px;transition:border-color .12s,box-shadow .12s}
+label.f select,.edit select,select.sel{appearance:none;-webkit-appearance:none;background-color:#fff;background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235B6170' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:14px;padding-right:36px}
+label.f input:focus,label.f select:focus,label.f textarea:focus,.edit input:focus,.edit select:focus,.edit textarea:focus,select.sel:focus{outline:none;border-color:var(--phx);box-shadow:0 0 0 3px var(--phx3)}
+label.f input:disabled,label.f select:disabled,label.f textarea:disabled,label.f input[readonly],label.f textarea[readonly],select.sel:disabled{background-color:var(--bg);color:var(--ink2);-webkit-text-fill-color:var(--ink2);opacity:1;border-color:var(--line2);cursor:not-allowed}
+label.f .hint{display:block;margin-top:6px;font-weight:400;font-size:12px;color:var(--ink3);line-height:1.4}
+select.sel{height:34px;padding:0 32px 0 10px;border:1px solid var(--line);border-radius:9px;font-size:13px;font-weight:600;color:var(--ink)}
+.btn{transition:background-color .12s,color .12s,border-color .12s}
+.btn:hover:not(:disabled):not([aria-disabled=true]):not([aria-busy=true]){background:var(--line2)}
+.btn.p:hover:not(:disabled):not([aria-disabled=true]):not([aria-busy=true]){background:#E84F17}
+.btn.d:hover:not(:disabled):not([aria-disabled=true]):not([aria-busy=true]){background:#2A2F3A}
+.btn.g:hover:not(:disabled):not([aria-disabled=true]):not([aria-busy=true]){background:var(--bg)}
+/* A form's own button never stretches to the grid's width: it sits at the start, its own size. */
+.stack > .btn,.edit > .btn,.form > .btn{justify-self:start}
+/* Workspace: the identity line (the tile the sidebar shows, the name and kind, the approval) over a strip of facts. */
+.ident{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ident .lg{width:48px;height:48px;border-radius:14px;background:var(--ink);color:#fff;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;flex:none}
+.ident .nm{flex:1;min-width:0}.ident .nm b{display:block;font-size:18px;letter-spacing:-.02em;line-height:1.2;overflow-wrap:anywhere}.ident .nm small{color:var(--ink3);font-size:13px}
+.ident > .st{margin-left:auto}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 20px;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.facts small{display:block;color:var(--ink3);font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:3px}.facts b{font-size:15px}
+.facts .st{vertical-align:middle}
+/* People: member and invite rows breathe; the last row has no rule. The role table is a list of role → what it may do. */
+.roles li{padding:12px 0}.roles > li:last-child{border-bottom:0}
+.rolesx{display:grid;gap:0}.rolesx .r{display:grid;grid-template-columns:84px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid var(--line2);font-size:13px;color:var(--ink2);line-height:1.45}.rolesx .r:last-child{border:0}.rolesx .r b{color:var(--ink)}
+/* An agency's client brands: one ruled line each, the campaign count on the right. */
+.clients .c{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line2);font-size:13px}.clients .c:last-child{border:0}.clients .c small{color:var(--ink3)}
+/* A card's title row with a grey count beside the heading (a sibling, so the heading's name stays the title). */
+.box .bt{display:flex;align-items:baseline;gap:6px;margin:0 0 4px}.box .bt h3{margin:0}.box .bt .n{color:var(--ink3);font-weight:500;font-size:13px}
+/* A single settings card keeps a readable width instead of stretching across the page. */
+.narrow{max-width:760px}
+/* ---- Onboarding (17 Nov): sign-in, sign-up, an invite link and the first workspace share one centred column in the
+   console's own system — the brand over a white card, fields and buttons as everywhere else — instead of a second
+   component kit. ---- */
+.auth{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 16px}
+.auth .lockup{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+.auth .lockup .lg{width:40px;height:40px;border-radius:12px;background:var(--phx);color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+.auth .lockup b{font-size:18px;letter-spacing:-.02em;display:block;line-height:1.1}.auth .lockup small{color:var(--ink3);font-size:12px}
+.auth > .box{width:100%;max-width:420px;padding:26px 24px;margin:0}.auth > .box.wide{max-width:600px}
+.auth .box h1{font-size:22px;letter-spacing:-.02em;margin:0 0 4px;line-height:1.2}.auth .box > .lead{color:var(--ink2);margin:0 0 18px;line-height:1.5;font-size:14px}
+.auth .box .head h1{font-size:22px}.auth .box .head{margin-bottom:16px}.auth .box .crumb{margin-bottom:6px}
+.auth .stack{gap:14px}.auth .alt{margin:16px 0 0;font-size:13px;color:var(--ink2);text-align:center}
+.auth .who{display:block;border:0;padding:0;font-size:13px;color:var(--ink2);margin:0}
+.btn.w{width:100%;justify-content:center}
+.ivl{background:var(--phx2);color:#7A3412;border-radius:9px;padding:9px 12px;font-size:13px;line-height:1.45;margin:0}
+.auth .box .head .acts .btn{white-space:nowrap}

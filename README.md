@@ -217,7 +217,8 @@ npm run test:e2e
 ```
 
 It migrates, empties and seeds `oshofree_test` (at `SEED_SCALE=0.2`), starts its own Next server on port
-3101 (build output in `.next-e2e`), and runs 17 Playwright flows: sign-up, approval, sharing from the wall
+3101 (build output in `.next-e2e`; a test server you already have running there with `npm run dev:test` is reused,
+which spares the first compile on a busy machine), and runs 17 Playwright flows: sign-up, approval, sharing from the wall
 and a friend's claim, pause and end, credit limits, people, onboarding, the command palette, Global's switcher,
 and the three-user journeys. The flows change the data as they go, so always go through the script, which reseeds
 first: a bare `npx playwright test` is not supported. It never touches the dev server on 3100 or the development

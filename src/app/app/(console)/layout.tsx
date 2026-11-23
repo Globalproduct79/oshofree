@@ -12,7 +12,7 @@ import { requireMember } from '@/lib/permissions'
 import { APP_VERSION, bellFor, navCounts, ownerInitials } from '@/lib/shell'
 
 // The workspace shell. The member is resolved once here; Global inside a workspace keeps its own
-// avatar and bell, gets the PLATFORM group and a banner with the way back (spec §6.1).
+// avatar and bell and sees the workspace's own sidebar (no PLATFORM group, 17 Nov), with a banner that leads back.
 export default async function ConsoleLayout({ children }: { children: React.ReactNode }) {
   const { user, workspace, role } = await requireMember('view')
   const isGlobal = role === 'Global'

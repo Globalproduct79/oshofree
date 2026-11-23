@@ -75,6 +75,8 @@ export const INVITE_PAGE = {
   // Signed in as someone who is already a member: the invite is left for whoever it was meant for.
   alreadyIn: (workspace: string) => `You're already in ${workspace}.`,
   open: (workspace: string) => `Open ${workspace}`,
+  // Signed out: what the two buttons do (ours, 17 Nov).
+  signedOutLead: 'Create an account, or sign in if you have one. Either way the invite comes with you.',
   createAccount: 'Create an account',
   signIn: 'Sign in',
   // Already signed in: whose account the invite would join, or sign out and sign in with another.

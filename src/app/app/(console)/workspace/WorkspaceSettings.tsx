@@ -8,8 +8,12 @@ import { COUNTRIES, MARKETS, type Country } from '@/lib/markets'
 import type { FormState } from '../workspace-form'
 
 type Values = { name: string; type: 'Brand' | 'Agency'; country: Country; registrationNumber: string }
+const W = COPY.workspace
 
-// Owner and Global save; a Manager or Viewer sees the same fields read-only, with no Save.
+// The details form: the name across, type and billing country side by side (one column at phone width), the
+// registration number across, then Save at the start of its row. Owner and Global save; a Manager or Viewer sees the
+// same fields read-only, with no Save and one line saying who can change them. Type and country lock once the
+// workspace is approved (Global can still change them): the fields read as locked, with one hint under the pair.
 export function WorkspaceSettings({
   action,
   initial,
@@ -23,48 +27,48 @@ export function WorkspaceSettings({
 }) {
   const [state, formAction] = useActionState(action, null)
   useEffect(() => {
-    if (state?.saved) toast(COPY.workspace.toastSaved)
+    if (state?.saved) toast(W.toastSaved)
   }, [state])
+  const lockedPair = readOnly || typeCountryLocked
   return (
-    <form action={formAction} className="stack">
-      <label className="f">
-        {COPY.workspace.nameLabel}
+    <form action={formAction} className="form">
+      <label className="f full">
+        {W.nameLabel}
         <input name="name" defaultValue={initial.name} minLength={2} maxLength={80} required readOnly={readOnly} />
       </label>
       <label className="f">
-        {COPY.workspace.typeLabel}
-        {typeCountryLocked && <small> {COPY.workspace.locked}</small>}
-        <select name="type" defaultValue={initial.type} disabled={readOnly || typeCountryLocked}>
-          <option value="Brand">{COPY.workspace.types.Brand}</option>
-          <option value="Agency">{COPY.workspace.types.Agency}</option>
+        {W.typeLabel}
+        <select name="type" defaultValue={initial.type} disabled={lockedPair}>
+          <option value="Brand">{W.types.Brand}</option>
+          <option value="Agency">{W.types.Agency}</option>
         </select>
       </label>
       <label className="f">
-        {COPY.workspace.countryLabel}
-        {typeCountryLocked && <small> {COPY.workspace.locked}</small>}
-        <select name="country" defaultValue={initial.country} disabled={readOnly || typeCountryLocked}>
+        {W.countryLabel}
+        <select name="country" defaultValue={initial.country} disabled={lockedPair}>
           {COUNTRIES.map((c) => (
             <option key={c} value={c}>{`${MARKETS[c].name} · ${MARKETS[c].currency}`}</option>
           ))}
         </select>
+        {!readOnly && typeCountryLocked && <small className="hint">{W.lockedHint}</small>}
       </label>
-      <label className="f">
-        {COPY.workspace.registrationLabel} <small>{COPY.workspace.registrationHint}</small>
+      <label className="f full">
+        {W.registrationLabel} <small>{W.registrationHint}</small>
         <input
           name="registrationNumber"
           defaultValue={initial.registrationNumber}
-          placeholder={COPY.workspace.registrationPlaceholder}
+          placeholder={W.registrationPlaceholder}
           maxLength={40}
           readOnly={readOnly}
         />
       </label>
-      {state?.error && state.error !== 'LOCKED' && (
-        <p role="alert">{state.error}</p>
-      )}
-      {state?.error === 'LOCKED' && <p role="alert">{COPY.workspace.locked}</p>}
-      {!readOnly && (
-        <div className="btns">
-          <SubmitButton variant="primary">{COPY.workspace.save}</SubmitButton>
+      {state?.error && state.error !== 'LOCKED' && <p role="alert" className="warn full">{state.error}</p>}
+      {state?.error === 'LOCKED' && <p role="alert" className="warn full">{W.locked}</p>}
+      {readOnly ? (
+        <p className="sub full">{W.ownerOnly}</p>
+      ) : (
+        <div className="btns full">
+          <SubmitButton variant="primary">{W.save}</SubmitButton>
         </div>
       )}
     </form>

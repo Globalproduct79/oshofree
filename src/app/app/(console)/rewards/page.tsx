@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Box, LinkButton } from '@/components/og'
+import { Box } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { db } from '@/lib/db'
 import { REWARDS } from '@/lib/copy-rewards'
@@ -9,8 +9,8 @@ import { can, requireMember } from '@/lib/permissions'
 import { chargedBy, LIST_ORDER } from '@/lib/reports'
 import { CapsForm, RewardsTable } from './RewardsClient'
 
-// Rewards (ADV §6): airtime per successful share per campaign, and the workspace caps. A reward is set when a
-// campaign is made, so the head's primary is New campaign (for those who can make one).
+// Rewards (ADV §6): airtime per successful share per campaign, and the workspace caps. The head carries no control
+// (the prototype's has none): a reward is set on the campaign, and the caps' Save is the form's.
 export default async function RewardsPage() {
   const { workspace: ws, role } = await requireMember('view')
   const editable = can(role, 'rewards')
@@ -35,13 +35,6 @@ export default async function RewardsPage() {
         crumb={[{ label: ws.name }, { label: REWARDS.growth }, { label: REWARDS.crumb }]}
         title={REWARDS.title}
         lead={REWARDS.lead}
-        actions={
-          canCreate && (
-            <LinkButton variant="primary" href="/app/campaigns/new">
-              {REWARDS.newCampaign}
-            </LinkButton>
-          )
-        }
       />
       <div className="two">
         <Box title={REWARDS.perCampaign.title} sub={REWARDS.perCampaign.sub}>

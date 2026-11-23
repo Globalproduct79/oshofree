@@ -1,4 +1,4 @@
-import { AlertBox, Box, KVGrid, LinkButton, MetricCard } from '@/components/og'
+import { AlertBox, Box, KVGrid, MetricCard } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { MONEY, periodLabel } from '@/lib/copy-money'
 import { SHELL } from '@/lib/copy-shell'
@@ -51,7 +51,6 @@ export default async function BillingPage({ searchParams }: { searchParams?: Pro
         crumb={[{ label: ws.name }, { label: SHELL.groups.money }, { label: B.title }]}
         title={B.title}
         lead={B.lead}
-        actions={<LinkButton variant="ghost" href="/app/invoices">{B.invoicesAction}</LinkButton>}
       />
       <div className="mgrid m4">
         <MetricCard title={B.limitTitle} value={usd(c.limitCents)} sub={B.limitSub} fill={100} />

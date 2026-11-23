@@ -135,12 +135,12 @@ test('Owner: signs up, is approved, and invites a Manager from People', async ()
     await owner.keyboard.press('Escape')
   })
 
-  await test.step('Workspace shows the company approved; its head leads on to People, where the owner is alone', async () => {
+  await test.step('Workspace shows the company approved; People shows the owner alone', async () => {
     await sideLink(owner, SHELL.nav.workspace).click()
     await owner.waitForURL((url) => url.pathname === '/app/workspace')
     await expect(owner.getByRole('heading', { name: COPY.workspace.title, exact: true })).toBeVisible()
-    await expect(box(owner, COPY.workspace.statusBox).getByText(COPY.status.approved, { exact: true })).toBeVisible()
-    await owner.locator('.head').getByRole('link', { name: SHELL.nav.people, exact: true }).click()
+    await expect(owner.locator('.ident').getByText(COPY.status.approved, { exact: true })).toBeVisible()
+    await sideLink(owner, SHELL.nav.people).click()
     await owner.waitForURL((url) => url.pathname === '/app/people')
     await expect(owner.getByRole('heading', { name: PEOPLE.title, exact: true })).toBeVisible()
     const team = box(owner, PEOPLE.members).getByRole('listitem')

@@ -120,12 +120,13 @@ describe('status box and client brands', () => {
     ])
   })
 
-  it('the page renders the Status box; only an agency gets Client workspaces', async () => {
+  it('the page renders the identity line and facts; only an agency gets Client workspaces', async () => {
     await setup('Owner')
     const brand = renderToStaticMarkup(await WorkspacePage())
-    expect(brand).toContain('Status')
+    expect(brand).toContain('class="ident"')
+    expect(brand).toContain('Credit limit')
     expect(brand).toContain('Phoenix')
-    expect(brand).toContain('Ask Global to change this.')
+    expect(brand).toContain('Set when the workspace was created. Ask Global to change this.')
     expect(brand).not.toContain('Client workspaces')
   })
 
@@ -134,7 +135,7 @@ describe('status box and client brands', () => {
     await mkCampaign(ws.id, 'Zed')
     const html = renderToStaticMarkup(await WorkspacePage())
     expect(html).toContain('Client workspaces')
-    expect(html).toContain('Zed · 1 campaign<')
+    expect(html).toMatch(/<div class="c"><span>Zed<\/span><small>1 campaign<\/small><\/div>/)
     expect(html).toContain('/app/campaigns/new?brand=&amp;focus=brand')
   })
 })

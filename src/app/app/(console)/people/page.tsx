@@ -9,9 +9,9 @@ import { InvitesList } from './InvitesList'
 import { RolesBox } from './RolesBox'
 import { TeamList } from './TeamList'
 
-// People (ADV §9): the members, the invites still open and what each role can do. Inviting has its own page,
-// opened from the head; only Owners and Global see it. No invite's link is sent to this page: Resend hands a new
-// one to whoever clicked it.
+// People (ADV §9): the members (with their count), the invites still open and what each role can do. Inviting has
+// its own page, opened from the head; only Owners and Global see it. No invite's link is sent to this page: Resend
+// hands a new one to whoever clicked it.
 export default async function PeoplePage() {
   const { user, workspace, role } = await requireMember('view')
   const [people, open] = await Promise.all([members(workspace.id), openInvites(workspace.id)])
@@ -32,10 +32,10 @@ export default async function PeoplePage() {
       />
       <div className="two">
         <div>
-          <Box title={PEOPLE.members}>
+          <Box title={PEOPLE.members} count={people.length}>
             <TeamList canManage={canManage} members={people} meId={user.id} />
           </Box>
-          <Box title={PEOPLE.openInvites}>
+          <Box title={PEOPLE.openInvites} count={open.length}>
             <InvitesList canManage={canManage} invites={inviteViews(open, workspace.country)} empty={PEOPLE.noOpenInvites} />
           </Box>
         </div>

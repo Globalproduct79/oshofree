@@ -115,7 +115,8 @@ const NAV: Record<Role, { newCampaign: boolean; platform: boolean }> = {
   Owner: { newCampaign: Y, platform: N },
   Manager: { newCampaign: Y, platform: N },
   Viewer: { newCampaign: N, platform: N },
-  Global: { newCampaign: Y, platform: Y },
+  // Inside a workspace Global gets the workspace's own sidebar; Platform is reached from the banner or the switcher.
+  Global: { newCampaign: Y, platform: N },
 }
 
 // ---- The head primaries (and Workspace's Save, the form's own primary) ----

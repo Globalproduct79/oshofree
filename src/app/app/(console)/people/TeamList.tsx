@@ -11,7 +11,8 @@ import type { MemberView } from '@/lib/invitations'
 import { changeRoleAction, removeMemberAction } from './actions'
 
 // Every member: initials, name (and "you"), email and role. Those who manage people get the role select and
-// Remove; the last Owner can be neither demoted nor removed.
+// Remove; the last Owner can be neither demoted nor removed, so their select is locked (its title says why) and
+// there is no Remove to press.
 export function TeamList({ canManage, members, meId }: { canManage: boolean; members: MemberView[]; meId: string }) {
   const router = useRouter()
   const [busy, start] = useTransition()
@@ -42,6 +43,7 @@ export function TeamList({ canManage, members, meId }: { canManage: boolean; mem
           <div className="ctl">
             {canManage ? (
               <select
+                className="sel"
                 aria-label={PEOPLE.roleFor(m.name)}
                 value={m.role}
                 disabled={busy || m.isLastOwner}
@@ -55,8 +57,8 @@ export function TeamList({ canManage, members, meId }: { canManage: boolean; mem
             ) : (
               <span className="tagp">{m.role}</span>
             )}
-            {canManage && (
-              <Button variant="ghost" size="s" disabled={busy || m.isLastOwner} onClick={() => remove(m.userId)}>
+            {canManage && !m.isLastOwner && (
+              <Button variant="ghost" size="s" disabled={busy} onClick={() => remove(m.userId)}>
                 {PEOPLE.remove}
               </Button>
             )}

@@ -64,7 +64,7 @@ const text = (markup: string) =>
 beforeEach(() => vi.clearAllMocks())
 
 describe('workspace layout', () => {
-  it('tells Global it is acting inside the workspace, links back to Platform and appends PLATFORM', async () => {
+  it('tells Global it is acting inside the workspace and links back to Platform; the sidebar is that of the workspace, with no PLATFORM', async () => {
     const admin = await mkUser('admin@x.test', 'Ada Admin', true)
     const owner = await mkUser('tunde@x.test', 'Tunde Okafor')
     const ws = await mkWs('Kola Bright')
@@ -74,8 +74,8 @@ describe('workspace layout', () => {
     const out = await html(ConsoleLayout)
     expect(text(out)).toContain('Platform — you are acting as Global inside Kola Bright.')
     expect(text(out)).toContain('Back to Platform')
-    expect(out).toContain('href="/admin/review"')
-    expect(out).toContain('class="grp">Platform<')
+    expect(out).not.toContain('href="/admin/review"')
+    expect(out).not.toContain('class="grp">Platform<')
     expect(out).toMatch(/class="av"[^>]*>GL</)
     expect(out).toContain('page body')
   })

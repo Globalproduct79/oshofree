@@ -148,14 +148,14 @@ const PAGES: Record<string, PageCase> = {
   },
   '/app/campaigns/[id]/edit': { as: 'owner', render: (w) => render(EditOfferPage(params(w.campaignId))), head: { controls: ['Campaigns'] } },
   '/app/sharing': { as: 'owner', render: () => render(SharingPage({})), head: { controls: [] } },
-  '/app/rewards': { as: 'owner', render: () => render(RewardsPage()), head: { controls: ['New campaign'], primary: 'New campaign' } },
-  '/app/billing': { as: 'owner', render: () => render(BillingPage(search)), head: { controls: ['Invoices'] } },
-  '/app/invoices': { as: 'owner', render: () => render(InvoicesPage()), head: { controls: ['Billing & credit'] } },
+  '/app/rewards': { as: 'owner', render: () => render(RewardsPage()), head: { controls: [] } },
+  '/app/billing': { as: 'owner', render: () => render(BillingPage(search)), head: { controls: [] } },
+  '/app/invoices': { as: 'owner', render: () => render(InvoicesPage()), head: { controls: [] } },
   '/app/invoices/[id]/print': { as: 'owner', render: (w) => render(InvoicePrintPage(params(w.invoiceId))), head: { controls: ['Print'] } },
   '/app/people': { as: 'owner', render: () => render(PeoplePage()), head: { controls: ['Invite user'], primary: 'Invite user' } },
   '/app/people/invite': { as: 'owner', render: () => render(InvitePage()), head: { controls: ['People'] } },
-  '/app/workspace': { as: 'owner', render: () => render(WorkspacePage()), head: { controls: ['People'] } },
-  '/app/notifications': { as: 'owner', render: () => render(NotificationsPage()), head: { controls: ['Home'] } },
+  '/app/workspace': { as: 'owner', render: () => render(WorkspacePage()), head: { controls: [] } },
+  '/app/notifications': { as: 'owner', render: () => render(NotificationsPage()), head: { controls: [] } },
   // Prompt 10: someone with no workspace (a new sign-up, a member removed from their only one) can sign out from here.
   '/app/new-workspace': { as: 'newcomer', render: () => render(NewWorkspacePage()), head: { controls: ['Sign out'] } },
   '/admin/review': { as: 'admin', render: () => render(ReviewPage()), head: { controls: [] } },
@@ -220,14 +220,14 @@ describe('page heads', () => {
     expect(head(await render(HomePage(search))).labels).toEqual([])
     expect(head(await render(RewardsPage())).labels).toEqual([])
     expect(head(await render(PeoplePage())).labels).toEqual([])
-    expect(head(await render(NotificationsPage())).labels).toEqual(['Home'])
+    expect(head(await render(NotificationsPage())).labels).toEqual([])
   })
 
   it('gives a Manager New campaign but not Invite user', async () => {
     const w = await world()
     signIn(await member(w, 'Manager'), w.ws.id)
     expect(head(await render(HomePage(search))).primaries).toEqual(['+ New campaign'])
-    expect(head(await render(RewardsPage())).primaries).toEqual(['New campaign'])
+    expect(head(await render(RewardsPage())).primaries).toEqual([])
     expect(head(await render(PeoplePage())).labels).toEqual([])
   })
 })
@@ -350,7 +350,8 @@ describe('empty states', () => {
     expect(sharing).toMatch(/<a [^>]*href="\/app\/campaigns\/new"[^>]*>New campaign<\/a>/)
     const rewards = await render(RewardsPage())
     expect(text(rewards)).toContain('No rewards yet. Set a share reward when you create a campaign.')
-    expect(rewards.match(/href="\/app\/campaigns\/new"/g)?.length).toBe(2)
+    // The empty table's link only: the head carries no New campaign (the prototype's has none).
+    expect(rewards.match(/href="\/app\/campaigns\/new"/g)?.length).toBe(1)
   })
 
   it('Sharing and Rewards with a live campaign show it, not the empty line', async () => {
@@ -385,7 +386,7 @@ describe('empty states', () => {
     })
     signIn(w.owner, w.ws.id)
     const t = text(await render(PeoplePage()))
-    expect(t).toContain(`Open invites P p@x.test Viewer · invited by Tunde Okafor · expires ${fd(inv.expiresAt, 'Africa/Lagos')} Resend Revoke`)
+    expect(t).toContain(`Open invites 1 P p@x.test Viewer · invited by Tunde Okafor · expires ${fd(inv.expiresAt, 'Africa/Lagos')} Resend Revoke`)
     expect(t).not.toContain('No open invites.')
   })
 })

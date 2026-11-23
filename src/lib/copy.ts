@@ -5,6 +5,12 @@ export const COPY = {
   auth: {
     signInTitle: 'Sign in to OshoFree',
     signUpTitle: 'Create your OshoFree account',
+    // Ours (17 Nov): the line under the brand, and the leads under the two titles.
+    tagline: 'Run offers on Phoenix and see every share.',
+    signInLead: 'Your campaigns, sharing and billing, where you left them.',
+    // Says nothing of a workspace: an invitee joins one, a new advertiser makes one after this.
+    signUpLead: 'Your name, a work email and a password.',
+    passwordHint: '— at least 8 characters',
     badCredentials: "That email and password don't match.",
     emailTaken: 'An account with that email already exists. Sign in instead.',
     invalidSignUp: 'Enter your name, a valid work email and a password of at least 8 characters.',
@@ -40,6 +46,11 @@ export const COPY = {
     save: 'Save',
     toastSaved: 'Saved',
     locked: 'Ask Global to change this.',
+    // Under the type and country once the workspace is approved (ours, 17 Nov).
+    lockedHint: 'Set when the workspace was created. Ask Global to change this.',
+    detailsTitle: 'Details',
+    registration: 'Registration',
+    notGiven: 'Not given',
     countryChangeNote: 'A billing-country change takes effect at the next invoice.',
     statusBox: 'Status',
     approval: 'Approval',

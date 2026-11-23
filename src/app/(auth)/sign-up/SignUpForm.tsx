@@ -3,10 +3,6 @@
 import Link from 'next/link'
 import { useActionState } from 'react'
 import { SubmitButton } from '@/components/og/SubmitButton'
-import { buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { COPY } from '@/lib/copy'
 import type { InviteContext } from '@/lib/invite-join'
 import { InviteLine } from '../InviteLine'
@@ -16,31 +12,30 @@ import { signUpAction } from './actions'
 export function SignUpForm({ invite }: { invite: InviteContext | null }) {
   const [error, action] = useActionState(signUpAction, null)
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle>{COPY.auth.signUpTitle}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form action={action} className="flex flex-col gap-4">
-          {invite && <InviteLine>{invite.joining}</InviteLine>}
-          <input type="hidden" name="invite" value={invite?.token ?? ''} />
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="name">{COPY.auth.nameLabel}</Label>
-            <Input id="name" name="name" autoComplete="name" required />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email">{COPY.auth.emailLabel}</Label>
-            <Input id="email" name="email" type="email" autoComplete="email" defaultValue={invite?.email} required />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password">{COPY.auth.passwordLabel}</Label>
-            <Input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />
-          </div>
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          <SubmitButton plain className={buttonVariants()}>{COPY.auth.signUpAction}</SubmitButton>
-          <Link href={invite ? `/sign-in?invite=${invite.token}` : '/sign-in'} className="text-sm text-muted-foreground underline">{COPY.auth.toSignIn}</Link>
-        </form>
-      </CardContent>
-    </Card>
+    <div className="box">
+      <h1>{COPY.auth.signUpTitle}</h1>
+      <p className="lead">{COPY.auth.signUpLead}</p>
+      <form action={action} className="stack">
+        {invite && <InviteLine>{invite.joining}</InviteLine>}
+        <input type="hidden" name="invite" value={invite?.token ?? ''} />
+        <label className="f">
+          {COPY.auth.nameLabel}
+          <input id="name" name="name" autoComplete="name" required />
+        </label>
+        <label className="f">
+          {COPY.auth.emailLabel}
+          <input id="email" name="email" type="email" autoComplete="email" defaultValue={invite?.email} required />
+        </label>
+        <label className="f">
+          {COPY.auth.passwordLabel} <small>{COPY.auth.passwordHint}</small>
+          <input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />
+        </label>
+        {error && <p role="alert" className="warn">{error}</p>}
+        <SubmitButton variant="primary" className="w">{COPY.auth.signUpAction}</SubmitButton>
+      </form>
+      <p className="alt">
+        <Link href={invite ? `/sign-in?invite=${invite.token}` : '/sign-in'}>{COPY.auth.toSignIn}</Link>
+      </p>
+    </div>
   )
 }

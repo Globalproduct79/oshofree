@@ -71,7 +71,6 @@ describe('Billing page', () => {
     const c = await creditSummary(ws.id)
     const { text: t } = await render()
     expect(t).toContain('Billing & credit')
-    expect(t).toContain('Invoices')
     expect(t).toContain('Credit limit $1,500 set by Global')
     expect(t).toContain(`In use ${usd(c.inUseCents)} open invoices + running campaigns`)
     expect(t).toContain(`Available ${usd(c.availableCents)} for new campaigns`)

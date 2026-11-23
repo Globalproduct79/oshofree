@@ -54,17 +54,11 @@ describe('navFor', () => {
     }
   })
 
-  it('appends PLATFORM for Global inside a workspace', () => {
+  it("gives Global inside a workspace that workspace's own sidebar, with no PLATFORM group", () => {
     const groups = navFor({ role: 'Global', inWorkspace: true, counts: zero })
-    expect(labels(groups)).toEqual(['Campaigns', 'Growth', 'Money', 'Organisation', 'Platform'])
-    expect(groups[4].items.map((i) => [i.label, i.href])).toEqual([
-      ['Review', '/admin/review'],
-      ['Advertisers', '/admin/advertisers'],
-      ['Rates', '/admin/rates'],
-      ['Phoenix settlement', '/admin/settlement'],
-      ['Rewards ledger', '/admin/rewards'],
-      ['Phoenix API', '/admin/api'],
-    ])
+    expect(labels(groups)).toEqual(['Campaigns', 'Growth', 'Money', 'Organisation'])
+    expect(hrefs(groups).some((h) => h.startsWith('/admin'))).toBe(false)
+    expect(hrefs(groups)).toEqual(hrefs(navFor({ role: 'Owner', inWorkspace: true, counts: zero })))
   })
 
   it('gives Global in Platform mode the PLATFORM group only', () => {
@@ -72,15 +66,18 @@ describe('navFor', () => {
   })
 
   it('shows counts above 0 on Campaigns, Invoices and Review only, and hides them at 0', () => {
-    const count = (counts: typeof zero) =>
+    // Campaigns and Invoices count inside a workspace; Review counts in Platform mode (the only place it is shown).
+    const count = (counts: typeof zero, inWorkspace: boolean) =>
       Object.fromEntries(
-        navFor({ role: 'Global', inWorkspace: true, counts })
+        navFor({ role: 'Global', inWorkspace, counts })
           .flatMap((g) => g.items)
           .filter((i) => i.count !== undefined)
           .map((i) => [i.label, i.count]),
       )
-    expect(count({ campaigns: 2, invoices: 1, review: 3 })).toEqual({ Campaigns: 2, Invoices: 1, Review: 3 })
-    expect(count(zero)).toEqual({})
+    expect(count({ campaigns: 2, invoices: 1, review: 3 }, true)).toEqual({ Campaigns: 2, Invoices: 1 })
+    expect(count({ campaigns: 2, invoices: 1, review: 3 }, false)).toEqual({ Review: 3 })
+    expect(count(zero, true)).toEqual({})
+    expect(count(zero, false)).toEqual({})
   })
 
   it('gives every item an icon', () => {

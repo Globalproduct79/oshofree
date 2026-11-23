@@ -26,7 +26,6 @@ export const MONEY = {
   billing: {
     title: 'Billing & credit',
     lead: "You are invoiced monthly in local currency. Your credit limit is what you can have running at once; campaigns pause when it's reached.",
-    invoicesAction: 'Invoices',
     limitTitle: 'Credit limit',
     limitSub: 'set by Global',
     inUseTitle: 'In use',

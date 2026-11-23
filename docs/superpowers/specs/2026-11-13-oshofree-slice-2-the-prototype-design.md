@@ -106,8 +106,9 @@ everything" and "build exactly like this"; everything else was decided here.
   a Review › "Live now" card (which opens the campaign inside its own workspace, fixing D1).
   Inside, Global has every Owner power. The banner becomes "Platform — you are acting as
   Global inside {workspace}." with a "Back to Platform" link; the avatar stays "GL"; the bell
-  shows Global's notifications, not the workspace's. The PLATFORM nav group is appended to
-  the workspace nav only for Global.
+  shows Global's notifications, not the workspace's. Inside a workspace the sidebar is that
+  workspace's own (the owner's decision of 17 Nov supersedes the prototype's "advertiser nav
+  plus PLATFORM"): the banner's "Back to Platform" and the switcher lead back to Platform.
 - Advertisers never see the PLATFORM group or any Platform page (`requireAdmin()` on every
   Platform page and action, as in slice 1).
 - Every Global action writes an `AuditEvent` (who, what, target, before/after, when):

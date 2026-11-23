@@ -20,7 +20,10 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev:test',
     url: 'http://localhost:3101/sign-in',
-    reuseExistingServer: false,
-    timeout: 120_000,
+    // Locally a test server already running on 3101 (`npm run dev:test`) is reused — the script has reseeded the
+    // database it reads either way; in CI the server is always Playwright's own.
+    reuseExistingServer: !process.env.CI,
+    // Next dev compiles /sign-in on the first request; on a loaded machine that alone has taken over two minutes.
+    timeout: 300_000,
   },
 })
