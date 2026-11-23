@@ -40,9 +40,10 @@ export const usd = (cents: number): string => {
 
 export const usdFromDollars = (n: number): string => usd(n * 100)
 
-// An amount already in the market's currency, whole units: 50 → '₦50', 1000 → '₦1,000', 'KSh10'.
+// An amount already in the market's currency, whole units: 50 → '₦50', 1000 → '₦1,000', 'KSh10'. The magnitude is
+// rounded (half away from zero), as usd rounds cents, so a charge and the same amount owed print the same digits.
 export const localAmount = (whole: number, country: Country): string => {
-  const n = Math.round(whole)
+  const n = Math.round(Math.abs(whole)) * Math.sign(whole)
   return money(MARKETS[country].symbol, n === 0 ? 0 : n)
 }
 

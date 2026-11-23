@@ -31,6 +31,13 @@ describe('prototype formatting', () => {
     expect(localAmount(1000, 'KE')).toBe('KSh1,000')
     expect(localAmount(-49.6, 'NG')).toBe('−₦50')
     expect(localAmount(-0.4, 'NG')).toBe('₦0')
+    // A tie rounds its magnitude, as usd does: an odd-cent Nigerian line (3¢ × 1550 / 100 = ₦46.5) reads ₦47 whichever
+    // sign it carries, so Billing's −₦47 and the invoice's ₦47 agree.
+    expect(loc(3, 'NG', 1550)).toBe('₦47')
+    expect(loc(-3, 'NG', 1550)).toBe('−₦47')
+    expect(localAmount(-46.5, 'NG')).toBe('−₦47')
+    expect(loc(-12345, 'NG', 1550)).toBe('−₦191,348')
+    expect(loc(12345, 'NG', 1550)).toBe('₦191,348')
   })
   it('loc converts and rounds in local currency', () => {
     expect(loc(30000, 'NG', 1550)).toBe('₦465,000')
