@@ -172,10 +172,15 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
 .cc .cv video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .q .cv video{width:100%;height:100%;object-fit:cover;border-radius:9px}
 
-/* Printing an invoice: the page only, without the shell or the buttons. */
+/* Printing an invoice: the page only, without the shell (sidebar, top bar, Global's or a pending workspace's banner,
+   breadcrumb) or the buttons, in one full-width column at any print width, its tables filling their box (narrow
+   screens otherwise turn a table into a scrolling block as wide as its content). */
 @media print {
-  .side, .top, .crumb, .no-print { display: none !important; }
+  .side, .top, .banner, .crumb, .no-print { display: none !important; }
+  .shell { display: block !important; }
   .main { margin: 0; }
+  .wrap { max-width: none; }
+  .box table { display: table !important; }
 }
 .palette input{width:100%;margin-bottom:8px}.palette .h{font-weight:700;color:var(--ink3);font-size:11px;text-transform:uppercase;letter-spacing:.1em;padding:8px 12px 4px}.palette button{display:block;width:100%;text-align:left;border:0;background:none;padding:10px 12px;border-radius:9px;font-size:13px;color:inherit;cursor:pointer}.palette button.on,.palette button:hover{background:var(--bg)}.palette button small{display:block;color:var(--ink3);font-size:11px}.palette .sub{padding:10px 12px;margin:0}
 /* Review (GLB §2.1): a New advertisers row has no cover. At phone width a queue row keeps its cover beside the

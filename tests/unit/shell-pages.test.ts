@@ -1,10 +1,12 @@
 import { createElement, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { signInAction } from '@/app/(auth)/sign-in/actions'
 import { signUpAction } from '@/app/(auth)/sign-up/actions'
 import AdminLayout from '@/app/admin/layout'
 import ConsoleLayout from '@/app/app/(console)/layout'
+import InvoicePrintPage from '@/app/app/(console)/invoices/[id]/print/page'
 import { markReadAction } from '@/app/app/(console)/notifications/actions'
 import { signOutAction, switchToPlatformAction, switchWorkspaceAction } from '@/app/app/(console)/switch/actions'
 import { Modal } from '@/components/shell/Modal'
@@ -78,6 +80,29 @@ describe('workspace layout', () => {
     expect(out).not.toContain('class="grp">Platform<')
     expect(out).toMatch(/class="av"[^>]*>GL</)
     expect(out).toContain('page body')
+  })
+
+  it("prints an invoice as Global inside the workspace without the shell: sidebar, top bar, banner, breadcrumb and Print all hide, in one full-width column", async () => {
+    const admin = await mkUser('admin@x.test', 'Ada Admin', true)
+    const ws = await mkWs('Kola Bright')
+    const inv = await db.invoice.create({
+      data: {
+        workspaceId: ws.id, number: 'INV-0052', period: new Date('2026-09-30T23:00:00Z'), amountCents: 1003, status: 'due', fxPerUsd: 1550,
+        country: 'NG', issuedAt: new Date('2026-11-01T00:00:00Z'), dueAt: new Date('2026-11-15T00:00:00Z'),
+      },
+    })
+    signIn(admin, ws.id)
+    const out = renderToStaticMarkup(await ConsoleLayout({ children: await InvoicePrintPage({ params: Promise.resolve({ id: inv.id }) }) }))
+    // The shell that is on screen for Global inside a workspace.
+    for (const cls of ['shell', 'side', 'top', 'banner', 'crumb']) expect(out).toMatch(new RegExp(`class="${cls}[" ]`))
+    expect(out).toContain('Back to Platform')
+
+    const print = readFileSync('src/styles/console.css', 'utf8').match(/@media print \{([^@]*)\n\}/)?.[1] ?? ''
+    const hidden = print.match(/([^{}]+)\{ display: none !important; \}/)?.[1].split(',').map((s) => s.trim()) ?? []
+    expect(hidden).toEqual(expect.arrayContaining(['.side', '.top', '.banner', '.crumb', '.no-print']))
+    // The layout's sidebar column goes with the sidebar, and a table fills its box even where narrow screens scroll it.
+    expect(print).toContain('.shell { display: block !important; }')
+    expect(print).toContain('.box table { display: table !important; }')
   })
 
   it('shows a Viewer no PLATFORM group and no Platform link', async () => {

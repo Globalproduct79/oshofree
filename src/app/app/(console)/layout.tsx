@@ -30,7 +30,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
         ? 'declined'
         : null
   return (
-    <div className="min-h-screen min-[981px]:grid min-[981px]:grid-cols-[var(--sb)_minmax(0,1fr)]">
+    <div className="shell min-h-screen min-[981px]:grid min-[981px]:grid-cols-[var(--sb)_minmax(0,1fr)]">
       <Sidebar
         brand={{
           initials: initials(workspace.name),
