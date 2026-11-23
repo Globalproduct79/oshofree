@@ -1,11 +1,11 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
   MAX_IMAGE_BYTES, MAX_SPLASH_BYTES, MAX_UPLOAD_BODY_BYTES, MAX_VIDEO_BYTES, UPLOAD_CAP, uploadKind, VIDEO_KEY_RE,
 } from '@/lib/image-rules'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { creativeUrl, imageUrl, putCreative, putImage } from '@/lib/storage'
+import { creativeMissing, creativeUrl, deleteCreative, imageUrl, putCreative, putImage } from '@/lib/storage'
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
@@ -148,5 +148,29 @@ describe('caps by kind', () => {
 
   it('putImage keeps the 2 MB card cap', async () => {
     await expect(putImage(new File([png(MAX_IMAGE_BYTES + 1)], 'c.png', { type: 'image/png' }))).rejects.toBe('BAD_IMAGE')
+  })
+})
+
+describe('a stored file, gone', () => {
+  it('deleteCreative removes the file; a file already gone, or a key that is not ours, is left alone', async () => {
+    const { key } = await putCreative(new File([png(1024)], 'a.png', { type: 'image/png' }))
+    await deleteCreative(key)
+    expect(await stat(path.join(dir, key)).catch(() => null)).toBeNull()
+    await expect(deleteCreative(key)).resolves.toBeUndefined()
+    await writeFile(path.join(dir, 'keep.txt'), 'x')
+    await deleteCreative('keep.txt')
+    await deleteCreative('../keep.txt')
+    expect(await readFile(path.join(dir, 'keep.txt'), 'utf8')).toBe('x')
+  })
+
+  it('creativeMissing: a creative named but not stored; no creative is nothing missing', async () => {
+    const { key } = await putCreative(new File([png(1024)], 'a.png', { type: 'image/png' }))
+    expect(await creativeMissing({ creativeImageKey: key })).toBe(false)
+    expect(await creativeMissing({})).toBe(false)
+    expect(await creativeMissing({ creativeImageKey: null, creativeVideoKey: null })).toBe(false)
+    expect(await creativeMissing({ creativeVideoKey: '0f8fad5b-d9cb-469f-a165-70867728950e.mp4' })).toBe(true)
+    expect(await creativeMissing({ creativeImageKey: '../.env' })).toBe(true)
+    await deleteCreative(key)
+    expect(await creativeMissing({ creativeImageKey: key })).toBe(true)
   })
 })

@@ -21,7 +21,7 @@ import { PlacementFields } from './form/PlacementFields'
 import { formProblem, type FormStage } from './form/problem'
 import { ReviewStep } from './form/ReviewStep'
 import { TermsFields } from './form/TermsFields'
-import { pickCreative, switchPlacement } from './form/upload'
+import { pickCreative, SessionUploads, switchPlacement } from './form/upload'
 import { fits, offerInput, sameValues, toInput, type FormValues } from './form/values'
 
 export type FormMode =
@@ -71,6 +71,8 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
   // Which refused field is marked: one the person has left, or the one refused when they pressed (form/marks.ts).
   const [marks, setMarks] = useState<Marks>(NO_MARKS)
   const restored = useRef(false)
+  // The files uploaded here: deleted once the form lets go of them and its draft no longer names them, so a Replace leaves no file behind.
+  const [uploads] = useState(() => new SessionUploads())
   const sent = useRef(false)
   // The values as they are now, for an upload that resolves after the placement has changed.
   const latest = useRef(values)
@@ -112,9 +114,15 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
       if (pristine) clearDraft(workspace.id)
       else saveDraft(workspace.id, values)
       setHasDraft(!pristine)
+      // The draft no longer names a file the form let go of: it can be deleted now.
+      uploads.flush()
     }, AUTOSAVE_MS)
     return () => clearTimeout(t)
-  }, [isNew, values, defaults, workspace.id])
+  }, [isNew, values, defaults, workspace.id, uploads])
+  // Edit offer keeps no draft: a file it let go of is deleted at once.
+  useEffect(() => {
+    if (!isNew) uploads.flush()
+  }, [isNew, values, uploads])
 
   const update = (patch: Partial<FormValues>) => {
     setValues((v) => ({ ...v, ...patch }))
@@ -128,6 +136,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
   const choose = (placement: PlacementKey) => {
     const next = switchPlacement(values, placement)
     if (!next) return
+    uploads.letGo(values.creative, next.values.creative)
     setValues(next.values)
     if (uploading) droppedNote.current = next.gone ?? droppedNote.current
     else setCreativeStatus({ state: 'idle', note: next.gone ?? undefined })
@@ -140,7 +149,13 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     return pickCreative(file, {
       placement: () => latest.current.placement,
       status: setCreativeStatus,
-      chosen: (creative) => setValues((v) => (fits(v.placement, creative) ? { ...v, creative } : v)),
+      chosen: (creative) => {
+        uploads.add(creative)
+        // The creative it replaces (pickCreative has checked that the placement takes this one).
+        uploads.letGo(latest.current.creative, creative)
+        setValues((v) => (fits(v.placement, creative) ? { ...v, creative } : v))
+      },
+      unused: (creative) => uploads.drop(creative),
       local: (f) => {
         const url = URL.createObjectURL(f)
         return { url, revoke: () => URL.revokeObjectURL(url) }
@@ -149,11 +164,14 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     })
   }
   function removeCreative() {
+    uploads.letGo(values.creative)
     update({ creative: null })
     setCreativeStatus({ state: 'idle' })
   }
   function onStartOver() {
+    uploads.letGo(values.creative)
     setValues(startOver(workspace.id, defaults))
+    uploads.flush()
     setHasDraft(false)
     setNotice(null)
     setMarks(NO_MARKS)
@@ -171,6 +189,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
   // Kept in this browser now (it autosaves anyway) and waiting on Campaigns home as a card.
   function onSaveDraft() {
     saveDraft(workspace.id, values)
+    uploads.flush()
     toast(F.toasts.draftSaved)
     router.push(HOME)
   }

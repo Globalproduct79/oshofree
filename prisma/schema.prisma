@@ -614,3 +614,14 @@ model JobRun {
 
   @@unique([name, day])
 }
+
+// A creative file someone uploaded through the campaign form (slice 2, Prompt 2): who sent it, so that only they can
+// have it deleted once their form replaces or removes it. A plain user id, not a relation: removing the demo people
+// leaves these rows be. A file a campaign or a pending revision names is never deleted through it.
+model CreativeUpload {
+  key       String   @id
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}

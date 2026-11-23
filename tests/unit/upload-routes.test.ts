@@ -4,6 +4,9 @@ import path from 'node:path'
 import { MAX_IMAGE_BYTES, MAX_SPLASH_BYTES, MAX_VIDEO_BYTES, VIDEO_KEY_RE } from '@/lib/image-rules'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST } from '@/app/api/upload/route'
+import { DELETE } from '@/app/api/upload/[key]/route'
+import { db } from '@/lib/db'
+import { requireUser } from '@/lib/session'
 import { GET } from '@/app/uploads/[key]/route'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }))
@@ -158,5 +161,73 @@ describe('POST /api/upload then GET /uploads/[key]', () => {
     const whole = await get('bytes=0-')
     expect(whole.status).toBe(206)
     expect(whole.headers.get('content-range')).toBe('bytes 0-4095/4096')
+  })
+})
+
+describe('POST /api/upload: the server judges the bytes, not the name or the declared type', () => {
+  it('refuses a PNG renamed .mp4 (the browser declares it video/mp4), and stores nothing', async () => {
+    const res = await upload(new File([png()], 'clip.mp4', { type: 'video/mp4' }), 'video')
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'BAD_IMAGE' })
+    expect(await db.creativeUpload.count()).toBe(0)
+  })
+})
+
+describe('DELETE /api/upload/[key]: a file the form let go of', () => {
+  const as = (id: string) => vi.mocked(requireUser).mockResolvedValue({ id, email: '', name: '', isGlobalAdmin: false })
+  const remove = (key: string) => DELETE(new Request(`http://localhost/api/upload/${key}`, { method: 'DELETE' }), { params: Promise.resolve({ key }) })
+  async function uploaded(by = 'u1'): Promise<string> {
+    as(by)
+    const res = await upload(new File([png()], 'card.png', { type: 'image/png' }))
+    return (await res.json()).key
+  }
+  async function campaignNaming(data: { creativeImageKey?: string; creativeVideoKey?: string }) {
+    const ws = await db.workspace.create({ data: { name: 'Kola Bright', type: 'Brand', country: 'NG' } })
+    return db.campaign.create({
+      data: {
+        workspaceId: ws.id, name: 'n', brand: 'Kola Bright', country: 'NG', category: 'Food & drink', headline: 'h', description: 'd',
+        placement: 'card', redeemMethod: 'code', budgetUsd: 100, startsAt: new Date(), endsAt: new Date(), shareRewardLabel: 'r', ...data,
+      },
+    })
+  }
+
+  afterEach(() => as('u1'))
+
+  it('records who uploaded each file', async () => {
+    const key = await uploaded('u7')
+    expect(await db.creativeUpload.findUnique({ where: { key } })).toMatchObject({ key, userId: 'u7' })
+  })
+
+  it('deletes the file and its record for the person who uploaded it; it is no longer served', async () => {
+    const key = await uploaded()
+    expect((await remove(key)).status).toBe(204)
+    expect((await fetchImage(key)).status).toBe(404)
+    expect(await db.creativeUpload.count()).toBe(0)
+    // Gone already: nothing left to delete.
+    expect((await remove(key)).status).toBe(404)
+  })
+
+  it("is 404 for someone else's upload, a file nobody recorded (the seed's), or a key that is not ours; each file stays", async () => {
+    const key = await uploaded('u1')
+    as('u2')
+    expect((await remove(key)).status).toBe(404)
+    await writeFile(path.join(dir, '5eed0000-0000-4000-8000-000000000001.jpg'), png())
+    for (const k of ['5eed0000-0000-4000-8000-000000000001.jpg', '../.env', 'secret.txt']) expect((await remove(k)).status).toBe(404)
+    expect((await fetchImage(key)).status).toBe(200)
+    expect((await fetchImage('5eed0000-0000-4000-8000-000000000001.jpg')).status).toBe(200)
+  })
+
+  it('keeps a file a campaign runs, or a revision names: 409', async () => {
+    const image = await uploaded()
+    await campaignNaming({ creativeImageKey: image })
+    expect((await remove(image)).status).toBe(409)
+    expect((await fetchImage(image)).status).toBe(200)
+
+    const revised = await uploaded()
+    const c = await campaignNaming({})
+    await db.campaignRevision.create({ data: { campaignId: c.id, data: { headline: 'h', creativeImageKey: revised } } })
+    expect((await remove(revised)).status).toBe(409)
+    expect((await fetchImage(revised)).status).toBe(200)
+    expect(await db.creativeUpload.count()).toBe(2)
   })
 })

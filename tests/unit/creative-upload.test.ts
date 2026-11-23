@@ -1,7 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { checkCreativeFile, clearedNote, pickCreative, switchPlacement, uploadCreative } from '@/components/campaign/form/upload'
+import {
+  checkCreativeFile, clearedNote, pickCreative, SessionUploads, switchPlacement, uploadCreative,
+} from '@/components/campaign/form/upload'
 import { newCampaignDefaults, type FormValues } from '@/components/campaign/form/values'
 import { CreativePicker, type PickerStatus } from '@/components/og'
 import { MAX_IMAGE_BYTES, MAX_SPLASH_BYTES, MAX_VIDEO_BYTES } from '@/lib/image-rules'
@@ -186,14 +188,16 @@ describe('pickCreative: the picker states one pick goes through', () => {
     const statuses: PickerStatus[] = []
     const chosen: unknown[] = []
     const revoke = vi.fn()
+    const unused: unknown[] = []
     const done = pickCreative(f, {
       placement,
       status: (s) => statuses.push(s),
       chosen: (c) => chosen.push(c),
+      unused: (c) => unused.push(c),
       local: () => ({ url: 'blob:local', revoke }),
       dropped,
     })
-    return { statuses, chosen, revoke, done }
+    return { statuses, chosen, unused, revoke, done }
   }
 
   it('uploading with the local preview and progress, then the stored creative is chosen and the picker rests', async () => {
@@ -244,6 +248,8 @@ describe('pickCreative: the picker states one pick goes through', () => {
     await r.done
     expect(r.chosen).toEqual([])
     expect(r.statuses.at(-1)).toEqual({ state: 'error', message: "The creative doesn't match the placement.", retry: false })
+    // Stored but never chosen: handed back so the form can have it deleted.
+    expect(r.unused).toEqual([{ ...stored, bytes: 1024 }])
   })
 
   describe('a placement switch while a file uploads', () => {
@@ -268,6 +274,45 @@ describe('pickCreative: the picker states one pick goes through', () => {
       await r.done
       expect(r.statuses.at(-1)).toEqual({ state: 'error', message: "The upload didn't finish. Try again.", retry: true })
     })
+  })
+})
+
+describe('SessionUploads: the files the form uploaded, deleted once it lets go of them', () => {
+  const c = (key: string) => ({ key, kind: 'image' as const, url: `/uploads/${key}` })
+  const setup = () => {
+    const sent: string[] = []
+    return { sent, uploads: new SessionUploads((key) => sent.push(key)) }
+  }
+
+  it('a replaced or removed upload is deleted on the next flush (once the draft no longer names it), and only once', () => {
+    const { sent, uploads } = setup()
+    uploads.add(c('a.png'))
+    uploads.add(c('b.png'))
+    uploads.letGo(c('a.png'), c('b.png'))
+    expect(sent).toEqual([])
+    uploads.flush()
+    expect(sent).toEqual(['a.png'])
+    uploads.letGo(c('b.png'))
+    uploads.letGo(c('b.png'))
+    uploads.flush()
+    uploads.flush()
+    expect(sent).toEqual(['a.png', 'b.png'])
+  })
+
+  it("never deletes a creative the form opened with (Edit offer's, a restored draft's), or the one it still holds", () => {
+    const { sent, uploads } = setup()
+    uploads.letGo(c('campaign.png'), c('new.png'))
+    uploads.add(c('new.png'))
+    uploads.letGo(c('new.png'), c('new.png'))
+    uploads.letGo(null)
+    uploads.flush()
+    expect(sent).toEqual([])
+  })
+
+  it('a file the form never held goes at once', () => {
+    const { sent, uploads } = setup()
+    uploads.drop(c('landed-late.png'))
+    expect(sent).toEqual(['landed-late.png'])
   })
 })
 

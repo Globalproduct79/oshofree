@@ -124,6 +124,8 @@ export type PickRun = {
   chosen: (c: Creative) => void
   // A local URL for the file's own preview while it uploads (an object URL in the browser), revoked after.
   local?: (file: File) => { url: string; revoke: () => void }
+  // An uploaded file the placement could no longer take when it landed: never chosen, so the form can let it go.
+  unused?: (c: Creative) => void
   // Why a placement switch took the creative off while this file uploaded (switchPlacement's `gone`), read when the
   // upload fails: the zone is empty then, and the failure alone would not say where the old creative went.
   dropped?: () => string | null
@@ -147,7 +149,10 @@ export async function pickCreative(file: File, run: PickRun): Promise<void> {
   }
   const said = (message: string) => [message, run.dropped?.()].filter(Boolean).join(' ')
   if (!res.ok) return run.status({ state: 'error', message: said(res.message), retry: res.retry })
-  if (!fits(run.placement(), res.creative)) return run.status({ state: 'error', message: said(F.validation.creativeMismatch), retry: false })
+  if (!fits(run.placement(), res.creative)) {
+    run.unused?.(res.creative)
+    return run.status({ state: 'error', message: said(F.validation.creativeMismatch), retry: false })
+  }
   run.chosen(res.creative)
   run.status({ state: 'idle', note: U.attached[res.creative.kind] })
 }
@@ -168,5 +173,41 @@ export function switchPlacement(v: FormValues, placement: PlacementKey): { value
   return {
     values: { ...v, placement, creative: keeps ? v.creative : null },
     gone: keeps || !v.creative ? null : clearedNote(v.creative, placement),
+  }
+}
+
+// Asks the server to delete a file this form uploaded and let go of. Nothing to wait for: if it fails, the file stays.
+function deleteUpload(key: string): void {
+  void fetch(`/api/upload/${encodeURIComponent(key)}`, { method: 'DELETE' }).catch(() => undefined)
+}
+
+// The files this form uploaded since it opened. Only these are deleted once the form lets go of them (Replace,
+// Remove, a placement switch, Start over, a file that landed on a placement that no longer takes it): a creative the
+// form opened with (Edit offer's, a restored draft's) may be in use elsewhere, and is never. A file let go of is
+// deleted on `flush`, which the form calls once its draft no longer names it, so a draft never names a deleted file.
+export class SessionUploads {
+  private readonly held = new Set<string>()
+  private readonly released = new Set<string>()
+  constructor(private readonly send: (key: string) => void = deleteUpload) {}
+
+  add(c: Creative): void {
+    this.held.add(c.key)
+  }
+
+  // The form no longer holds `c` (`now` is the creative it holds instead, if any).
+  letGo(c: Creative | null | undefined, now: Creative | null = null): void {
+    if (!c || c.key === now?.key || !this.held.delete(c.key)) return
+    this.released.add(c.key)
+  }
+
+  // A file uploaded here that the form never held (it landed on a placement that no longer takes it): nothing names
+  // it, so it is deleted at once.
+  drop(c: Creative): void {
+    this.send(c.key)
+  }
+
+  flush(): void {
+    for (const key of this.released) this.send(key)
+    this.released.clear()
   }
 }

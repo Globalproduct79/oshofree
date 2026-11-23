@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { CampaignStatus, Prisma, Workspace } from '@prisma/client'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { editOfferAction, pause, previewOffers, resume, submitAction } from '@/app/app/(console)/campaigns/actions'
 import EditOfferPage from '@/app/app/(console)/campaigns/[id]/edit/page'
 import NewCampaignPage from '@/app/app/(console)/campaigns/new/page'
@@ -113,6 +113,19 @@ const offer = {
 const reload = (id: string) => db.campaign.findUniqueOrThrow({ where: { id } })
 
 beforeEach(() => vi.clearAllMocks())
+
+// The creative the tests name is stored (the actions refuse a creative whose file is not), in a folder of their own.
+let uploads: string
+const uploadDirBefore = process.env.UPLOAD_DIR
+beforeEach(async () => {
+  uploads = await mkdtemp(path.join(tmpdir(), 'oshofree-actions-'))
+  process.env.UPLOAD_DIR = uploads
+  await writeFile(path.join(uploads, IMAGE_KEY), new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+})
+afterEach(async () => {
+  process.env.UPLOAD_DIR = uploadDirBefore
+  await rm(uploads, { recursive: true, force: true })
+})
 
 describe('a Viewer', () => {
   it('is refused submit, edit, pause and resume', async () => {
@@ -280,6 +293,22 @@ describe('submitAction', () => {
       error: "The creative doesn't match the placement.",
     })
     expect(await db.campaign.count()).toBe(0)
+  })
+
+  it('refuses a creative whose file is not stored (a draft naming a file deleted since, a key crafted past the form)', async () => {
+    await setup('Owner')
+    const gone = '9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f.png'
+    expect(await submitAction({ ...input(), placement: 'card', creativeImageKey: gone })).toEqual({
+      error: "The creative's file is no longer stored. Attach it again.",
+    })
+    expect(await db.campaign.count()).toBe(0)
+    const live = await campaign(mine.id, 'live')
+    expect(await editOfferAction(live.id, { ...offer, creativeImageKey: gone })).toEqual({
+      error: "The creative's file is no longer stored. Attach it again.",
+    })
+    expect(await db.campaignRevision.count()).toBe(0)
+    // The file there, the same submission goes through.
+    expect(await submitAction({ ...input(), placement: 'card', creativeImageKey: IMAGE_KEY })).toEqual({ id: expect.any(String) })
   })
 
   it('refuses a stored creative larger than the placement takes, crafted past the form', async () => {

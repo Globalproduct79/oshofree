@@ -94,6 +94,8 @@ export const CAMPAIGN_FORM_COPY = {
     creativeMismatch: "The creative doesn't match the placement.",
     // Ours: the server's backstop for the caps by kind (a 3 MB splash image sent on a card past the form).
     creativeTooLarge: 'The creative is too large for this placement.',
+    // Ours: the server's backstop for the file itself (a draft naming a file deleted since, a key crafted past the form).
+    creativeMissing: "The creative's file is no longer stored. Attach it again.",
     credit: (limit: string, excess: string) =>
       `Over your credit limit of ${limit} by ${excess}. Pay an open invoice or ask Global to raise it.`,
     terms: 'Confirm the offer is genuine.',
