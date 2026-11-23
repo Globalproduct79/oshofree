@@ -100,8 +100,11 @@ describe('Invoice print page', () => {
     const inv = await invoice(ws.id, 'INV-0044', '2026-09-30T21:00:00Z', 15000, 'due', '2026-11-18T00:00:00Z')
     await db.ledgerEntry.create({ data: { workspaceId: ws.id, invoiceId: inv.id, at: at('2026-10-05T09:00:00Z'), amountCents: -12000, description: 'Send money free — delivery', kind: 'delivery' } })
     await db.ledgerEntry.create({ data: { workspaceId: ws.id, invoiceId: inv.id, at: at('2026-10-06T09:00:00Z'), amountCents: -3000, description: 'Send money free — share rewards', kind: 'reward' } })
-    const t = text(renderToStaticMarkup(await InvoicePrintPage({ params: Promise.resolve({ id: inv.id }) })))
+    const markup = renderToStaticMarkup(await InvoicePrintPage({ params: Promise.resolve({ id: inv.id }) }))
+    const t = text(markup)
     expect(t).toContain('Invoice INV-0044')
+    // Its status beside the title, outside the heading (the 14th, before its due date).
+    expect(markup).toContain('<h1>Invoice INV-0044</h1> <span class="st st-due">Due</span>')
     expect(t).toContain('Pesa Link')
     expect(t).toContain('PVT-123')
     expect(t).toContain('Period Oct 2026')
@@ -111,6 +114,18 @@ describe('Invoice print page', () => {
     expect(t).toContain('Total $150 KSh19,500')
     expect(t).toContain('1 USD = KSh130')
     expect(t).toContain('Pay by bank transfer, quoting INV-0044.')
+  })
+
+  it('says Overdue once the due date has passed, and Paid with the day it was paid', async () => {
+    const { ws, user } = await setup()
+    login(ws, user)
+    const inv = await invoice(ws.id, 'INV-0045', '2026-09-30T21:00:00Z', 15000, 'due', '2026-11-10T00:00:00Z')
+    const page = async () => renderToStaticMarkup(await InvoicePrintPage({ params: Promise.resolve({ id: inv.id }) }))
+    expect(await page()).toContain('<span class="st st-overdue">Overdue</span>')
+    expect(text(await page())).toContain('Due 10 Nov')
+    await db.invoice.update({ where: { id: inv.id }, data: { status: 'paid', paidAt: at('2026-11-12T10:00:00Z') } })
+    expect(await page()).toContain('<span class="st st-paid">Paid</span>')
+    expect(text(await page())).toContain('Paid 12 Nov')
   })
 
   it('prints an invoice in the country it was issued under, not the workspace\'s current one', async () => {

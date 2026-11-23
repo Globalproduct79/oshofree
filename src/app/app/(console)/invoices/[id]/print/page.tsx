@@ -1,19 +1,23 @@
 import { notFound } from 'next/navigation'
-import { Box, DataTable } from '@/components/og'
+import { Box, DataTable, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { MONEY, periodLabel } from '@/lib/copy-money'
 import { SHELL } from '@/lib/copy-shell'
 import { db } from '@/lib/db'
 import { fd, loc, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
+import { invoiceStatus } from '@/lib/money'
 import { requireMember } from '@/lib/permissions'
 import { tokens } from '@/lib/tokens'
 import { PrintButton } from './PrintButton'
 
 const P = MONEY.print
 const fxNumber = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
+// The badge for each status, as on Invoices.
+const STATUS = { paid: 'paid', due: 'due', overdue: 'overdue', open: 'issued' } as const
 
-// The printable invoice: its lines in USD and in local currency at the invoice's own rate.
+// The printable invoice: its status beside the title, its lines in USD and in local currency at the invoice's own rate.
+// Printing hides the shell and the breadcrumb (console.css), so the page prints as the invoice alone.
 export default async function InvoicePrintPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { workspace: ws } = await requireMember('billing')
@@ -41,6 +45,7 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
       <PageHead
         crumb={[{ label: ws.name }, { label: SHELL.groups.money }, { label: SHELL.nav.invoices, href: '/app/invoices' }, { label: inv.number }]}
         title={P.title(inv.number)}
+        badge={<StatusBadge status={STATUS[invoiceStatus(inv)]} />}
         lead={P.period(periodLabel(inv.period, m.timezone))}
         actions={<PrintButton label={P.action} />}
       />

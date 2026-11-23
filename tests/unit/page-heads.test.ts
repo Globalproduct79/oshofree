@@ -123,7 +123,8 @@ function head(markup: string) {
   return {
     heads: markup.split('<div class="head">').length - 1,
     crumbs: markup.split('<div class="crumb">').length - 1,
-    lead: text(block.match(/<\/h1><p>([^]*?)<\/p>/)?.[1] ?? ''),
+    // After the h1, or after the badge beside it (PageHead's .ttl row).
+    lead: text(block.match(/<\/h1>(?: <span[^>]*>[^<]*<\/span><\/div>)?<p>([^]*?)<\/p>/)?.[1] ?? ''),
     labels: controls.map((c) => c.label),
     primaries: controls.filter((c) => c.primary).map((c) => c.label),
     lastIsPrimary: controls.at(-1)?.primary ?? false,
