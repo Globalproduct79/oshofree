@@ -1,7 +1,7 @@
 import { recordUpload } from '@/lib/creative-uploads'
 import { MAX_UPLOAD_BODY_BYTES } from '@/lib/image-rules'
 import { requireUser } from '@/lib/session'
-import { creativeUrl, putCreative } from '@/lib/storage'
+import { creativeUrl, deleteCreative, putCreative } from '@/lib/storage'
 
 const bad = (status: 400 | 413, error = 'BAD_IMAGE') => Response.json({ error }, { status })
 
@@ -19,8 +19,12 @@ export async function POST(req: Request) {
     // The kind (image or video) is inferred from the file's type, never hinted by the client. The placement the
     // picker sends only chooses between the image caps (a splash image may be larger); anything else reads as a card.
     const { key, kind } = await putCreative(file, { placement: form?.get('placement') })
-    // Who sent it: only they may have it deleted when their form lets go of it (DELETE /api/upload/[key]).
-    await recordUpload(key, user.id)
+    // Who sent it: only they may have it deleted when their form lets go of it (DELETE /api/upload/[key]). A file
+    // that could not be recorded could never be deleted, so it goes too, and the upload fails (the picker offers Retry).
+    await recordUpload(key, user.id).catch(async (e) => {
+      await deleteCreative(key)
+      throw e
+    })
     return Response.json({ key, kind, url: creativeUrl(key) })
   } catch (e) {
     if (e === 'too_large') return bad(413, 'too_large')

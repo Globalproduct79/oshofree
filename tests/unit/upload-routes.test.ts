@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { MAX_IMAGE_BYTES, MAX_SPLASH_BYTES, MAX_VIDEO_BYTES, VIDEO_KEY_RE } from '@/lib/image-rules'
@@ -7,7 +7,7 @@ import { POST } from '@/app/api/upload/route'
 import { DELETE } from '@/app/api/upload/[key]/route'
 import { db } from '@/lib/db'
 import { requireUser } from '@/lib/session'
-import { GET } from '@/app/uploads/[key]/route'
+import { GET, HEAD } from '@/app/uploads/[key]/route'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireUser: vi.fn().mockResolvedValue({ id: 'u1' }) }))
@@ -28,8 +28,8 @@ async function upload(file: File, placement?: string) {
   const headers = { 'content-type': draft.headers.get('content-type')!, 'content-length': String(body.byteLength) }
   return POST(new Request('http://localhost/api/upload', { method: 'POST', body, headers }))
 }
-const fetchImage = (key: string) =>
-  GET(new Request(`http://localhost/uploads/${key}`), { params: Promise.resolve({ key }) })
+const fetchImage = (key: string, headers?: Record<string, string>) =>
+  GET(new Request(`http://localhost/uploads/${key}`, { headers }), { params: Promise.resolve({ key }) })
 
 let dir: string
 beforeEach(async () => {
@@ -229,5 +229,45 @@ describe('DELETE /api/upload/[key]: a file the form let go of', () => {
     expect((await remove(revised)).status).toBe(409)
     expect((await fetchImage(revised)).status).toBe(200)
     expect(await db.creativeUpload.count()).toBe(2)
+  })
+})
+
+describe('a file that goes while it is asked for', () => {
+  it('opened, then deleted before its bytes are read: served whole, or the range asked for; never a 500', async () => {
+    const res = await upload(new File([png(4096)], 'card.png', { type: 'image/png' }))
+    const { key } = await res.json()
+    const whole = await fetchImage(key)
+    const part = await fetchImage(key, { range: 'bytes=0-9' })
+    await rm(path.join(dir, key))
+    expect([whole.status, part.status]).toEqual([200, 206])
+    expect(new Uint8Array(await whole.arrayBuffer())).toEqual(png(4096))
+    expect(new Uint8Array(await part.arrayBuffer())).toEqual(png(4096).subarray(0, 10))
+    // Asked for after it went: 404, whole or by range.
+    expect((await fetchImage(key)).status).toBe(404)
+    expect((await fetchImage(key, { range: 'bytes=0-9' })).status).toBe(404)
+  })
+
+  it('HEAD answers the headers from the open file, with no body', async () => {
+    const { key } = await (await upload(new File([png(4096)], 'card.png', { type: 'image/png' }))).json()
+    const head = await HEAD(new Request(`http://localhost/uploads/${key}`, { method: 'HEAD', headers: { range: 'bytes=0-9' } }), {
+      params: Promise.resolve({ key }),
+    })
+    expect([head.status, head.headers.get('content-range'), head.body]).toEqual([206, 'bytes 0-9/4096', null])
+  })
+
+  it('a 416 says the server takes ranges', async () => {
+    const { key } = await (await upload(new File([png(4096)], 'card.png', { type: 'image/png' }))).json()
+    const res = await fetchImage(key, { range: 'bytes=9999-' })
+    expect([res.status, res.headers.get('accept-ranges'), res.headers.get('content-range')]).toEqual([416, 'bytes', 'bytes */4096'])
+  })
+})
+
+describe('an upload that cannot be recorded', () => {
+  it('leaves no file behind: the stored file is deleted and the upload fails', async () => {
+    const spy = vi.spyOn(db.creativeUpload, 'create').mockRejectedValueOnce(new Error('the database is down'))
+    await expect(upload(new File([png()], 'card.png', { type: 'image/png' }))).rejects.toThrow('the database is down')
+    expect(await readdir(dir)).toEqual([])
+    expect(await db.creativeUpload.count()).toBe(0)
+    spy.mockRestore()
   })
 })

@@ -1,7 +1,6 @@
 import 'server-only'
 import { randomUUID } from 'node:crypto'
-import { createReadStream } from 'node:fs'
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { capFor, CREATIVE_KEY_RE, UPLOAD_CAP, uploadKind } from '@/lib/image-rules'
@@ -91,16 +90,24 @@ export async function putImage(file: File): Promise<string> {
 // The URL helpers are pure (image-rules.ts), so modules the seed loads under tsx can build URLs too.
 export { creativeUrl, imageUrl } from '@/lib/image-rules'
 
-// Null for a key that is not ours to serve (bad shape, path tricks) or a missing file.
-export async function openImage(key: string, range?: { start: number; end: number }) {
+// A stored creative, opened once: its type and size from the open file, and its bytes (whole, or one range) read from
+// that same handle. A file deleted after it was opened is still read to the end (the handle keeps it); `close` is for
+// a response that sends no body. Null for a key that is not ours to serve (bad shape, path tricks) or a missing file.
+export async function openImage(key: string) {
   const match = CREATIVE_KEY_RE.exec(key)
   if (!match) return null
-  const file = path.join(uploadDir(), key)
-  const info = await stat(file).catch(() => null)
-  if (!info?.isFile()) return null
+  const handle = await open(path.join(uploadDir(), key), 'r').catch(() => null)
+  if (!handle) return null
+  const info = await handle.stat().catch(() => null)
+  if (!info?.isFile()) {
+    await handle.close()
+    return null
+  }
   return {
-    body: Readable.toWeb(createReadStream(file, range)) as ReadableStream<Uint8Array>,
     contentType: CONTENT_TYPE[match[1]],
     size: info.size,
+    read: (range?: { start: number; end: number }) =>
+      Readable.toWeb(handle.createReadStream({ ...range, autoClose: true })) as ReadableStream<Uint8Array>,
+    close: () => handle.close(),
   }
 }

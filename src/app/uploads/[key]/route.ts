@@ -18,30 +18,35 @@ function parseRange(header: string | null, size: number) {
 }
 
 // Public on purpose: the consumer landing page and the Phoenix wall load images without a session.
-// Video needs Range so a browser can seek and Safari will play it; partial content is served (206).
-export async function GET(req: Request, { params }: { params: Promise<{ key: string }> }) {
-  const key = (await params).key
-  const whole = await openImage(key)
-  if (!whole) return new Response('Not found', { status: 404 })
-  const range = parseRange(req.headers.get('range'), whole.size)
+// Video needs Range so a browser can seek and Safari will play it; partial content is served (206). The file is opened
+// once, and its size and bytes come from that open file: one deleted meanwhile is served whole or 404, never a 500.
+async function serve(req: Request, key: string, body: boolean) {
+  const file = await openImage(key)
+  if (!file) return new Response('Not found', { status: 404 })
+  const range = parseRange(req.headers.get('range'), file.size)
+  if (range === 'unsatisfiable' || !body) await file.close()
   if (range === 'unsatisfiable') {
-    await whole.body.cancel()
-    return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${whole.size}` } })
+    return new Response(null, { status: 416, headers: { 'Accept-Ranges': 'bytes', 'Content-Range': `bytes */${file.size}` } })
   }
+  const headers = { ...HEADERS, 'Content-Type': file.contentType }
   if (!range) {
-    return new Response(whole.body, {
-      headers: { ...HEADERS, 'Content-Type': whole.contentType, 'Content-Length': String(whole.size) },
-    })
+    return new Response(body ? file.read() : null, { headers: { ...headers, 'Content-Length': String(file.size) } })
   }
-  await whole.body.cancel()
-  const part = (await openImage(key, range))!
-  return new Response(part.body, {
+  return new Response(body ? file.read(range) : null, {
     status: 206,
     headers: {
-      ...HEADERS,
-      'Content-Type': part.contentType,
+      ...headers,
       'Content-Length': String(range.end - range.start + 1),
-      'Content-Range': `bytes ${range.start}-${range.end}/${part.size}`,
+      'Content-Range': `bytes ${range.start}-${range.end}/${file.size}`,
     },
   })
+}
+
+type Ctx = { params: Promise<{ key: string }> }
+export async function GET(req: Request, { params }: Ctx) {
+  return serve(req, (await params).key, true)
+}
+// The headers alone: the file is opened for its size and closed at once.
+export async function HEAD(req: Request, { params }: Ctx) {
+  return serve(req, (await params).key, false)
 }
