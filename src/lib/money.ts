@@ -222,6 +222,9 @@ export async function canSubmitBudget(
 
 export type InvoiceDisplayStatus = 'open' | 'due' | 'overdue' | 'paid'
 
+// The badge each status wears on Invoices, the printed invoice and Platform › Advertisers: the running month is "Open".
+export const INVOICE_BADGE = { paid: 'paid', due: 'due', overdue: 'overdue', open: 'issued' } as const satisfies Record<InvoiceDisplayStatus, string>
+
 // `open` is the running "(to date)" row the pages build; `overdue` is a due invoice past its date.
 export function invoiceStatus(inv: { status: InvoiceStatus; dueAt: Date }, now = new Date()): InvoiceDisplayStatus {
   if (inv.status === 'due') return inv.dueAt < now ? 'overdue' : 'due'

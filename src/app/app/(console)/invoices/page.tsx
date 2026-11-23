@@ -4,14 +4,13 @@ import { MONEY, periodLabel } from '@/lib/copy-money'
 import { SHELL } from '@/lib/copy-shell'
 import { fd, loc, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
-import { creditSummary, invoiceStatus, monthBounds } from '@/lib/money'
+import { creditSummary, INVOICE_BADGE, invoiceStatus, monthBounds } from '@/lib/money'
 import { db } from '@/lib/db'
 import { requireMember } from '@/lib/permissions'
 import { currentFx } from '@/lib/rates'
 import { tokens } from '@/lib/tokens'
 
 const I = MONEY.invoices
-const STATUS = { paid: 'paid', due: 'due', overdue: 'overdue', open: 'issued' } as const
 
 // Invoices (ADV §8): the workspace's monthly invoices, newest first, then the running month.
 // "Mark paid" is Global's, not the advertiser's.
@@ -34,7 +33,7 @@ export default async function InvoicesPage() {
     return [
       <b key="n">{inv.number}</b>,
       periodLabel(inv.period, issuedIn),
-      <StatusBadge key="s" status={STATUS[status]} />,
+      <StatusBadge key="s" status={INVOICE_BADGE[status]} />,
       status === 'paid' ? '—' : fd(inv.dueAt, issuedIn),
       <b key="u">{usd(inv.amountCents)}</b>,
       <span key="l" style={{ color: tokens.ink3 }}>{loc(inv.amountCents, inv.country, Number(inv.fxPerUsd))}</span>,

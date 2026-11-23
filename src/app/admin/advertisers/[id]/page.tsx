@@ -10,6 +10,7 @@ import { ADVERTISERS } from '@/lib/copy-advertisers'
 import { SHELL } from '@/lib/copy-shell'
 import { usd } from '@/lib/format'
 import { COUNTRIES, MARKETS } from '@/lib/markets'
+import { INVOICE_BADGE } from '@/lib/money'
 import { requireAdmin } from '@/lib/session'
 import { tokens } from '@/lib/tokens'
 import { markInvoicePaidAction, updateFactAction } from './actions'
@@ -21,7 +22,6 @@ const D = ADVERTISERS.detail
 const TYPES = [{ value: 'Brand', label: 'Brand' }, { value: 'Agency', label: 'Agency' }] as const
 const MARKET_OPTIONS = COUNTRIES.map((c) => ({ value: c, label: MARKETS[c].name }))
 // The invoice's display status as its pill: the running month's `open` is the blue "Open".
-const PILL = { paid: 'paid', due: 'due', overdue: 'overdue', open: 'issued' } as const
 
 // Platform › Advertisers › {workspace} (spec §6.1, §6.5, §6.14.6): the facts Global controls, the campaigns,
 // invoices to mark paid, credit requests to decide and the audit trail. Not in the prototype.
@@ -36,7 +36,7 @@ export default async function AdvertiserPage({ params }: { params: Promise<{ id:
   const invoices = d.invoices.map((inv) => [
     <b key="n">{inv.number}</b>,
     inv.period,
-    <StatusBadge key="s" status={PILL[inv.status]} />,
+    <StatusBadge key="s" status={INVOICE_BADGE[inv.status]} />,
     inv.due,
     <b key="u">{usd(inv.amountCents)}</b>,
     <span key="l" style={{ color: tokens.ink3 }}>{inv.local}</span>,
