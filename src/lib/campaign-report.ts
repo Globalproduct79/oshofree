@@ -76,8 +76,14 @@ function statusNote(c: Campaign, latest: CampaignRevision | undefined): Campaign
     const reason = rejection(c.rejectReasonCode, c.rejectReason)
     return reason ? { text: reason, bad: true } : null
   }
-  if (c.status === 'paused' && c.pausedBy === 'credit') return { text: C.status.pausedOverCredit, bad: true }
-  if (!RUNNING.includes(c.status) || !latest) return null
+  // A credit pause comes first, then a revised offer's state, each after its own "·".
+  const credit = c.status === 'paused' && c.pausedBy === 'credit' ? { text: C.status.pausedOverCredit, bad: true } : null
+  const revision = RUNNING.includes(c.status) && latest ? revisionNote(latest) : null
+  if (credit && revision) return { text: `${credit.text} ${revision.text}`, bad: true }
+  return credit ?? revision
+}
+
+function revisionNote(latest: CampaignRevision): CampaignReport['note'] {
   if (latest.status === 'review') return { text: C.status.revisionInReview, bad: false }
   if (latest.status === 'rejected') {
     return { text: C.status.revisionRejected(rejection(latest.rejectReasonCode, latest.rejectReason)), bad: true }

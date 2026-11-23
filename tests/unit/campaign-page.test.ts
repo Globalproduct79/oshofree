@@ -211,8 +211,8 @@ describe('the status line', () => {
     clock('2026-11-14T08:00:00Z')
     const c = await mkCampaign(ws.id, 'paused', { pausedBy: 'credit' })
     const { markup, text: t } = await page(c.id)
-    expect(statusLine(t)).toBe('Paused · credit limit reached — resumes once an invoice is paid or Global raises the limit')
-    expect(markup).toContain('<span class="note bad">· credit limit reached — resumes once an invoice is paid or Global raises the limit</span>')
+    expect(statusLine(t)).toBe('Paused · credit limit reached — Resume once an invoice is paid or Global raises the limit')
+    expect(markup).toContain('<span class="note bad">· credit limit reached — Resume once an invoice is paid or Global raises the limit</span>')
 
     await db.campaign.update({ where: { id: c.id }, data: { pausedBy: 'user' } })
     expect((await page(c.id)).markup).not.toContain('class="note')
@@ -246,6 +246,12 @@ describe('the status line', () => {
     await db.campaign.update({ where: { id: c.id }, data: { status: 'paused' } })
     ;({ text: t } = await page(c.id))
     expect(statusLine(t)).toBe('Paused · a revised offer is in review')
+    // Paused at the credit limit with a revision waiting: both, the credit first, in red.
+    await db.campaign.update({ where: { id: c.id }, data: { pausedBy: 'credit' } })
+    expect((await page(c.id)).markup).toContain(
+      '<span class="note bad">· credit limit reached — Resume once an invoice is paid or Global raises the limit · a revised offer is in review</span>',
+    )
+    await db.campaign.update({ where: { id: c.id }, data: { pausedBy: null } })
 
     await db.campaign.update({ where: { id: c.id }, data: { status: 'live' } })
     await rejectRevision(revision!.id, admin.id, 'broken_link', 'The link 404s.', at('2026-11-13T10:00:00Z'))

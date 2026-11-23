@@ -24,8 +24,9 @@ export const CAMPAIGN_COPY = {
     // After the badge, which says the status word: "Live · a revised offer is in review".
     revisionInReview: '· a revised offer is in review',
     revisionRejected: (reason: string) => (reason ? `· revised offer not approved: ${reason}` : '· revised offer not approved'),
-    // Ours (Prompt 5): the daily job paused it at the credit limit, so Resume is refused until the limit is back.
-    pausedOverCredit: '· credit limit reached — resumes once an invoice is paid or Global raises the limit',
+    // Ours (Prompt 5): the daily job paused it at the credit limit, so Resume is refused until the limit is back. Nothing
+    // resumes it by itself: the advertiser presses Resume, as the hero says.
+    pausedOverCredit: '· credit limit reached — Resume once an invoice is paid or Global raises the limit',
   },
   kpi: {
     impressions: 'Impressions',
