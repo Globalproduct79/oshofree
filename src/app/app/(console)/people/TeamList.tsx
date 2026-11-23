@@ -12,10 +12,9 @@ import { changeRoleAction, removeMemberAction } from './actions'
 // Every member: initials, name (and "you"), email and role. Those who manage people get the role select and
 // Remove; the last Owner can be neither demoted nor removed, so their select is locked (its title says why) and
 // there is no Remove to press.
-// Each action's answer, a refusal included, revalidates /app/people, so it carries the page as the server now has it.
-// No router.refresh() on top of that: with one, about 1 change in 17 on the production build left the transition
-// pending for good (every control disabled, the old list shown until a reload); without it about 1 in 70 still does,
-// which looks like the router's and React's transitions entangling rather than anything in this file.
+// Each action's answer, a refusal included, revalidates /app/people, so it carries the page as the server now has it;
+// no router.refresh() on top. (A transition that never settled here — every control disabled, the old list shown —
+// was Next 15.5's router with a route-level loading.tsx above the page, vercel/next.js#98305; the loading files are gone.)
 export function TeamList({ canManage, members, meId }: { canManage: boolean; members: MemberView[]; meId: string }) {
   const [busy, start] = useTransition()
 

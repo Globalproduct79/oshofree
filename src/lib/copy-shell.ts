@@ -35,7 +35,6 @@ export const SHELL = {
   },
   version: (v: string) => `v${v}`,
   menu: 'Menu',
-  // Ours (Prompt 10): what a screen reader hears while a page's skeleton is up.
   // Ours (Prompt 10): a page that is not there, or that failed, said inside the shell with the way back.
   problem: {
     notHere: {

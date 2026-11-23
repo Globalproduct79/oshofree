@@ -159,6 +159,7 @@ describe('people actions', () => {
     for (const refused of [
       () => resendInviteAction(sent.id),
       () => revokeInviteAction(sent.id),
+      () => revokeInviteAction('missing'),
       () => resendInviteAction('missing'),
       () => changeRoleAction(owner.id, 'Viewer'),
       () => removeMemberAction(owner.id),
