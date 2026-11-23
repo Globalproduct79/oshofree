@@ -67,7 +67,15 @@ export function contractBoxes(base: string): DocBox[] {
     {
       id: 'share',
       title: '3 · Share token',
-      sub: `Minted by us when Phoenix calls \`POST /api/v1/share\` with the offer and the sharer's OTP-verified number (\`msisdn\`). Format \`${TOKEN}\`, 8 alphanumerics, no ambiguous characters, valid to the campaign end date. The share link is \`${base}/o/<token>\`; it opens OshoFree's offer page, where the friend claims and can get a link of their own. One sharer earns at most 5 rewards per day per campaign; the friend's session must be a different device.`,
+      sub: `Minted by us when Phoenix calls \`POST /api/v1/share\` with the offer, the session, the medium (\`via\`: whatsapp, sms, x, facebook, copy or other) and the sharer's OTP-verified number (\`msisdn\`, E.164, optional). Format \`${TOKEN}\`, 8 alphanumerics, no ambiguous characters, valid to the campaign end date. The share link is \`${base}/o/<token>\`; it opens OshoFree's offer page, where the friend claims and can get a link of their own. A sharer with a number holds one link per offer, handed back on every share. One sharer earns at most 5 rewards per day per campaign; the friend's session must be a different device.`,
+      code: [
+        `POST ${api}/share`,
+        'Authorization: Bearer <channel key>',
+        '',
+        '{ "offer_id": "cmp_8f3a", "session_id": "anon_…", "via": "whatsapp", "msisdn": "+254712345678" }',
+        '',
+        `→ 201 Created  { "code": "${TOKEN}", "url": "${base}/o/${TOKEN}" }`,
+      ].join('\n'),
     },
     {
       id: 'stats',

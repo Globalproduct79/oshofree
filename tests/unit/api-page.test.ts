@@ -36,6 +36,14 @@ describe('/admin/api', () => {
     for (const field of ['opens_unique', 'details_left', 'children', 'share_opens', 'share_claims'])
       expect(html).toContain(`<span class="k">&quot;${field}&quot;</span>`)
     expect(html).toContain('unknown_link')
+    // What Phoenix sends to mint a sharer's own link, and what it gets back.
+    expect(html).toContain(`${process.env.APP_URL}/api/v1/share`)
+    for (const field of ['offer_id', 'session_id', 'via', 'msisdn'])
+      expect(html).toContain(`<span class="k">&quot;${field}&quot;</span>`)
+    expect(html).toContain(`&quot;url&quot;: &quot;${process.env.APP_URL}/o/K4Q7ZX2A&quot;`)
+    // How a card is drawn, and where its links come from.
+    for (const token of ['creative.image', 'creative.video', 'creative.color', 'cta.type', 'cta.url'])
+      expect(html).toContain(`<span class="tok">${token}</span>`)
     expect(html).toContain(`${process.env.APP_URL}/o/`)
     expect(html).not.toContain('offergrid')
     expect(html).not.toContain('og.link')
