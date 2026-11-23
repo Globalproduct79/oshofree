@@ -24,7 +24,7 @@ export function contractBoxes(base: string): DocBox[] {
     {
       id: 'offers',
       title: '1 · Offers out',
-      sub: 'Phoenix polls this every 15 minutes per country and renders the cards in More → Offers. Only approved, in-flight campaigns are returned, ordered by placement then remaining budget.',
+      sub: 'Phoenix polls this every 15 minutes per country and renders the cards in More → Offers. Only approved, in-flight campaigns with budget left are returned, ordered by placement then remaining budget. Every URL is absolute, on this server. `creative.image` fills a card, featured or splash slot; `creative.video` is an MP4 for a video or splash slot; with neither, draw `creative.color` with the brand\'s initials. `cta.type` is the redeem method: `code` asks `POST /api/v1/claims` at claim time, `link` opens `cta.url`, our landing page, which sends the user on to the brand. The share URL is the sharer\'s own, from `POST /api/v1/share`, never the feed.',
       code: [
         `GET ${api}/offers?country=KE&channel=phoenix`,
         'Authorization: Bearer <channel key>',

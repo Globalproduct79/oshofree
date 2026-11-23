@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { Prisma, type ShareLink, type ShareVia } from '@prisma/client'
+import { appUrl } from '@/lib/app-url'
 import { db, isUniqueViolation, type Tx } from '@/lib/db'
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
@@ -31,8 +32,9 @@ export async function mintRootLink(campaignId: string, channelId: string, client
   }
 }
 
+// A link's absolute address on this server: what Phoenix hands a sharer and a friend opens.
 export function linkUrl(code: string): string {
-  return `${process.env.APP_URL}/o/${code}`
+  return appUrl(`/o/${code}`)
 }
 
 async function createLink(data: Omit<Prisma.ShareLinkUncheckedCreateInput, 'code'>, client: Tx = db): Promise<ShareLink> {

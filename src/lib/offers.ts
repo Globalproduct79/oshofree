@@ -1,4 +1,5 @@
 import type { Campaign, Country, Placement, ShareVia } from '@prisma/client'
+import { appUrl } from '@/lib/app-url'
 import { deliveringWhere } from '@/lib/campaign-status'
 import { normalisePhone, upsertConsumer } from '@/lib/consumers'
 import { API_COPY } from '@/lib/copy-api'
@@ -6,6 +7,7 @@ import { db } from '@/lib/db'
 import { isoInZone } from '@/lib/format'
 import { linkUrl, mintChannelLink, mintRootLink } from '@/lib/links'
 import { MARKETS } from '@/lib/markets'
+import { spendByCampaign } from '@/lib/money'
 import type { PreviewOffer } from '@/lib/preview-merge'
 import { imageUrl } from '@/lib/image-rules'
 
@@ -43,18 +45,12 @@ async function rootCodes(campaignIds: string[], channelId: string): Promise<Map<
 
 // Budget left per campaign in USD cents: budget − (delivery + reward charges), one grouped read.
 async function remainingCents(campaigns: Campaign[]): Promise<Map<string, number>> {
-  const spent = campaigns.length
-    ? await db.ledgerEntry.groupBy({
-        by: ['campaignId'],
-        where: { campaignId: { in: campaigns.map((c) => c.id) }, kind: { in: ['delivery', 'reward'] } },
-        _sum: { amountCents: true },
-      })
-    : []
-  const charged = new Map(spent.map((s) => [s.campaignId, -(s._sum.amountCents ?? 0)]))
-  return new Map(campaigns.map((c) => [c.id, c.budgetUsd * 100 - (charged.get(c.id) ?? 0)]))
+  const spent = await spendByCampaign(campaigns.map((c) => c.id))
+  return new Map(campaigns.map((c) => [c.id, c.budgetUsd * 100 - (spent.get(c.id) ?? 0)]))
 }
 
-const absolute = (key: string | null) => (key ? `${process.env.APP_URL}${imageUrl(key)}` : null)
+// Phoenix renders from another host, so a creative's URL is absolute, on this server.
+const absolute = (key: string | null) => (key ? appUrl(imageUrl(key)) : null)
 
 // Code offers carry no code: Phoenix asks POST /claims for the session's own at claim time. Link offers
 // click through the Root link, which logs the Claim; no share URL is ever handed out here.
@@ -81,10 +77,13 @@ function toDto(c: Campaign, rootCode: string | undefined): OfferDto {
   }
 }
 
-// Delivering campaigns in the country, ordered by placement then remaining budget (most left first).
+// Delivering campaigns in the country with budget left, ordered by placement then remaining budget (most left first).
+// A reward is charged the moment a friend claims, so a campaign can spend its last cent mid-day; it leaves the feed
+// at once rather than at the daily job's 02:00 run, which ends it.
 export async function offersFor(country: Country, channelId: string, now: Date): Promise<OfferDto[]> {
-  const campaigns = await db.campaign.findMany({ where: { ...deliveringWhere(now), country } })
-  const left = await remainingCents(campaigns)
+  const delivering = await db.campaign.findMany({ where: { ...deliveringWhere(now), country } })
+  const left = await remainingCents(delivering)
+  const campaigns = delivering.filter((c) => left.get(c.id)! > 0)
   campaigns.sort(
     (a, b) =>
       PLACEMENT_ORDER.indexOf(a.placement) - PLACEMENT_ORDER.indexOf(b.placement) ||

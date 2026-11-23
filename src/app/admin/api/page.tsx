@@ -1,6 +1,7 @@
 import { PageHead } from '@/components/shell/PageHead'
 import { Box, TokenChip } from '@/components/og'
 import { AUTH_AND_LIMITS, contractBoxes, REFERENCE_BOXES } from '@/lib/api-docs'
+import { appUrl } from '@/lib/app-url'
 import { hashKey } from '@/lib/channels'
 import { API_COPY } from '@/lib/copy-api'
 import { SHELL } from '@/lib/copy-shell'
@@ -16,7 +17,8 @@ const K = API_COPY.keys
 // Gated here as well as in the layout: Next can render a page without its layout.
 export default async function ApiDocsPage() {
   await requireAdmin()
-  const base = process.env.APP_URL ?? ''
+  // The same base every handed-out URL is built on; an unset APP_URL shows as nothing here rather than breaking the page.
+  const base = process.env.APP_URL ? appUrl() : ''
   const now = new Date()
   const phoenix = await db.channel.findUnique({ where: { key: 'phoenix' } })
   // The seeded development key, outside production and only while Phoenix still accepts it.

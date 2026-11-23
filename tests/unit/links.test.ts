@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
   ensureConsumerLink,
@@ -76,6 +76,28 @@ describe('share-link tree', () => {
     expect(found?.campaign.workspace.id).toBe(campaign.workspaceId)
     expect(await linkByCode('NOPE0000')).toBeNull()
     expect(linkUrl(ch.code)).toBe(`${process.env.APP_URL}/o/${ch.code}`)
+  })
+})
+
+describe('linkUrl', () => {
+  it('is absolute on the configured base, with or without its trailing slash', () => {
+    try {
+      vi.stubEnv('APP_URL', 'https://offers.example.com')
+      expect(linkUrl('K4Q7ZX2A')).toBe('https://offers.example.com/o/K4Q7ZX2A')
+      vi.stubEnv('APP_URL', 'https://offers.example.com/ ')
+      expect(linkUrl('K4Q7ZX2A')).toBe('https://offers.example.com/o/K4Q7ZX2A')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('refuses to build a link with no base rather than hand out "undefined/o/…"', () => {
+    try {
+      vi.stubEnv('APP_URL', '')
+      expect(() => linkUrl('K4Q7ZX2A')).toThrow(/APP_URL is not set/)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })
 

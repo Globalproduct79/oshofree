@@ -1,5 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
+import { appUrl } from "@/lib/app-url";
 import { COPY } from "@/lib/copy";
 import type { OfferDto } from "@/lib/offers";
 
@@ -19,7 +20,7 @@ export type WallEvent = {
 };
 
 const call = (path: string, init: RequestInit, fetchImpl: typeof fetch) =>
-  fetchImpl(`${process.env.APP_URL}/api/v1${path}`, {
+  fetchImpl(appUrl(`/api/v1${path}`), {
     ...init,
     cache: "no-store",
     headers: {

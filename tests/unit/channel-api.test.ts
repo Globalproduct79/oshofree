@@ -130,6 +130,51 @@ describe('GET /api/v1/offers', () => {
     expect(body.offers.map((o: { placement: string }) => o.placement)).toEqual(['card', 'card', 'featured', 'video', 'splash'])
   })
 
+  it('stops listing a live campaign once its budget is spent, before the daily job ends it', async () => {
+    await seedChannel()
+    const charge = (c: { id: string; workspaceId: string }, kind: 'delivery' | 'reward', amountCents: number, key: string) =>
+      db.ledgerEntry.create({ data: { workspaceId: c.workspaceId, campaignId: c.id, kind, amountCents, description: kind, dedupeKey: key } })
+    const spent = await seedCampaign({ budgetUsd: 100 })
+    // Yesterday's delivery, then a friend's claim today charges the last reward: exactly the budget.
+    await charge(spent, 'delivery', -9_990, 'd1')
+    await charge(spent, 'reward', -10, 'r1')
+    const over = await seedCampaign({ budgetUsd: 50 })
+    await charge(over, 'delivery', -6_000, 'd2')
+    const left = await seedCampaign({ budgetUsd: 100 })
+    await charge(left, 'reward', -9_999, 'r2')
+    const body = await (await offers()).json()
+    expect(body.offers.map((o: { id: string }) => o.id)).toEqual([left.id])
+    // Still stored live: the daily job ends it.
+    expect(await db.campaign.findUniqueOrThrow({ where: { id: spent.id }, select: { status: true } })).toEqual({ status: 'live' })
+  })
+
+  it('builds every URL on the configured base, absolute, whether or not it ends in a slash', async () => {
+    await seedChannel()
+    vi.stubEnv('APP_URL', 'https://offers.example.com/')
+    try {
+      await seedCampaign({ placement: 'featured', creativeImageKey: 'card.png' })
+      await seedCampaign({ redeemMethod: 'link', claimCode: null, linkUrl: 'https://kola.example/offer' })
+      const [link, featured] = (await (await offers()).json()).offers
+      expect(featured.creative.image).toBe('https://offers.example.com/uploads/card.png')
+      expect(link.cta.url).toMatch(/^https:\/\/offers\.example\.com\/o\/[0-9A-Z]{8}\?go=claim$/)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('answers 500 server_error rather than hand out a link without a host when APP_URL is not set', async () => {
+    await seedChannel()
+    await seedCampaign({ redeemMethod: 'link', claimCode: null, linkUrl: 'https://kola.example/offer' })
+    vi.stubEnv('APP_URL', '')
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await expectError(await offers(), 500, 'server_error')
+    } finally {
+      log.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('stops listing a live campaign once its flight has ended, before the daily job ends it', async () => {
     await seedChannel()
     const running = await seedCampaign()
