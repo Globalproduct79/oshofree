@@ -1,5 +1,5 @@
 import type { Prisma, WorkspaceStatus } from '@prisma/client'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { POST as postClaims } from '@/app/api/v1/claims/route'
 import { hashKey } from '@/lib/channels'
 import { CLAIM_ALPHABET, issueClaimCode } from '@/lib/claims'
@@ -115,14 +115,16 @@ describe('issueClaimCode', () => {
 
 describe('POST /api/v1/claims', () => {
   it('answers 201 with a code and valid_until, then 200 with the same code that day', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-13T22:30:00Z') })
+    onTestFinished(() => void vi.useRealTimers())
     const channel = await seedChannel()
     const c = await seedCampaign()
     const res = await claim({ offer_id: c.id, session_id: 'anon_1' })
     expect(res.status).toBe(201)
     expect(res.headers.get('cache-control')).toBe('no-store')
     const body = await res.json()
-    const dayEnd = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1))
-    expect(body).toEqual({ code: expect.stringMatching(CODE), valid_until: dayEnd.toISOString() })
+    // The route's clock is the test's: issued on 13 Nov, valid until midnight UTC that night.
+    expect(body).toEqual({ code: expect.stringMatching(CODE), valid_until: '2026-11-14T00:00:00.000Z' })
     const again = await claim({ offer_id: c.id, session_id: 'anon_1' })
     expect(again.status).toBe(200)
     expect(await again.json()).toEqual(body)

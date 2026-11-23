@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { GET as getOffers } from "@/app/api/v1/offers/route";
 import { POST as postShareRoute } from "@/app/api/v1/share/route";
 import { POST as postEventsRoute } from "@/app/api/v1/events/route";
@@ -113,6 +113,8 @@ describe("wall-api", () => {
   });
 
   it("asks POST /claims for the session's own code on a code offer", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-13T22:30:00Z") });
+    onTestFinished(() => void vi.useRealTimers());
     vi.stubEnv("DEMO_CHANNEL_KEY", KEY);
     vi.stubEnv("APP_URL", "http://localhost:3100");
     const campaign = await seedLive();
@@ -120,10 +122,8 @@ describe("wall-api", () => {
     expect(offers[0].cta).toEqual({ label: "Get this offer", type: "code", url: null });
     const first = await postClaim(campaign.id, "s1", fetchImpl);
     expect(first.code).toMatch(/^PHX-[0-9A-Z]{4}$/);
-    // Valid until the UTC day ends (the campaign runs a week longer).
-    const now = new Date();
-    const dayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-    expect(first.valid_until).toBe(dayEnd.toISOString());
+    // Valid until the UTC day ends (the campaign runs a week longer), on the route's clock, which is the test's.
+    expect(first.valid_until).toBe("2026-11-14T00:00:00.000Z");
     expect((await postClaim(campaign.id, "s1", fetchImpl)).code).toBe(first.code);
     expect(seen.at(-1)?.url).toBe("http://localhost:3100/api/v1/claims");
   });
