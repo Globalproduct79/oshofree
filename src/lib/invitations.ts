@@ -1,13 +1,14 @@
 import 'server-only'
 import { randomBytes } from 'node:crypto'
 import type { Invitation, Prisma, Role } from '@prisma/client'
+import { appUrl } from '@/lib/app-url'
 import { audit } from '@/lib/audit'
 import { db } from '@/lib/db'
 
 const WEEK = 7 * 86_400_000
 const EMAIL = /^\S+@\S+\.\S+$/
 
-export const inviteUrl = (token: string) => `${process.env.APP_URL ?? ''}/invite/${token}`
+export const inviteUrl = (token: string) => appUrl(`/invite/${token}`)
 
 // An invite's bearer token: 32 hex characters.
 const newToken = () => randomBytes(16).toString('hex')

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { appIsHttps } from '@/lib/app-url'
 
 const COOKIE = 'og_v'
 const YEAR_SECONDS = 31_536_000
@@ -47,7 +48,7 @@ export function visitor(req: Request): Visitor {
   const existing = readCookie(req, COOKIE)
   const known = existing !== undefined && UUID.test(existing)
   const id = known ? existing : randomUUID()
-  const secure = process.env.APP_URL?.startsWith('https://') ? '; Secure' : ''
+  const secure = appIsHttps() ? '; Secure' : ''
   return {
     id,
     ipHash: ipHash(req),

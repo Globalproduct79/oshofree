@@ -26,7 +26,14 @@ describe('invitations', () => {
     const days = (inv.expiresAt.getTime() - Date.now()) / 86_400_000
     expect(days).toBeGreaterThan(6.99)
     expect(days).toBeLessThanOrEqual(7)
-    expect(inviteUrl(inv.token)).toMatch(new RegExp(`/invite/${inv.token}$`))
+    expect(inviteUrl(inv.token)).toBe(`${process.env.APP_URL}/invite/${inv.token}`)
+    // Absolute on the configured base, as every handed-out link is: one slash whatever the base ends with.
+    try {
+      vi.stubEnv('APP_URL', 'https://offers.example.com/')
+      expect(inviteUrl(inv.token)).toBe(`https://offers.example.com/invite/${inv.token}`)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('refuses an existing member', async () => {

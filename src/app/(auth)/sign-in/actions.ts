@@ -2,6 +2,7 @@
 
 import { AuthError } from 'next-auth'
 import { clearActiveWorkspace } from '@/lib/active-workspace'
+import { appUrl } from '@/lib/app-url'
 import { signIn } from '@/lib/auth'
 import { COPY } from '@/lib/copy'
 import { joinedHref, joinFromInvite } from '@/lib/invite-join'
@@ -11,7 +12,7 @@ import { verifyCredentials } from '@/lib/users'
 function safeRedirect(raw: string): string {
   if (!raw) return '/app'
   try {
-    const base = new URL(process.env.APP_URL ?? 'http://localhost:3100')
+    const base = new URL(appUrl())
     const url = new URL(raw, base)
     if (url.origin !== base.origin) return '/app'
     if (url.pathname === '/') return '/app'

@@ -91,6 +91,27 @@ describe('linkUrl', () => {
     }
   })
 
+  it('refuses a localhost or http:// base in production, and allows it only when told to', () => {
+    try {
+      vi.stubEnv('NODE_ENV', 'production')
+      for (const base of ['http://localhost:3100', 'https://localhost', 'https://127.0.0.1:8443', 'http://offers.example.com', 'offers.example.com']) {
+        vi.stubEnv('APP_URL', base)
+        expect(() => linkUrl('K4Q7ZX2A'), base).toThrow(/public https:\/\/ origin in production/)
+      }
+      vi.stubEnv('APP_URL', 'https://offers.example.com')
+      expect(linkUrl('K4Q7ZX2A')).toBe('https://offers.example.com/o/K4Q7ZX2A')
+      vi.stubEnv('APP_URL', 'http://localhost:3100')
+      vi.stubEnv('APP_URL_ALLOW_INSECURE', '1')
+      expect(linkUrl('K4Q7ZX2A')).toBe('http://localhost:3100/o/K4Q7ZX2A')
+      // Development and test keep their http://localhost base.
+      vi.stubEnv('APP_URL_ALLOW_INSECURE', '')
+      vi.stubEnv('NODE_ENV', 'test')
+      expect(linkUrl('K4Q7ZX2A')).toBe('http://localhost:3100/o/K4Q7ZX2A')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('refuses to build a link with no base rather than hand out "undefined/o/…"', () => {
     try {
       vi.stubEnv('APP_URL', '')

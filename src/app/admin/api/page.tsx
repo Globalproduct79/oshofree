@@ -17,8 +17,8 @@ const K = API_COPY.keys
 // Gated here as well as in the layout: Next can render a page without its layout.
 export default async function ApiDocsPage() {
   await requireAdmin()
-  // The same base every handed-out URL is built on; an unset APP_URL shows as nothing here rather than breaking the page.
-  const base = process.env.APP_URL ? appUrl() : ''
+  // The same base every handed-out URL is built on.
+  const base = appUrl()
   const now = new Date()
   const phoenix = await db.channel.findUnique({ where: { key: 'phoenix' } })
   // The seeded development key, outside production and only while Phoenix still accepts it.

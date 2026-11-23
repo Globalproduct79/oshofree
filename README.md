@@ -323,8 +323,9 @@ then make sure the daily job is in cron:
   (`tsx`, `dotenv-cli`, `prisma`), so install them on the host: `npm ci`, not `npm ci --omit=dev`.
 - The daily job runs at 02:00 UTC, from the app's folder with the app's environment (see "The daily job").
 - `DATABASE_URL`: the production Postgres.
-- `APP_URL`: the public `https://` origin. Share links are built from it, and the visitor cookie is
-  marked Secure only when it starts with `https://`.
+- `APP_URL`: the public `https://` origin. Share, invite and creative links are built from it, and the visitor
+  cookie is marked Secure only when it starts with `https://`. In production a `localhost` or `http://` value is
+  refused when the first link is built; `APP_URL_ALLOW_INSECURE=1` allows it for a local `next start`.
 - `AUTH_SECRET`: a random string of 32 or more characters.
 - `AUTH_TRUST_HOST=true`.
 - `IP_HASH_SALT`: 16 or more random characters. Production refuses to hash a visitor's IP without it,
