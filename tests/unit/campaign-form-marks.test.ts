@@ -89,8 +89,7 @@ describe("afterRefusal: the server's refusal on the form", () => {
     const next = afterRefusal(values, gone)
     expect(next.values).toEqual({ ...values, creative: null })
     expect(next.notice).toEqual({ field: 'creative', message: gone.error })
-    // Marked whatever the form's own marks say: the form falls back to the notice when its rules mark nothing.
-    expect(markedOf(null, NO_MARKS) ?? next.notice).toEqual({ field: 'creative', message: gone.error })
+    expect(next.notice.field).toBe('creative')
   })
 
   it('any other refusal leaves the values as they are and names no field (the hint by the buttons says it)', () => {

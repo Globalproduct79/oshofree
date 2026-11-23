@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { expect, test, type Locator, type Page, type Response } from '@playwright/test'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
@@ -246,6 +246,24 @@ test('Video and Splash: an MP4 plays and seeks on the form, the Review step and 
     await expect(message(page)).toHaveText(U.cleared.image)
     await input.setInputFiles(MP4)
     await expect(page.locator('.drop video')).toHaveAttribute('src', /\.mp4#t=0\.1$/)
+  })
+
+  await test.step("a file gone from the server by Submit: back on the form, the creative off, its zone marked and focused", async () => {
+    const stored = (await page.getByLabel(D.chosen.video).getAttribute('src'))!.replace(/#t=0\.1$/, '')
+    rmSync(path.resolve(process.env.UPLOAD_DIR ?? '.uploads-test', path.basename(stored)))
+    await page.getByRole('button', { name: F.buttons.review }).click()
+    await page.getByRole('checkbox', { name: F.fields.terms }).check()
+    await page.getByRole('button', { name: F.buttons.submit }).click()
+    const empty = zone(page, F.drop.video.zoneTitle)
+    await expect(empty).toBeFocused()
+    await expect(empty).toHaveAttribute('aria-invalid', 'true')
+    await expect(empty).toHaveAccessibleDescription(F.validation.creativeMissing)
+    await expect(hint(page)).toHaveText(F.validation.creativeMissing)
+    await expect(page.getByLabel(D.chosen.video)).toHaveCount(0)
+    // Attached again, the mark goes.
+    await input.setInputFiles(MP4)
+    await expect(page.getByLabel(D.chosen.video)).toHaveAttribute('src', /\.mp4#t=0\.1$/)
+    await expect(page.locator('.drop')).not.toHaveAttribute('data-invalid', '')
   })
 
   let video = ''

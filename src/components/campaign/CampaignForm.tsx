@@ -211,7 +211,8 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     values, isNew, stage, edit, workspace, credit, cpmCents: cpmCents[values.placement], fxPerUsd,
   })
   const hint = uploading ? F.upload.uploading : (notice?.message ?? problem?.message ?? '')
-  const marked: Marked = markedOf(problem, marks) ?? (notice?.field ? notice : null)
+  // The server's refusal of a field first: it is the newer word, and goes with the next change.
+  const marked: Marked = (notice?.field ? notice : null) ?? markedOf(problem, marks)
   function onBlur(e: FocusEvent) {
     const field = fieldOf(e.target)
     if (field) setMarks((m) => left(m, field))
