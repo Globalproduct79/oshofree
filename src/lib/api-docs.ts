@@ -102,7 +102,7 @@ export const REFERENCE_BOXES: DocBox[] = [
   {
     id: 'claims',
     title: 'Claim codes',
-    sub: 'Phoenix requests one at claim time: `POST /api/v1/claims` with `offer_id` and `session_id` → `{ "code": "PHX-3F9K", "valid_until": … }`. One per session per offer per day. Not validated at the till in MVP; the brand honours them.',
+    sub: 'Phoenix requests one at claim time: `POST /api/v1/claims` with `offer_id` and `session_id` → `{ "code": "PHX-3F9K", "valid_until": … }`. One per session per offer per day: asking again that UTC day returns the same code (200, not 201), valid until the day ends at midnight UTC, or the campaign does if sooner. Not validated at the till in MVP; the brand honours them.',
   },
   {
     id: 'webhooks',

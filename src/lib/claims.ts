@@ -4,10 +4,12 @@ import { db, isUniqueViolation } from '@/lib/db'
 import { startOfUtcDay } from '@/lib/link-events'
 
 // Claim codes (GLB §2.6 "Claim codes"): PHX- and four characters, none of them 0/O or 1/I.
-// One per session per offer per channel per UTC day; valid until the campaign ends. A code is unique
-// within its campaign only (the brand honours its own offer's codes), so the 32^4 space is per campaign.
+// One per session per offer per channel per UTC day, valid until that UTC day ends (or the campaign does, if sooner):
+// the next day the session is issued a new one. A code is unique within its campaign only (the brand honours its own
+// offer's codes), so the 32^4 space is per campaign.
 export const CLAIM_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
 const ATTEMPTS = 8
+const DAY_MS = 86_400_000
 
 // 32 symbols: the low 5 bits of each random byte are uniform.
 export function randomClaimCode(): string {
@@ -33,10 +35,12 @@ export async function issueClaimCode(
   const existing = await db.claimCode.findUnique({ where: KEY(campaignId, channelId, sessionId, day) })
   if (existing) return { code: existing.code, validUntil: existing.validUntil, created: false }
   const { endsAt } = await db.campaign.findUniqueOrThrow({ where: { id: campaignId }, select: { endsAt: true } })
+  const dayEnd = new Date(day.getTime() + DAY_MS)
+  const validUntil = endsAt < dayEnd ? endsAt : dayEnd
   for (let attempt = 1; ; attempt++) {
     try {
       const row = await db.claimCode.create({
-        data: { code: draw(), campaignId, channelId, sessionId, day, validUntil: endsAt },
+        data: { code: draw(), campaignId, channelId, sessionId, day, validUntil },
       })
       return { code: row.code, validUntil: row.validUntil, created: true }
     } catch (e) {

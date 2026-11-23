@@ -40,25 +40,35 @@ describe('the claim code alphabet', () => {
 })
 
 describe('issueClaimCode', () => {
-  it('issues PHX-XXXX valid until the campaign ends, one per session per offer per UTC day', async () => {
+  it('issues PHX-XXXX valid until the end of its UTC day, one per session per offer per UTC day', async () => {
     const channel = await seedChannel()
-    const c = await seedCampaign()
+    const c = await seedCampaign({ endsAt: new Date('2026-11-20T23:00:00Z') })
     const morning = new Date('2026-11-13T00:30:00Z')
+    const midnight = new Date('2026-11-14T00:00:00Z')
     const first = await issueClaimCode(c.id, channel.id, 'sess-1', morning)
     expect(first.code).toMatch(CODE)
-    expect(first.validUntil).toEqual(c.endsAt)
+    expect(first.validUntil).toEqual(midnight)
     expect(first.created).toBe(true)
     const again = await issueClaimCode(c.id, channel.id, 'sess-1', new Date('2026-11-13T23:59:59Z'))
     expect(again).toEqual({ ...first, created: false })
-    const tomorrow = await issueClaimCode(c.id, channel.id, 'sess-1', new Date('2026-11-14T00:00:00Z'))
+    const tomorrow = await issueClaimCode(c.id, channel.id, 'sess-1', midnight)
+    expect(tomorrow.validUntil).toEqual(new Date('2026-11-15T00:00:00Z'))
     const friend = await issueClaimCode(c.id, channel.id, 'sess-2', morning)
     expect(new Set([first.code, tomorrow.code, friend.code]).size).toBe(3)
     const rows = await db.claimCode.findMany({ orderBy: { createdAt: 'asc' } })
     expect(rows).toHaveLength(3)
     expect(rows[0]).toMatchObject({
       code: first.code, campaignId: c.id, channelId: channel.id, sessionId: 'sess-1',
-      day: new Date('2026-11-13T00:00:00Z'), validUntil: c.endsAt,
+      day: new Date('2026-11-13T00:00:00Z'), validUntil: midnight,
     })
+  })
+
+  it("is valid only until the campaign ends when that comes before the day's end", async () => {
+    const channel = await seedChannel()
+    // Lagos midnight: 23:00 UTC, an hour before the UTC day ends.
+    const c = await seedCampaign({ endsAt: new Date('2026-11-13T23:00:00Z') })
+    const issued = await issueClaimCode(c.id, channel.id, 'sess-1', new Date('2026-11-13T21:00:00Z'))
+    expect(issued.validUntil).toEqual(c.endsAt)
   })
 
   it('gives each channel its own code for the same session', async () => {
@@ -111,7 +121,8 @@ describe('POST /api/v1/claims', () => {
     expect(res.status).toBe(201)
     expect(res.headers.get('cache-control')).toBe('no-store')
     const body = await res.json()
-    expect(body).toEqual({ code: expect.stringMatching(CODE), valid_until: c.endsAt.toISOString() })
+    const dayEnd = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1))
+    expect(body).toEqual({ code: expect.stringMatching(CODE), valid_until: dayEnd.toISOString() })
     const again = await claim({ offer_id: c.id, session_id: 'anon_1' })
     expect(again.status).toBe(200)
     expect(await again.json()).toEqual(body)

@@ -119,7 +119,10 @@ describe("wall-api", () => {
     expect(offers[0].cta).toEqual({ label: "Get this offer", type: "code", url: null });
     const first = await postClaim(campaign.id, "s1", fetchImpl);
     expect(first.code).toMatch(/^PHX-[0-9A-Z]{4}$/);
-    expect(first.valid_until).toBe(campaign.endsAt.toISOString());
+    // Valid until the UTC day ends (the campaign runs a week longer).
+    const now = new Date();
+    const dayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    expect(first.valid_until).toBe(dayEnd.toISOString());
     expect((await postClaim(campaign.id, "s1", fetchImpl)).code).toBe(first.code);
     expect(seen.at(-1)?.url).toBe("http://localhost:3100/api/v1/claims");
   });
