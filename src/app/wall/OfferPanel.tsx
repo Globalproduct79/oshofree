@@ -1,4 +1,5 @@
 import { Gift } from "lucide-react";
+import { CreativeMedia } from "@/components/og";
 import { COPY } from "@/lib/copy";
 import type { OfferDto } from "@/lib/offers";
 import { tokens } from "@/lib/tokens";
@@ -15,7 +16,8 @@ type Props = {
   onShare: () => void;
 };
 
-// The expanded card: description, reward, Claim and Share, then the session's claim code or the minted link.
+// The expanded card: a video offer's clip to play, description, reward, Claim and Share, then the session's claim
+// code or the minted link.
 export function OfferPanel({
   offer: o,
   code,
@@ -29,6 +31,15 @@ export function OfferPanel({
       className="mt-1 flex flex-col gap-2 rounded-lg border p-3 text-xs"
       style={{ borderColor: tokens.line, backgroundColor: tokens.card }}
     >
+      {o.creative.video && (
+        <CreativeMedia
+          image={null}
+          video={o.creative.video}
+          labels={{ image: "", video: W.video }}
+          controls
+          className="w-full rounded-md"
+        />
+      )}
       <p style={{ color: tokens.ink2 }}>{o.description}</p>
       <p
         className="flex items-center gap-1.5 font-medium"

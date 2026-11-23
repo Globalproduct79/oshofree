@@ -19,6 +19,29 @@ export type WallEvent = {
   ts: string;
 };
 
+// What the wall knows of an offer when it reports on it: the id, and the slot it was shown in.
+export type WallOffer = { id: string; placement: string };
+
+// One event per offer, as Phoenix's SDK reports it: the offer's own placement, the market, the session, one moment.
+export function wallEvents(
+  type: WallEvent["type"],
+  offers: WallOffer[],
+  country: string,
+  session_id: string,
+  ts: string,
+  extra: Partial<WallEvent> = {},
+): WallEvent[] {
+  return offers.map((o) => ({
+    type,
+    offer_id: o.id,
+    placement: o.placement,
+    country,
+    session_id,
+    ts,
+    ...extra,
+  }));
+}
+
 const call = (path: string, init: RequestInit, fetchImpl: typeof fetch) =>
   fetchImpl(appUrl(`/api/v1${path}`), {
     ...init,

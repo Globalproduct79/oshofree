@@ -1,5 +1,6 @@
 import { Gift } from 'lucide-react'
 import Image from 'next/image'
+import { CreativeMedia } from '@/components/og'
 import { lastDay } from '@/lib/campaign-status'
 import { COPY } from '@/lib/copy'
 import { tokens } from '@/lib/tokens'
@@ -9,6 +10,8 @@ export type OfferCardProps = {
   headline: string
   description: string
   imageUrl?: string | null
+  // An MP4 creative (a video or splash offer): the card shows its first frame.
+  videoUrl?: string | null
   color?: string | null
   rewardLabel: string
   endsAt: Date
@@ -23,7 +26,10 @@ export function initials(brand: string) {
   return letters.slice(0, 2).toUpperCase() || '?'
 }
 
-// The card as the Phoenix Offers wall shows it: image or colour tile, brand, headline, reward, end date.
+// Inside the card the creative is the picture the text describes: nothing more for a screen reader to say.
+const SILENT = { image: '', video: '' }
+
+// The card as the Phoenix Offers wall shows it: image, video frame or colour tile, brand, headline, reward, end date.
 export function OfferCard({ offer }: { offer: OfferCardProps }) {
   return (
     <article
@@ -41,7 +47,9 @@ export function OfferCard({ offer }: { offer: OfferCardProps }) {
         className="relative flex aspect-[16/9] items-center justify-center"
         style={{ backgroundColor: offer.color ?? tokens.tileColors[0] }}
       >
-        {offer.imageUrl ? (
+        {offer.videoUrl ? (
+          <CreativeMedia image={null} video={offer.videoUrl} labels={SILENT} className="absolute inset-0 size-full object-cover" />
+        ) : offer.imageUrl ? (
           <Image src={offer.imageUrl} alt="" fill unoptimized sizes="360px" className="object-cover" />
         ) : (
           <span className="text-3xl font-extrabold tracking-tight" style={{ color: tokens.card }}>

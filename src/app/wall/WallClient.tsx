@@ -48,16 +48,16 @@ export function WallClient({
     posted.current = key;
     fire(
       wallImpressions(
-        offers.map((o) => o.id),
+        offers.map((o) => ({ id: o.id, placement: o.placement })),
         country,
       ),
     );
   }, [offers, country, sessionId]);
 
-  const open = (id: string) => {
-    if (openId === id) return setOpenId(null);
-    setOpenId(id);
-    fire(wallOpen(id, country));
+  const open = (o: OfferDto) => {
+    if (openId === o.id) return setOpenId(null);
+    setOpenId(o.id);
+    fire(wallOpen({ id: o.id, placement: o.placement }, country));
   };
   const share = async (id: string) => {
     setShareFailed(null);
@@ -68,13 +68,17 @@ export function WallClient({
       setShareFailed(id);
     }
   };
+  // A link offer opens its cta.url in the tap itself (a pop-up opened later is blocked), then reports the claim.
   const claim = (o: OfferDto) => {
-    if (o.cta.type === "link" && o.cta.url)
-      return void window.open(o.cta.url, "_blank", "noopener");
+    const offer = { id: o.id, placement: o.placement, redeem: o.cta.type };
+    if (o.cta.type === "link" && o.cta.url) {
+      window.open(o.cta.url, "_blank", "noopener");
+      return void fire(wallClaim(offer, country));
+    }
     fire(
-      wallClaim(o.id, country).then(({ code }) =>
-        setCodes((c) => ({ ...c, [o.id]: code })),
-      ),
+      wallClaim(offer, country).then(({ code }) => {
+        if (code) setCodes((c) => ({ ...c, [o.id]: code }));
+      }),
     );
   };
 
@@ -95,7 +99,7 @@ export function WallClient({
           <div key={o.id} className="col-span-2">
             <button
               type="button"
-              onClick={() => open(o.id)}
+              onClick={() => open(o)}
               className="block w-full text-left"
             >
               <OfferCard
@@ -104,6 +108,7 @@ export function WallClient({
                   headline: o.headline,
                   description: openId === o.id ? "" : o.description,
                   imageUrl: o.creative.image,
+                  videoUrl: o.creative.video,
                   color: o.creative.color,
                   rewardLabel: o.share.reward_label,
                   endsAt: new Date(o.ends_at),

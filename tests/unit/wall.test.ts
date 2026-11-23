@@ -18,6 +18,7 @@ import {
   postClaim,
   postEvents,
   postShare,
+  wallEvents,
 } from "@/lib/wall-api";
 
 const KEY = "phx_wall_key";
@@ -128,6 +129,36 @@ describe("wall-api", () => {
   });
 });
 
+describe("wallEvents", () => {
+  it("reports each offer in its own placement, for the market and session, at one moment", () => {
+    const offers = [
+      { id: "o1", placement: "featured" },
+      { id: "o2", placement: "video" },
+    ];
+    expect(wallEvents("impression", offers, "KE", "s1", "2026-11-23T10:00:00.000Z")).toEqual([
+      { type: "impression", offer_id: "o1", placement: "featured", country: "KE", session_id: "s1", ts: "2026-11-23T10:00:00.000Z" },
+      { type: "impression", offer_id: "o2", placement: "video", country: "KE", session_id: "s1", ts: "2026-11-23T10:00:00.000Z" },
+    ]);
+    expect(wallEvents("claim", [offers[0]], "KE", "s1", "t", { claim_code: "PHX-3F9K" })[0]).toMatchObject({
+      type: "claim", placement: "featured", claim_code: "PHX-3F9K",
+    });
+  });
+
+  it("is what the events route stores: an impression and a link offer's claim, with no code", async () => {
+    vi.stubEnv("DEMO_CHANNEL_KEY", KEY);
+    vi.stubEnv("APP_URL", "http://localhost:3100");
+    const campaign = await seedLive();
+    const offer = { id: campaign.id, placement: "card" };
+    const ts = new Date().toISOString();
+    const out = await postEvents(
+      [...wallEvents("impression", [offer], "NG", "s1", ts), ...wallEvents("claim", [offer], "NG", "s1", ts)],
+      fetchImpl,
+    );
+    expect(out).toEqual({ accepted: 2, deduped: 0, ignored: 0 });
+    expect((await db.channelEvent.findMany({ orderBy: { type: "asc" } })).map((e) => e.type)).toEqual(["Impression", "Claim"]);
+  });
+});
+
 describe("loadWallOffers", () => {
   const down = (async () =>
     new Response("boom", { status: 500 })) as unknown as typeof fetch;
@@ -152,10 +183,11 @@ describe("loadWallOffers", () => {
 
 describe("wall actions gate", () => {
   it.each([
-    ["wallImpressions", () => wallImpressions(["a"])],
-    ["wallOpen", () => wallOpen("a")],
+    ["wallImpressions", () => wallImpressions([{ id: "a", placement: "card" }])],
+    ["wallOpen", () => wallOpen({ id: "a", placement: "card" })],
     ["wallShare", () => wallShare("a", "whatsapp")],
-    ["wallClaim", () => wallClaim("a")],
+    ["wallClaim", () => wallClaim({ id: "a", placement: "card", redeem: "code" })],
+    ["wallClaim (link)", () => wallClaim({ id: "a", placement: "card", redeem: "link" })],
   ])("%s refuses unless DEMO_WALL is 1", async (_name, call) => {
     vi.stubEnv("DEMO_WALL", "");
     await expect(call()).rejects.toThrow("The demo wall is off");
