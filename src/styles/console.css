@@ -162,7 +162,7 @@ label.f input:disabled,label.f select:disabled,label.f textarea:disabled{backgro
 /* The New form's Review step: its sections (the offer, creative, targeting, money) a rhythm apart, each titled, a
    long link wrapping inside its cell at phone width; the heading takes focus without a ring when the step opens
    (keyboard focus still shows one). */
-.summary{display:grid;gap:18px}.summary .subt{display:block;margin-bottom:8px}.summary .desc{margin:10px 0 0}.summary .est{margin-top:12px}
+.summary{display:grid;gap:18px}.summary .subt{display:block;margin-bottom:8px}.summary .est{margin-top:12px}
 .summary .cr{margin:0}.summary .kv b{overflow-wrap:anywhere}.box h3[tabindex="-1"]:focus:not(:focus-visible){outline:none}
 /* Who created a campaign: its own line under a card's sub-line. A video's first frame fills a card's cover (under its
    pills, which come after it) and a Review row's. */
@@ -268,12 +268,14 @@ label.f input,label.f select,label.f textarea,.edit input,.edit select,.edit tex
 label.f select,.edit select,select.sel{appearance:none;-webkit-appearance:none;background-color:#fff;background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235B6170' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:14px;padding-right:36px}
 label.f input:focus,label.f select:focus,label.f textarea:focus,.edit input:focus,.edit select:focus,.edit textarea:focus,select.sel:focus{outline:none;border-color:var(--phx);box-shadow:0 0 0 3px var(--phx3)}
 label.f input:disabled,label.f select:disabled,label.f textarea:disabled,label.f input[readonly],label.f textarea[readonly],select.sel:disabled{background-color:var(--bg);color:var(--ink2);-webkit-text-fill-color:var(--ink2);opacity:1;border-color:var(--line2);cursor:not-allowed}
-label.f .hint{display:block;margin-top:6px;font-weight:400;font-size:12px;color:var(--ink3);line-height:1.4}
+label.f .hint,.hint.bad{display:block;margin-top:6px;font-weight:400;font-size:12px;color:var(--ink3);line-height:1.4}
 /* A refused field (slice 2, Prompt 1): a red edge, a red ring when focused, and its sentence under it. */
 label.f input[aria-invalid=true],label.f select[aria-invalid=true],label.f textarea[aria-invalid=true]{border-color:var(--red)}
 label.f input[aria-invalid=true]:focus,label.f select[aria-invalid=true]:focus,label.f textarea[aria-invalid=true]:focus{border-color:var(--red);box-shadow:0 0 0 3px var(--red2)}
 .chk input[aria-invalid=true]{outline:2px solid var(--red);outline-offset:2px}
-.ferr{display:block;margin-top:6px;font-weight:400;font-size:12px;color:var(--red);line-height:1.4}
+label.f .hint.bad,.hint.bad{color:var(--red)}
+/* The form's primary stays pressable while a rule fails (it takes the cursor to the field): not the loading look. */
+form.two .btn.p[aria-disabled=true]:not([aria-busy=true]){cursor:pointer}
 /* The Review step: each value's Edit, on its label's line. */
 .summary .kv small{display:flex;justify-content:space-between;gap:8px}.summary .kv .linkbtn{font-size:11px;font-weight:600}
 .kv .wide{grid-column:1 / -1}.summary .tc{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;margin-right:6px}

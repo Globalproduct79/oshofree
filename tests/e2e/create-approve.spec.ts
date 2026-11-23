@@ -196,6 +196,8 @@ async function reviewTheCreative(page: Page, image: string) {
   await expect(page.getByLabel(F.fields.headline.label)).toHaveValue(HARMATTAN.headline)
   await openReview(page, HARMATTAN)
   await expect(confirm).not.toBeChecked()
+  // Asked for afresh, not shown as a mistake before anything is pressed on the reopened step.
+  await expect(confirm).not.toHaveAttribute('aria-invalid', 'true')
   await expect(submit).toBeDisabled()
 }
 
@@ -213,7 +215,7 @@ test('F1: a brand previews and submits a Wall card, Global approves it, and it i
     await expect(name).toBeFocused()
     await expect(name).toHaveAttribute('aria-invalid', 'true')
     await expect(name).toHaveAccessibleDescription(F.validation.name)
-    await expect(tunde.locator('.ferr')).toHaveText(F.validation.name)
+    await expect(tunde.locator('.hint.bad')).toHaveText(F.validation.name)
     await tunde.getByLabel(F.fields.headline.label).fill(HARMATTAN.headline)
     const preview = box(tunde, F.previewBox.title)
     await expect(preview.getByText(HARMATTAN.headline, { exact: true })).toBeVisible()

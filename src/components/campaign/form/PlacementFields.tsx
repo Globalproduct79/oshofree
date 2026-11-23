@@ -7,7 +7,7 @@ import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import type { PlacementKey } from '@/lib/copy-components'
 import { MARKETS } from '@/lib/markets'
 import type { PreviewCampaign, PreviewOffer } from '@/lib/preview-merge'
-import { FieldError, fieldProps, type Marked } from './field'
+import { errorId, FieldError, groupProps, type Marked } from './field'
 import { ACCEPT, PLACEMENT_ORDER, type FormValues } from './values'
 
 type Props = {
@@ -40,7 +40,7 @@ export function PlacementFields({ values: v, cpmCents, choose, status, pick, rem
         <label className="f" id="cf-placement">
           {F.fields.placement.label} <small>{F.fields.placement.hint}</small>
         </label>
-        <div className="opts" role="group" aria-labelledby="cf-placement" style={{ marginTop: 6 }} {...fieldProps('placement', marked)}>
+        <div className="opts" role="group" aria-labelledby="cf-placement" style={{ marginTop: 6 }} {...groupProps('placement')}>
           {PLACEMENT_ORDER.map((p) => {
             const cpm = cpmCents[p]
             return (
@@ -52,13 +52,15 @@ export function PlacementFields({ values: v, cpmCents, choose, status, pick, rem
                 big={cpm === null ? '—' : F.placements.cpm((cpm / 100).toFixed(2))}
                 soon={INVENTORY_TBC.includes(p)}
                 onClick={() => choose(p)}
+                // The chosen tile takes the cursor when the placement is refused (no rate set), and says why.
+                aria-describedby={marked?.field === 'placement' && v.placement === p ? errorId('placement') : undefined}
               />
             )
           })}
         </div>
         <FieldError field="placement" marked={marked} spoken />
       </div>
-      <div className="full" id={fieldProps('creative', marked).id}>
+      <div className="full" {...groupProps('creative')}>
         <CreativePicker
           label={drop.label}
           hint={drop.hint}

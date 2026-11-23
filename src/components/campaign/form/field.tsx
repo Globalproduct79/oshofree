@@ -12,13 +12,17 @@ export type Marked = Refusal | null
 export const fieldId = (field: CampaignField) => `cf-field-${field}`
 // The hint beside the primary button: the refusal that keeps it from going on.
 export const HINT_ID = 'cf-hint'
-const errorId = (field: CampaignField) => `cf-err-${field}`
+export const errorId = (field: CampaignField) => `cf-err-${field}`
 
 // The field a focus event came from (its own id, or the group holding it), or null.
 export function fieldOf(target: EventTarget | null): CampaignField | null {
   const el = target instanceof Element ? target.closest('[id^="cf-field-"]') : null
   return el ? (el.id.slice('cf-field-'.length) as CampaignField) : null
 }
+
+// A group's id (the placement tiles, the swatches): the group itself is never marked invalid (ARIA does not take
+// that on a group); the chosen option carries the sentence instead.
+export const groupProps = (field: CampaignField) => ({ id: fieldId(field) })
 
 // A control's id and, while it is the refused one, its invalid state and the sentence that describes it: its own
 // FieldError, or `describedBy` (the confirmation's is the hint beside the button just below it).
@@ -32,7 +36,7 @@ export function fieldProps(field: CampaignField, marked: Marked, describedBy = e
 export function FieldError({ field, marked, spoken }: { field: CampaignField; marked: Marked; spoken?: boolean }) {
   if (marked?.field !== field) return null
   return (
-    <span className="ferr" id={errorId(field)} aria-hidden={spoken ? undefined : true}>
+    <span className="hint bad" id={errorId(field)} aria-hidden={spoken ? undefined : true}>
       {marked.message}
     </span>
   )
@@ -40,13 +44,14 @@ export function FieldError({ field, marked, spoken }: { field: CampaignField; ma
 
 // Brings the field into the middle of the screen and puts the cursor on it: the control itself, or in a group the
 // chosen option (a swatch, a placement tile), else the picker's zone, else the first control. False when the field
-// is not on the page.
+// is not on the page, or cannot take the cursor (a control locked while the campaign runs).
 export function focusField(field: CampaignField): boolean {
   const box = typeof document === 'undefined' ? null : document.getElementById(fieldId(field))
   if (!box) return false
   const target = box.matches('input,select,textarea,button')
     ? box
     : (box.querySelector<HTMLElement>('[aria-pressed="true"],[role="button"],button,input:not([type="file"]),select,textarea') ?? box)
+  if (target.matches(':disabled')) return false
   target.scrollIntoView?.({ block: 'center' })
   target.focus({ preventScroll: true })
   return true
