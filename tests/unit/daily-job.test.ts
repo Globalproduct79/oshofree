@@ -405,6 +405,16 @@ describe('runDaily — closing the month', () => {
     expect(await db.auditEvent.findFirstOrThrow({ where: { action: 'invoice.issue' } })).toMatchObject({ actorId: null, targetId: invoice.id })
   })
 
+  it("on the 2nd reports a month the 1st already closed as skipped, and issues nothing twice", async () => {
+    const { ws, phoenix } = await world()
+    await db.marketFx.create({ data: { country: 'NG', fxPerUsd: 1550, effectiveFrom: at('2026-10-01T00:00:00Z') } })
+    const c = await campaign(ws.id)
+    await events(phoenix.id, c.id, 'Impression', 1000, '2026-11-30T20:00:00Z')
+    expect(await runDaily(at('2026-11-30T12:00:00Z'), at('2026-12-01T02:00:00Z'))).toMatchObject({ monthClose: 'closed' })
+    expect(await runDaily(at('2026-12-01T12:00:00Z'), at('2026-12-02T02:00:00Z'))).toMatchObject({ monthClose: 'skipped' })
+    expect(await db.invoice.count()).toBe(1)
+  })
+
   it('leaves the month alone on other days, and reports a market without FX instead of failing', async () => {
     const { ws, phoenix } = await world()
     const c = await campaign(ws.id)

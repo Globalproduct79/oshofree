@@ -27,6 +27,8 @@ const DAY_MS = 86_400_000
 const DUE_SOON_MS = 5 * DAY_MS
 const CHARGES: LedgerKind[] = ['delivery', 'reward']
 
+// 'closed' when this run issued an invoice; 'skipped' on the 3rd onwards, and when there was nothing left to invoice
+// (the 1st already closed the month, or nothing was charged).
 export type MonthClose = 'closed' | 'skipped' | 'not_over' | 'no_fx' | 'failed'
 
 export type DailyDuty = 'charge' | 'end' | 'start' | 'pause' | 'payouts' | 'monthClose' | 'invoices' | 'pace' | 'weekly'
@@ -228,12 +230,12 @@ async function pauseOverLimit(fail: Fail): Promise<number> {
 }
 
 // (6) On the 1st and 2nd (UTC) the previous month is closed, after the day's charges are posted. The 2nd
-// retries a 1st that failed; closeMonth is idempotent per month.
+// retries a 1st that failed; closeMonth is idempotent per month, so a month the 1st closed is skipped.
 async function closeLastMonth(now: Date): Promise<MonthClose> {
   if (now.getUTCDate() > 2) return 'skipped'
   try {
-    await closeMonth(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)), SYSTEM_ACTOR, now)
-    return 'closed'
+    const { invoices } = await closeMonth(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)), SYSTEM_ACTOR, now)
+    return invoices.length ? 'closed' : 'skipped'
   } catch (e) {
     if (e === 'MONTH_NOT_OVER') return 'not_over'
     if (e === 'NO_FX') return 'no_fx'
