@@ -114,6 +114,14 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     if (mode.focusBrand) brandRef.current?.focus()
   }, [mode, workspace.id, workspace.type, defaults])
 
+  // A file uploaded here is let go of once the form has stopped naming it, whatever took it off (Replace, Remove, a
+  // placement switch, Start over, the server saying it is gone); the autosave below, or Edit offer at once, deletes it.
+  const named = useRef(values.creative)
+  useEffect(() => {
+    uploads.letGo(named.current, values.creative)
+    named.current = values.creative
+  }, [values.creative, uploads])
+
   useEffect(() => {
     if (!isNew || !restored.current) return
     const t = setTimeout(() => {
@@ -144,8 +152,8 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
   const choose = (placement: PlacementKey) => {
     const next = switchPlacement(values, placement)
     if (!next) return
-    uploads.letGo(values.creative, next.values.creative)
-    setValues(next.values)
+    // From the values as they are when the update lands (an upload's creative may be on its way in).
+    setValues((v) => switchPlacement(v, placement)?.values ?? v)
     if (uploading) droppedNote.current = next.gone ?? droppedNote.current
     else setCreativeStatus({ state: 'idle', note: next.gone ?? undefined })
     setNotice(null)
@@ -159,8 +167,6 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
       status: setCreativeStatus,
       chosen: (creative) => {
         uploads.add(creative)
-        // The creative it replaces (pickCreative has checked that the placement takes this one).
-        uploads.letGo(latest.current.creative, creative)
         setValues((v) => (fits(v.placement, creative) ? { ...v, creative } : v))
       },
       unused: (creative) => uploads.drop(creative),
@@ -172,14 +178,11 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     })
   }
   function removeCreative() {
-    uploads.letGo(values.creative)
     update({ creative: null })
     setCreativeStatus({ state: 'idle' })
   }
   function onStartOver() {
-    uploads.letGo(values.creative)
     setValues(startOver(workspace.id, defaults))
-    uploads.flush()
     setHasDraft(false)
     setNotice(null)
     setMarks(NO_MARKS)
@@ -251,6 +254,8 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
         if ('error' in res) return refused(res)
         sent.current = true
         clearDraft(workspace.id)
+        // No draft names a file the form let go of now (the autosave stops once it is sent).
+        uploads.flush()
         toast(F.toasts.submitted)
         router.push(`/app/campaigns/${res.id}`)
         return
