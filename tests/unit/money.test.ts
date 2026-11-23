@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CampaignStatus, Country, InvoiceStatus, LedgerKind } from '@prisma/client'
 import { db } from '@/lib/db'
 import { MONEY, periodLabel } from '@/lib/copy-money'
+import { fd } from '@/lib/format'
 import {
   availableCents,
   campaignSpendCents,
@@ -11,7 +12,9 @@ import {
   creditInUseCents,
   creditSummary,
   decideCredit,
+  invoiceDueAt,
   invoiceStatus,
+  dueDay,
   limitFromDollars,
   markInvoicePaid,
   MAX_LIMIT_CENTS,
@@ -26,7 +29,6 @@ import {
   unbilledCents,
 } from '@/lib/money'
 
-const DAY = 86_400_000
 const at = (iso: string) => new Date(iso)
 const NOW = at('2026-11-14T09:00:00Z')
 
@@ -190,10 +192,31 @@ describe('invoiceStatus', () => {
   it('is overdue when due and dueAt has passed', () => {
     expect(invoiceStatus(inv('due', '2026-11-04T00:00:00Z'), NOW)).toBe('overdue')
     expect(invoiceStatus(inv('due', '2026-11-18T00:00:00Z'), NOW)).toBe('due')
-    expect(invoiceStatus(inv('due', NOW.toISOString()), NOW)).toBe('due')
+    // dueAt is the midnight that ends the due day: from that instant it is overdue.
+    expect(invoiceStatus(inv('due', NOW.toISOString()), NOW)).toBe('overdue')
     expect(invoiceStatus(inv('paid', '2026-11-04T00:00:00Z'), NOW)).toBe('paid')
     expect(invoiceStatus(inv('open', '2026-12-06T00:00:00Z'), NOW)).toBe('open')
   })
+})
+
+describe('invoiceDueAt: due all of the due day, overdue from the local midnight that ends it', () => {
+  // October closed on the 1st with Net 14: due 15 Nov in the market.
+  for (const [city, tz, monthEnd, endsDueDay] of [
+    ['Lagos', 'Africa/Lagos', '2026-10-31T23:00:00Z', '2026-11-15T23:00:00Z'],
+    ['Nairobi', 'Africa/Nairobi', '2026-10-31T21:00:00Z', '2026-11-15T21:00:00Z'],
+  ] as const) {
+    it(`${city}: due at 23:59 on 15 Nov local, overdue at 00:00 on 16 Nov local, and printed as 15 Nov`, () => {
+      const dueAt = invoiceDueAt(at(monthEnd), 14, at(monthEnd), tz)
+      expect(dueAt).toEqual(at(endsDueDay))
+      const due = { status: 'due' as const, dueAt }
+      expect(invoiceStatus(due, new Date(dueAt.getTime() - 60_000))).toBe('due') // 23:59 on the 15th
+      expect(invoiceStatus(due, dueAt)).toBe('overdue') // 00:00 on the 16th
+      expect(fd(dueDay(dueAt), tz)).toBe('15 Nov')
+      // The 2nd's retry keeps the day; a close weeks later runs the terms from its own issue day (20 Dec → 3 Jan).
+      expect(invoiceDueAt(at(monthEnd), 14, new Date(at(monthEnd).getTime() + 27 * 3_600_000), tz)).toEqual(dueAt)
+      expect(fd(dueDay(invoiceDueAt(at(monthEnd), 14, at('2026-12-20T09:00:00Z'), tz)), tz)).toBe('3 Jan')
+    })
+  }
 })
 
 describe('monthBounds', () => {
@@ -273,13 +296,13 @@ describe('closeMonth', () => {
     const pesaInv = invoices.find((i) => i.workspaceId === pesa.id)!
     expect(kolaInv).toMatchObject({
       number: 'INV-0052', period: NG_OCT, amountCents: 14500, status: 'due', country: 'NG',
-      // Terms run from the 1st in the market (Lagos midnight), not from the hour the close ran: due 15 Nov.
-      issuedAt: CLOSED_AT, dueAt: new Date(at('2026-10-31T23:00:00Z').getTime() + 14 * DAY),
+      // Terms run from the 1st in the market, not from the hour the close ran: due all of 15 Nov in Lagos.
+      issuedAt: CLOSED_AT, dueAt: at('2026-11-15T23:00:00Z'),
     })
     expect(Number(kolaInv.fxPerUsd)).toBe(1550)
     expect(pesaInv).toMatchObject({
       number: 'INV-0053', period: KE_OCT, amountCents: 9300, status: 'due', country: 'KE',
-      dueAt: new Date(at('2026-10-31T21:00:00Z').getTime() + 7 * DAY), // Nairobi midnight on 1 Nov + 7 days
+      dueAt: at('2026-11-08T21:00:00Z'), // Net 7 from 1 Nov: due all of 8 Nov in Nairobi
     })
     expect(Number(pesaInv.fxPerUsd)).toBe(129)
 
@@ -307,14 +330,15 @@ describe('closeMonth', () => {
     const { user, kola } = await closeFixture()
     const second = at('2026-11-02T02:00:00Z')
     const [inv] = (await closeMonth(at('2026-10-01T00:00:00Z'), user.id, second)).invoices.filter((i) => i.workspaceId === kola.id)
-    expect(inv).toMatchObject({ issuedAt: second, dueAt: new Date(at('2026-10-31T23:00:00Z').getTime() + 14 * DAY) })
+    expect(inv).toMatchObject({ issuedAt: second, dueAt: at('2026-11-15T23:00:00Z') })
 
     await line(kola.id, '2026-11-02T10:00:00Z', -100, 'Late — delivery')
     // SunFresh has November charges too, so Ghana needs a rate for November to close.
     await db.marketFx.create({ data: { country: 'GH', fxPerUsd: 15.5, effectiveFrom: at('2026-09-01T00:00:00Z') } })
     const late = at('2026-12-20T09:00:00Z')
     const [nov] = (await closeMonth(at('2026-11-01T00:00:00Z'), user.id, late)).invoices.filter((i) => i.workspaceId === kola.id)
-    expect(nov).toMatchObject({ issuedAt: late, dueAt: new Date(late.getTime() + 14 * DAY) })
+    // Issued 20 Dec in Lagos, Net 14: due all of 3 Jan.
+    expect(nov).toMatchObject({ issuedAt: late, dueAt: at('2027-01-03T23:00:00Z') })
   })
 
   it('run twice: one invoice per workspace and one statement', async () => {

@@ -6,7 +6,7 @@ import { SHELL } from '@/lib/copy-shell'
 import { db } from '@/lib/db'
 import { fd, loc, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
-import { INVOICE_BADGE, invoiceStatus } from '@/lib/money'
+import { dueDay, INVOICE_BADGE, invoiceStatus } from '@/lib/money'
 import { requireMember } from '@/lib/permissions'
 import { tokens } from '@/lib/tokens'
 import { PrintButton } from './PrintButton'
@@ -48,7 +48,7 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
         actions={<PrintButton label={P.action} />}
       />
       <Box title={ws.name} sub={ws.registrationNumber ? P.registration(ws.registrationNumber) : undefined}>
-        <p>{P.issued(fd(inv.issuedAt, m.timezone))} · {inv.status === 'paid' && inv.paidAt ? P.paid(fd(inv.paidAt, m.timezone)) : P.due(fd(inv.dueAt, m.timezone))}</p>
+        <p>{P.issued(fd(inv.issuedAt, m.timezone))} · {inv.status === 'paid' && inv.paidAt ? P.paid(fd(inv.paidAt, m.timezone)) : P.due(fd(dueDay(inv.dueAt), m.timezone))}</p>
         <DataTable head={P.head(m.currency)} rows={rows} emptyText={P.noLines} align={[undefined, undefined, 'right', 'right']} />
         <p>
           <b>{P.total}</b> <b>{usd(total)}</b> <span style={{ color: tokens.ink3 }}>{loc(total, inv.country, fx)}</span>

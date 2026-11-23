@@ -415,8 +415,8 @@ describe('runDaily — closing the month', () => {
     expect(await runDaily(at('2026-12-01T12:00:00Z'), at('2026-12-02T02:00:00Z'))).toMatchObject({ monthClose: 'closed' })
     const [inv] = await db.invoice.findMany()
     expect(inv).toMatchObject({ amountCents: 120, issuedAt: at('2026-12-02T02:00:00Z') })
-    // Lagos midnight on 1 Dec + 14 days' terms: due 15 Dec, the day Invoices showed for the running month, not the 16th.
-    expect(inv.dueAt).toEqual(new Date(at('2026-11-30T23:00:00Z').getTime() + 14 * 86_400_000))
+    // Net 14 from 1 Dec in Lagos: due all of 15 Dec (the day Invoices showed for the running month), overdue from the 16th.
+    expect(inv.dueAt).toEqual(at('2026-12-15T23:00:00Z'))
   })
 
   it("on the 2nd reports a month the 1st already closed as skipped, and issues nothing twice", async () => {
@@ -518,7 +518,8 @@ const invoiceFor = (workspaceId: string, number: string, status: 'due' | 'paid' 
   db.invoice.create({
     data: {
       workspaceId, number, period: at('2026-10-31T23:00:00Z'), amountCents: 1200, fxPerUsd: 1550, country: 'NG',
-      status, issuedAt: at('2026-11-01T02:00:00Z'), dueAt: at('2026-11-15T02:00:00Z'),
+      // Due all of 15 Nov in Lagos (money.invoiceDueAt): overdue from Lagos midnight on the 16th.
+      status, issuedAt: at('2026-11-01T02:00:00Z'), dueAt: at('2026-11-15T23:00:00Z'),
     },
   })
 
@@ -544,8 +545,11 @@ describe('runDaily — invoices', () => {
     await db.workspaceMember.create({ data: { userId: viewer.id, workspaceId: ws.id, role: 'Viewer' } })
     await db.notificationPref.create({ data: { userId: viewer.id, workspaceId: ws.id, kind: 'credit', enabled: false } })
 
-    expect(await runDaily(at('2026-11-14T12:00:00Z'), at('2026-11-15T02:00:00Z'))).toMatchObject({ invoices: 1 })
-    expect(await runDaily(at('2026-11-15T12:00:00Z'), at('2026-11-16T02:00:00Z'))).toMatchObject({ invoices: 0 })
+    // The 15th is the due day: not overdue yet, and no "due in 0 days".
+    expect(await runDaily(at('2026-11-14T12:00:00Z'), at('2026-11-15T02:00:00Z'))).toMatchObject({ invoices: 0 })
+    expect(invoiceStatus(await db.invoice.findUniqueOrThrow({ where: { id: invoice.id } }), at('2026-11-15T22:59:00Z'))).toBe('due')
+    expect(await runDaily(at('2026-11-15T12:00:00Z'), at('2026-11-16T02:00:00Z'))).toMatchObject({ invoices: 1 })
+    expect(await runDaily(at('2026-11-16T12:00:00Z'), at('2026-11-17T02:00:00Z'))).toMatchObject({ invoices: 0 })
     const told = await notes('credit')
     expect(told).toMatchObject([{ userId: owner.id, title: 'INV-0052 is overdue', detail: '$12 · was due 15 Nov', href: '/app/invoices' }])
     // Overdue is a due invoice past its date (money.invoiceStatus): it still counts as outstanding.

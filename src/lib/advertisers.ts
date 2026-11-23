@@ -6,7 +6,7 @@ import { periodLabel } from '@/lib/copy-money'
 import { db } from '@/lib/db'
 import { fd, loc, localAmount, usd } from '@/lib/format'
 import { isCountry, MARKETS, type Country } from '@/lib/markets'
-import { creditSummary, invoiceStatus, limitFromDollars, type InvoiceDisplayStatus } from '@/lib/money'
+import { creditSummary, dueDay, invoiceStatus, limitFromDollars, type InvoiceDisplayStatus } from '@/lib/money'
 import { workspaceCards } from '@/lib/reports'
 import { advertiserHref, type LiveCard } from '@/lib/review'
 import { workspaceStatusBox } from '@/lib/workspaces'
@@ -200,7 +200,7 @@ export async function advertiserDetail(id: string, now: Date): Promise<Advertise
         country: inv.country,
         period: periodLabel(inv.period, issuedIn),
         status,
-        due: status === 'paid' ? D.notDue : fd(inv.dueAt, issuedIn),
+        due: status === 'paid' ? D.notDue : fd(dueDay(inv.dueAt), issuedIn),
         amountCents: inv.amountCents,
         local: loc(inv.amountCents, inv.country, Number(inv.fxPerUsd)),
         payable: status === 'due' || status === 'overdue',

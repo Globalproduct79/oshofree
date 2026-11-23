@@ -8,7 +8,7 @@ import { db } from '@/lib/db'
 import { pct } from '@/lib/format'
 import { COUNTRIES, MARKETS, type Country } from '@/lib/markets'
 import { dayBounds, localMidnight, wallClock } from '@/lib/market-clock'
-import { closeMonth, INVOICE_LOCK, postLedger, spendByCampaign } from '@/lib/money'
+import { closeMonth, dueDay, INVOICE_LOCK, invoiceStatus, postLedger, spendByCampaign } from '@/lib/money'
 import { notifyWorkspace } from '@/lib/notifications'
 import { sendQueuedPayouts } from '@/lib/rewards'
 
@@ -23,7 +23,7 @@ import { sendQueuedPayouts } from '@/lib/rewards'
 
 const DAILY = 'daily'
 const DAY_MS = 86_400_000
-// An unpaid invoice is announced once when it is this close to its due date.
+// An unpaid invoice is announced once when its due day is this close.
 const DUE_SOON_MS = 5 * DAY_MS
 const CHARGES: LedgerKind[] = ['delivery', 'reward']
 
@@ -243,22 +243,25 @@ async function closeLastMonth(now: Date): Promise<MonthClose> {
   }
 }
 
-// (7) Every unpaid invoice of an approved workspace is announced once when it is five days or less from its
-// due date, and once when the date has come. Overdue is a due invoice past its date (money.invoiceStatus), so
-// nothing is rewritten: the status stays `due` and every page reads it as overdue. The `credit` toggle governs both.
+// (7) Every unpaid invoice of an approved workspace is announced once when its due day is five days or less away,
+// and once when that day has ended. dueAt is the midnight that ends the due day (money.invoiceDueAt), so the day
+// begins a day before it; overdue is money.invoiceStatus, and nothing is rewritten: the status stays `due` and every
+// page reads it as overdue. On the due day itself there is no "due in 0 days". The `credit` toggle governs both.
 async function remindInvoices(now: Date, fail: Fail): Promise<number> {
   const unpaid = await db.invoice.findMany({
-    where: { status: 'due', workspace: { status: 'approved' }, dueAt: { lte: new Date(now.getTime() + DUE_SOON_MS) } },
+    where: { status: 'due', workspace: { status: 'approved' }, dueAt: { lte: new Date(now.getTime() + DUE_SOON_MS + DAY_MS) } },
     orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
   })
   let told = 0
   for (const inv of unpaid) {
     try {
-      const left = inv.dueAt.getTime() - now.getTime()
-      const overdue = left <= 0
+      // Until the due day begins: a day before dueAt (none of the markets keeps daylight saving).
+      const left = inv.dueAt.getTime() - DAY_MS - now.getTime()
+      const overdue = invoiceStatus(inv, now) === 'overdue'
+      if (!overdue && left <= 0) continue
       if (!(await claim(`${overdue ? 'invoice-overdue' : 'invoice-due'}:${inv.id}`, utcDate(inv.dueAt)))) continue
       const item = overdue
-        ? NOTIFY.invoiceOverdue(inv.number, inv.amountCents, inv.dueAt, MARKETS[inv.country].timezone)
+        ? NOTIFY.invoiceOverdue(inv.number, inv.amountCents, dueDay(inv.dueAt), MARKETS[inv.country].timezone)
         : NOTIFY.invoiceDue(inv.number, Math.ceil(left / DAY_MS), inv.amountCents)
       await notifyWorkspace(inv.workspaceId, 'credit', item.title, item.detail, '/app/invoices')
       told++

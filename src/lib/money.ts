@@ -28,13 +28,19 @@ export const INVOICE_LOCK = 805_200
 // month's own close, however late in that window it ran.
 const CLOSE_WINDOW_MS = 2 * DAY_MS
 
-// When an invoice falls due: its terms run from the 1st (the market's first local midnight after the month), so the
-// day is the one Invoices showed for the running month, whether the 1st's run issued it or the 2nd's. A close
-// later than that (Global's Close month, weeks on) gives the full terms from its own issue instead.
-export const invoiceDueAt = (monthEnd: Date, termsDays: number, issuedAt: Date): Date => {
+// When an invoice falls due (the controller's ruling, Prompt 5): the market's local midnight that ENDS its due day, so
+// "Due 15 Nov" is due all of the 15th and overdue from the 16th. The due day is `termsDays` after the 1st (the market's
+// first local midnight after the month), so it is the one Invoices showed for the running month, whether the 1st's
+// run issued the invoice or the 2nd's; a close later than that (Global's Close month, weeks on) counts the terms from
+// its own issue day instead.
+export function invoiceDueAt(monthEnd: Date, termsDays: number, issuedAt: Date, timeZone: string): Date {
   const from = issuedAt.getTime() - monthEnd.getTime() <= CLOSE_WINDOW_MS ? monthEnd : issuedAt
-  return new Date(from.getTime() + termsDays * DAY_MS)
+  const { year, month, day } = wallClock(timeZone, from)
+  return localMidnight(timeZone, year, month, day + termsDays + 1)
 }
+
+// The due day itself, for printing its date ("Due 15 Nov"): the last instant before dueAt.
+export const dueDay = (dueAt: Date): Date => new Date(dueAt.getTime() - 1)
 
 // The last instant before an exclusive end: lookups use effectiveFrom ≤ at.
 const lastInstant = (end: Date) => new Date(end.getTime() - 1)
@@ -237,9 +243,10 @@ export type InvoiceDisplayStatus = 'open' | 'due' | 'overdue' | 'paid'
 // The badge each status wears on Invoices, the printed invoice and Platform › Advertisers: the running month is "Open".
 export const INVOICE_BADGE = { paid: 'paid', due: 'due', overdue: 'overdue', open: 'issued' } as const satisfies Record<InvoiceDisplayStatus, string>
 
-// `open` is the running "(to date)" row the pages build; `overdue` is a due invoice past its date.
+// `open` is the running "(to date)" row the pages build; `overdue` is a due invoice whose due day has ended (dueAt is
+// the midnight that ends it).
 export function invoiceStatus(inv: { status: InvoiceStatus; dueAt: Date }, now = new Date()): InvoiceDisplayStatus {
-  if (inv.status === 'due') return inv.dueAt < now ? 'overdue' : 'due'
+  if (inv.status === 'due') return inv.dueAt <= now ? 'overdue' : 'due'
   return inv.status
 }
 
@@ -303,7 +310,7 @@ export async function closeMonth(
           country: ws.country,
           status: 'due',
           issuedAt: now,
-          dueAt: invoiceDueAt(end, ws.termsDays, now),
+          dueAt: invoiceDueAt(end, ws.termsDays, now, MARKETS[ws.country].timezone),
         },
       })
       await tx.ledgerEntry.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { invoiceId: created.id } })

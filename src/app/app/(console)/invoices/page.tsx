@@ -4,7 +4,7 @@ import { MONEY, periodLabel } from '@/lib/copy-money'
 import { SHELL } from '@/lib/copy-shell'
 import { fd, loc, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
-import { creditSummary, INVOICE_BADGE, invoiceDueAt, invoiceStatus, monthBounds } from '@/lib/money'
+import { creditSummary, dueDay, INVOICE_BADGE, invoiceDueAt, invoiceStatus, monthBounds } from '@/lib/money'
 import { db } from '@/lib/db'
 import { requireMember } from '@/lib/permissions'
 import { currentFx } from '@/lib/rates'
@@ -34,7 +34,7 @@ export default async function InvoicesPage() {
       <b key="n">{inv.number}</b>,
       periodLabel(inv.period, issuedIn),
       <StatusBadge key="s" status={INVOICE_BADGE[status]} />,
-      status === 'paid' ? '—' : fd(inv.dueAt, issuedIn),
+      status === 'paid' ? '—' : fd(dueDay(inv.dueAt), issuedIn),
       <b key="u">{usd(inv.amountCents)}</b>,
       <span key="l" style={{ color: tokens.ink3 }}>{loc(inv.amountCents, inv.country, Number(inv.fxPerUsd))}</span>,
       <LinkButton key="p" variant="ghost" size="s" href={`/app/invoices/${inv.id}/print`} target="_blank">{I.pdf}</LinkButton>,
@@ -42,12 +42,12 @@ export default async function InvoicesPage() {
   })
   if (credit.unbilledCents > 0) {
     // What the 1st's close will set (money.invoiceDueAt), so the running row and the invoice agree.
-    const due = invoiceDueAt(current.end, ws.termsDays, current.end)
+    const due = invoiceDueAt(current.end, ws.termsDays, current.end, m.timezone)
     rows.unshift([
       <b key="n">{I.runningNumber}</b>,
       I.toDate(periodLabel(current.start, m.timezone)),
       <StatusBadge key="s" status="issued" />,
-      fd(due, m.timezone),
+      fd(dueDay(due), m.timezone),
       <b key="u">{usd(credit.unbilledCents)}</b>,
       <span key="l" style={{ color: tokens.ink3 }}>{fx === null ? '—' : loc(credit.unbilledCents, ws.country, fx)}</span>,
       null,

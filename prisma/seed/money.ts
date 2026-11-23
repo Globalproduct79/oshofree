@@ -3,7 +3,7 @@ import { audit, SYSTEM_ACTOR } from '@/lib/audit'
 import { db } from '@/lib/db'
 import { localMidnight } from '@/lib/market-clock'
 import { MARKETS } from '@/lib/markets'
-import { FIRST_INVOICE_NUMBER, markInvoicePaid } from '@/lib/money'
+import { FIRST_INVOICE_NUMBER, invoiceDueAt, markInvoicePaid } from '@/lib/money'
 import { currentFx } from '@/lib/rates'
 import { topUpAggregator } from '@/lib/rewards'
 import type { Clock, Timeline } from './timeline'
@@ -53,7 +53,7 @@ async function issue(ws: Workspace, now: Date, offset: number, listed: Listed): 
   const invoice = await db.invoice.create({
     data: {
       workspaceId: ws.id, number: listed.number, period: start, amountCents: listed.amountCents, fxPerUsd, country: ws.country,
-      status: 'due', issuedAt: closedAt, dueAt: new Date(closedAt.getTime() + ws.termsDays * DAY_MS),
+      status: 'due', issuedAt: closedAt, dueAt: invoiceDueAt(end, ws.termsDays, closedAt, MARKETS[ws.country].timezone),
     },
   })
   await audit(SYSTEM_ACTOR, 'invoice.issue', { type: 'Invoice', id: invoice.id, workspaceId: ws.id }, undefined, {
@@ -62,10 +62,11 @@ async function issue(ws: Workspace, now: Date, offset: number, listed: Listed): 
   return invoice
 }
 
-// Pesa Link's overdue invoice: last month's when, invoiced on the 1st, it is already past due; else the month before.
+// Pesa Link's overdue invoice: last month's when, invoiced on the 1st, its due day has already ended (the instant
+// closeMonth sets, money.invoiceDueAt); else the month before.
 function pesaOverdueOffset(ws: Workspace, now: Date): number {
-  const { closedAt } = month(ws, now, -1)
-  return closedAt.getTime() + ws.termsDays * DAY_MS < now.getTime() ? -1 : -2
+  const { end, closedAt } = month(ws, now, -1)
+  return invoiceDueAt(end, ws.termsDays, closedAt, MARKETS[ws.country].timezone) <= now ? -1 : -2
 }
 
 // Before the campaigns: the aggregator is funded (GLB §2.7: $1,240) and the two older invoices are issued
