@@ -14,6 +14,7 @@ import type { MarketRates } from '@/lib/rates'
 import { CardPreview } from './form/CardPreview'
 import { CostBox } from './form/CostBox'
 import { fieldOf, fieldProps, focusField, HINT_ID, type Marked } from './form/field'
+import { backToEdit, left, markedOf, NO_MARKS, pressedOn, pressOutcome, toReview, type Marks } from './form/marks'
 import { OfferFields } from './form/OfferFields'
 import { formPreview } from './form/preview'
 import { PlacementFields } from './form/PlacementFields'
@@ -67,10 +68,8 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
   const brandRef = useRef<HTMLInputElement>(null)
   // The field an Edit on the Review step goes back to.
   const editing = useRef<CampaignField | null>(null)
-  // A field is marked with its refusal once the person has left it, or pressed the primary while it was the one
-  // refused (the next field is not marked ahead of them).
-  const [touched, setTouched] = useState<ReadonlySet<CampaignField>>(new Set())
-  const [pressed, setPressed] = useState<CampaignField | null>(null)
+  // Which refused field is marked: one the person has left, or the one refused when they pressed (form/marks.ts).
+  const [marks, setMarks] = useState<Marks>(NO_MARKS)
   const restored = useRef(false)
   const sent = useRef(false)
   // The values as they are now, for an upload that resolves after the placement has changed.
@@ -150,13 +149,15 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     setValues(startOver(workspace.id, defaults))
     setHasDraft(false)
     setNotice(null)
+    setMarks(NO_MARKS)
     if (!uploading) setCreativeStatus({ state: 'idle' })
   }
-  // The confirmation is for what was reviewed: going back to change anything asks for it again.
-  function onBack(field?: CampaignField) {
+  // The confirmation is for what was reviewed: going back to change anything asks for it again. `field` gets the
+  // cursor (an Edit's field, or the one a press on Review was refused for, which is `refused` and marked).
+  function onBack(field?: CampaignField, refused = false) {
     moved.current = true
     editing.current = field ?? null
-    setPressed(null)
+    setMarks((m) => backToEdit(m, refused ? (field ?? null) : null))
     setStage('edit')
     update({ termsAccepted: false })
   }
@@ -173,10 +174,10 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     values, isNew, stage, edit, workspace, credit, cpmCents: cpmCents[values.placement], fxPerUsd,
   })
   const hint = uploading ? F.upload.uploading : (notice ?? problem?.message ?? '')
-  const marked: Marked = problem?.field && (problem.field === pressed || touched.has(problem.field)) ? problem : null
+  const marked: Marked = markedOf(problem, marks)
   function onBlur(e: FocusEvent) {
     const field = fieldOf(e.target)
-    if (field && !touched.has(field)) setTouched((t) => new Set(t).add(field))
+    if (field) setMarks((m) => left(m, field))
   }
   const dirty = hasDraft || !sameValues(values, defaults)
 
@@ -185,14 +186,15 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     if (pending || uploading) return
     // The primary says why it does nothing beside it, and the cursor goes to the field that needs the fix.
     if (problem) {
-      setPressed(problem.field)
-      if (problem.field) focusField(problem.field)
+      setMarks((m) => pressedOn(m, problem))
+      const focused = problem.field !== null && focusField(problem.field)
+      if (pressOutcome(problem.field, focused, reviewing) === 'back') onBack(problem.field ?? undefined, true)
       return
     }
     if (isNew && stage === 'edit') {
       moved.current = true
       setNotice(null)
-      setPressed(null)
+      setMarks(toReview)
       setStage('review')
       return
     }
@@ -283,7 +285,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
             credit={credit}
             mine={mine}
             update={update}
-            onEdit={onBack}
+            onEdit={(field) => onBack(field)}
             agency={workspace.type === 'Agency'}
             marked={marked}
             headingRef={reviewHeading}
