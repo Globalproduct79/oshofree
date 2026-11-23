@@ -126,6 +126,9 @@ describe('CreativePicker', () => {
   it("the form's refusal marks the control there to fix it: the empty zone, else Replace", () => {
     const empty = html({ invalid: 'cf-err-creative' })
     expect([attr(pick(empty), 'aria-invalid'), attr(pick(empty), 'aria-describedby')]).toEqual(['true', 'cf-err-creative'])
+    // The dashed box turns red with it.
+    expect(attr(zone(empty), 'data-invalid')).toBe('')
+    expect(attr(zone(html()), 'data-invalid')).toBeUndefined()
     const chosen = html({ invalid: 'cf-err-creative', chosen: { url: '/uploads/a.png', kind: 'image' } })
     const replace = /<button [^>]*>Replace<\/button>/.exec(chosen)?.[0]
     expect([attr(replace, 'aria-invalid'), attr(replace, 'aria-describedby')]).toEqual(['true', 'cf-err-creative'])

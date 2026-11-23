@@ -105,6 +105,7 @@ export function CreativePicker({
         className="drop"
         data-state={busy ? 'uploading' : chosen ? 'chosen' : 'idle'}
         data-over={over || undefined}
+        data-invalid={invalid ? '' : undefined}
         aria-busy={busy || undefined}
         onDragOver={(e) => drag(e, true)}
         onDragLeave={(e) => {

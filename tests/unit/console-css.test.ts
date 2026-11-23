@@ -21,6 +21,9 @@ it('the creative picker: a lit zone for a drag, the upload bar, a message line, 
   expect(css).toContain('.phone-thumb .phone{transform:scale(.4)')
   // The prototype's `.drop img` clamps a thumbnail to 90 px; inside the phone the splash must fill the screen.
   expect(css).toContain('.drop .phone-thumb img,.drop .phone-thumb video{max-height:none;max-width:none;margin:0;border-radius:0}')
+  // The empty zone is a real button filling the box; a refused creative turns the box red.
+  expect(css).toContain('.drop .pick{display:block;width:calc(100% + 28px);margin:-14px;padding:14px')
+  expect(css).toContain('.drop[data-invalid],.drop[data-invalid]:hover{border-color:var(--red)}')
 })
 it("puts a placement tile's inventory badge on the tile's top edge, clear of the title", () => {
   expect(css).toContain('.opt .soon{top:-9px;right:10px;margin:0;line-height:1.4}')

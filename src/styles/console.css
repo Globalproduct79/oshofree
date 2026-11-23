@@ -275,6 +275,8 @@ label.f .hint,.hint.bad{display:block;margin-top:6px;font-weight:400;font-size:1
 label.f input[aria-invalid=true],label.f select[aria-invalid=true],label.f textarea[aria-invalid=true]{border-color:var(--red)}
 label.f input[aria-invalid=true]:focus,label.f select[aria-invalid=true]:focus,label.f textarea[aria-invalid=true]:focus{border-color:var(--red);box-shadow:0 0 0 3px var(--red2)}
 .chk input[aria-invalid=true]{outline:2px solid var(--red);outline-offset:2px}
+/* A refused creative (none attached, or the wrong kind): the picker's dashed box, red. */
+.drop[data-invalid],.drop[data-invalid]:hover{border-color:var(--red)}
 label.f .hint.bad,.hint.bad{color:var(--red)}
 /* The form's primary stays pressable while a rule fails (it takes the cursor to the field): not the loading look. */
 form.two .btn.p[aria-disabled=true]:not([aria-busy=true]){cursor:pointer}
