@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/og'
 import { toast } from '@/components/shell/toast-store'
@@ -89,25 +88,21 @@ export function InviteRowView({
   )
 }
 
-// The row with its state. `link` is the link the invite page's own Send just made; `after` runs once a Resend or
-// Revoke has answered.
+// The row with its state. `link` is the link the invite page's own Send just made.
 export function InviteRow({
   invite,
   canManage,
   link = null,
-  after,
 }: {
   invite: InviteView
   canManage: boolean
   link?: string | null
-  after?: () => void
 }) {
   const [busy, start] = useTransition()
   const [state, setState] = useState<RowState>({ status: 'open', fresh: link ? { link, expires: invite.expires } : null })
   const run = (step: (id: string) => Promise<RowState>) =>
     start(async () => {
       setState(await step(invite.id))
-      after?.()
     })
   return (
     <InviteRowView
@@ -121,15 +116,14 @@ export function InviteRow({
   )
 }
 
-// The invites still to be taken up (People's Open invites). Any Resend or Revoke answer refreshes the page, so the
-// list and its dates are the server's.
+// The invites still to be taken up (People's Open invites). Resend and Revoke revalidate /app/people, so their answer
+// carries the list and its dates as the server has them (no router.refresh() on top: see TeamList).
 export function InvitesList({ canManage, invites, empty }: { canManage: boolean; invites: InviteView[]; empty: string }) {
-  const router = useRouter()
   if (invites.length === 0) return <p className="sub">{empty}</p>
   return (
     <ul className="roles">
       {invites.map((i) => (
-        <InviteRow key={i.id} invite={i} canManage={canManage} after={() => router.refresh()} />
+        <InviteRow key={i.id} invite={i} canManage={canManage} />
       ))}
     </ul>
   )

@@ -1,7 +1,6 @@
 'use client'
 
 import type { Role } from '@prisma/client'
-import { useRouter } from 'next/navigation'
 import { useTransition } from 'react'
 import { Button } from '@/components/og'
 import { toast } from '@/components/shell/toast-store'
@@ -13,21 +12,22 @@ import { changeRoleAction, removeMemberAction } from './actions'
 // Every member: initials, name (and "you"), email and role. Those who manage people get the role select and
 // Remove; the last Owner can be neither demoted nor removed, so their select is locked (its title says why) and
 // there is no Remove to press.
+// Each action revalidates /app/people, so its answer carries the page as the server now has it. No router.refresh()
+// on top: with one, about 1 change in 17 on the production build left the transition pending for good (every control
+// disabled, the old list shown until a reload); without it about 1 in 70 still does (Next's router: its update is
+// fulfilled, React never retries the suspended lane). Prompt 6's report has the measurements.
 export function TeamList({ canManage, members, meId }: { canManage: boolean; members: MemberView[]; meId: string }) {
-  const router = useRouter()
   const [busy, start] = useTransition()
 
   const change = (userId: string, next: string) =>
     start(async () => {
       const r = await changeRoleAction(userId, next)
       if (r.error) toast(PEOPLE.lastOwner)
-      router.refresh()
     })
   const remove = (userId: string) =>
     start(async () => {
       const r = await removeMemberAction(userId)
       if (r.error) toast(PEOPLE.lastOwnerRemove)
-      router.refresh()
     })
 
   return (
