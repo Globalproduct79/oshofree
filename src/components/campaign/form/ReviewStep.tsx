@@ -37,8 +37,8 @@ type Props = {
 }
 
 // The creative as it will run: the image, the video with its controls (opened at its first frame), a splash on a
-// phone, or a line saying the card shows the tile colour.
-function Creative({ values: v, mine }: Pick<Props, 'values' | 'mine'>) {
+// phone, or a line saying the card shows the tile colour, with its Edit (the one place that fact is said).
+function Creative({ values: v, mine, edit }: Pick<Props, 'values' | 'mine'> & { edit: ReactNode }) {
   const c = v.creative
   if (c && v.placement === 'splash') return <PhoneThumb mine={mine} country={MARKETS[v.country].name} label={F.drop.splashFrame} />
   return (
@@ -48,7 +48,11 @@ function Creative({ values: v, mine }: Pick<Props, 'values' | 'mine'>) {
       labels={R}
       controls
       className="cr"
-      fallback={<p className="desc">{R.noCreative}</p>}
+      fallback={
+        <p className="desc">
+          {R.noCreative} {edit}
+        </p>
+      }
     />
   )
 }
@@ -68,14 +72,17 @@ function flight(v: FormValues): string {
 export function ReviewStep({ values: v, cpmCents, fxPerUsd, credit, mine, update, onEdit, agency, marked = null, headingRef, children }: Props) {
   const placement = F.placements[v.placement].name
   const budgetCents = amount(v.budgetUsd) * 100
-  // A value's label with its Edit, which names the field for a screen reader.
+  // A value's Edit, which names the field for a screen reader; and a value's label with its Edit.
+  const edit = (text: string, field: CampaignField) => (
+    <button type="button" className="linkbtn" aria-label={R.editLabel(text)} onClick={() => onEdit(field)}>
+      {R.edit}
+    </button>
+  )
   const label = (text: string, field?: CampaignField) =>
     field ? (
       <>
         {text}
-        <button type="button" className="linkbtn" aria-label={R.editLabel(text)} onClick={() => onEdit(field)}>
-          {R.edit}
-        </button>
+        {edit(text, field)}
       </>
     ) : (
       text
@@ -103,10 +110,12 @@ export function ReviewStep({ values: v, cpmCents, fxPerUsd, credit, mine, update
         </section>
         <section>
           <b className="subt">{R.creative}</b>
-          <Creative values={v} mine={mine} />
+          <Creative values={v} mine={mine} edit={edit(F.drop[v.placement].label, 'creative')} />
           <KVGrid
             items={[
-              { label: label(F.drop[v.placement].label, 'creative'), value: v.creative ? (v.creative.kind === 'image' ? R.image : R.video) : R.none },
+              ...(v.creative
+                ? [{ label: label(F.drop[v.placement].label, 'creative'), value: v.creative.kind === 'image' ? R.image : R.video }]
+                : []),
               {
                 label: label(L.tileColor.label, 'tileColor'),
                 value: (

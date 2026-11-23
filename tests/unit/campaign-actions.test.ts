@@ -8,13 +8,16 @@ import { editOfferAction, pause, previewOffers, resume, submitAction } from '@/a
 import EditOfferPage from '@/app/app/(console)/campaigns/[id]/edit/page'
 import NewCampaignPage from '@/app/app/(console)/campaigns/new/page'
 import { formProblem } from '@/components/campaign/form/problem'
-import { newCampaignDefaults, sameValues, toInput, type FormValues } from '@/components/campaign/form/values'
+import {
+  campaignDefaults, newCampaignDefaults, offerInput, sameValues, toInput, type FormValues,
+} from '@/components/campaign/form/values'
 import { auth } from '@/lib/auth'
 import type { CampaignInput } from '@/lib/campaigns'
 import { db } from '@/lib/db'
 import { clearDraft, draftKey, loadDraft, parseDraft, saveDraft, serialiseDraft, startOver } from '@/lib/draft-store'
 import { tokens } from '@/lib/tokens'
 import { resetDb } from '../../scripts/db-truncate'
+import { expectCopySentence } from '../stubs/copy-sentence'
 
 vi.mock('@/lib/auth', () => ({ auth: vi.fn(), signOut: vi.fn() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
@@ -171,7 +174,6 @@ describe('submitAction', () => {
       { rewardLocal: '21474837' }, { startsAt: '' }, { startsAt: '2020-01-01' }, { runsFor: 'custom', endsAt: '' },
       { runsFor: 'custom', endsAt: '2020-01-01' }, { termsAccepted: false },
     ]
-    const said = new Set<string>()
     for (const patch of cases) {
       const v = { ...filled, ...patch }
       const client = formProblem({
@@ -180,10 +182,9 @@ describe('submitAction', () => {
       })
       expect(client, JSON.stringify(patch)).not.toBeNull()
       expect(await submitAction(toInput(v)), JSON.stringify(patch)).toEqual({ error: client!.message })
-      said.add(client!.message)
+      // A sentence from the copy file, never zod's words.
+      expectCopySentence(client!.message, JSON.stringify(patch))
     }
-    // Not one catch-all: the cases above are 18 different sentences.
-    expect(said.size).toBe(18)
     expect(await db.campaign.count()).toBe(0)
     // And what the form lets through, the server takes.
     expect(formProblem({
@@ -191,6 +192,36 @@ describe('submitAction', () => {
       credit: { limitCents: 150_000, inUseCents: 0 }, cpmCents: 120, fxPerUsd: 1550,
     })).toBeNull()
     expect(await submitAction(toInput(filled))).toEqual({ id: expect.any(String) })
+  })
+
+  it("Edit offer on a running campaign: the revision is refused in the form's sentence, and what the form passes is taken", async () => {
+    await setup('Owner')
+    const live = await campaign(mine.id, 'live')
+    const base: FormValues = { ...campaignDefaults(live, (key) => `/uploads/${key}`), termsAccepted: true }
+    const edit = { running: true, heldCents: live.budgetUsd * 100 }
+    const judge = (v: FormValues) =>
+      formProblem({
+        values: v, isNew: false, stage: 'edit', edit, workspace: { type: 'Brand', declined: false },
+        credit: { limitCents: 150_000, inUseCents: 0 }, cpmCents: 120, fxPerUsd: 1550,
+      })
+    const cases: Partial<FormValues>[] = [
+      { headline: '' }, { headline: 'h'.repeat(49) }, { description: '' }, { category: 'Betting' },
+      { headline: 'Win the weekly draw' }, { redeemMethod: 'link', linkUrl: '' },
+      { redeemMethod: 'link', linkUrl: 'http://kolabright.example' }, { redeemMethod: 'link', linkUrl: 'https://' },
+      { placement: 'video' }, { termsAccepted: false },
+    ]
+    for (const patch of cases) {
+      const v = { ...base, ...patch }
+      const client = judge(v)
+      expect(client, JSON.stringify(patch)).not.toBeNull()
+      // The form sends the offer alone for a running campaign.
+      expect(await editOfferAction(live.id, offerInput(v)), JSON.stringify(patch)).toEqual({ error: client!.message })
+      expectCopySentence(client!.message, JSON.stringify(patch))
+    }
+    expect(await db.campaignRevision.count()).toBe(0)
+    const ok = { ...base, headline: 'Buy 3 bottles, get 2 free' }
+    expect(judge(ok)).toBeNull()
+    expect(await editOfferAction(live.id, offerInput(ok))).toEqual({ revision: true })
   })
 
   it('answers a date that is not on the calendar with the validation message, without throwing', async () => {
@@ -415,7 +446,9 @@ describe('the pages', () => {
     expect(html).toContain('$1,200 left')
     expect(html).toContain('Give the campaign a name.')
     // Pressable, so a press can take the cursor to the field to fix; aria-disabled says it cannot submit yet.
-    expect(html).toContain('<button class="btn p" type="submit" aria-disabled="true" aria-describedby="cf-hint">Review before submitting</button>')
+    const primary = /<button\b([^>]*)>Review before submitting<\/button>/.exec(html)?.[1] ?? ''
+    for (const attr of ['class="btn p"', 'type="submit"', 'aria-disabled="true"', 'aria-describedby="cf-hint"']) expect(primary).toContain(attr)
+    expect(primary).not.toMatch(/\bdisabled=""/)
     expect(html).toContain('— 0/48')
     expect(html).toContain('— NGN airtime per successful share')
     expect(html).not.toContain('Cancel')
@@ -427,7 +460,7 @@ describe('the pages', () => {
     await setup('Owner')
     const html = renderToStaticMarkup(await NewCampaignPage({ searchParams: Promise.resolve({}) }))
     expect(html).toContain('<div class="box"><p class="sub">One offer per campaign. Add another campaign for another offer.</p><div class="form">')
-    expect(html).toMatch(/<button class="btn p" type="submit" aria-disabled="true"[^>]*>Review before submitting<\/button>/)
+    expect(/<button\b([^>]*)>Review before submitting<\/button>/.exec(html)?.[1]).toContain('aria-disabled="true"')
     expect(html).not.toContain('Submit for review')
     // Nothing to save yet: a fresh form is the defaults.
     expect(html).toMatch(/<button class="btn g" type="button" disabled="">Save draft<\/button>/)

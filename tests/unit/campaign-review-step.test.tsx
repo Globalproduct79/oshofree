@@ -50,7 +50,10 @@ const cells = (m: string) =>
     text(c[2]),
   ])
 // The fields the step's Edits go back to, by their accessible names.
-const edits = (m: string) => [...m.matchAll(/<button type="button" class="linkbtn" aria-label="([^"]*)">Edit<\/button>/g)].map((c) => text(c[1]))
+const edits = (m: string) =>
+  [...m.matchAll(/<button\b([^>]*)>Edit<\/button>/g)]
+    .filter((c) => /\bclass="linkbtn"/.test(c[1]))
+    .map((c) => text(/\baria-label="([^"]*)"/.exec(c[1])?.[1] ?? ''))
 const section = (m: string, title: string) => {
   const from = m.indexOf(`>${title}</b>`)
   return from < 0 ? '' : m.slice(from + 1, m.indexOf('</section>', from))
@@ -140,7 +143,10 @@ describe('the Review step', () => {
 
   it('says so when there is no creative: the card shows the tile colour and initials', () => {
     const m = render(filled({ creative: null }))
-    expect(text(section(m, 'Creative'))).toMatch(/^Creative No image\. The card shows your tile colour and initials\. Ad image Edit None attached Tile colour/)
+    // Said once, with its Edit; no "Ad image" row repeats it.
+    expect(text(section(m, 'Creative'))).toMatch(/^Creative No image\. The card shows your tile colour and initials\. Edit Tile colour/)
+    expect(cells(section(m, 'Creative'))).toEqual([['Tile colour', tokens.tileColors[0]]])
+    expect(edits(section(m, 'Creative'))).toEqual(['Edit Ad image', 'Edit Tile colour'])
     expect(section(m, 'Creative')).toContain(`<span class="tc" style="background:${tokens.tileColors[0]}" aria-hidden="true"></span>`)
   })
 

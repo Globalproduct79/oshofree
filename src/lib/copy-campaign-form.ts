@@ -21,7 +21,7 @@ export const CAMPAIGN_FORM_COPY = {
     country: { label: 'Country' },
     category: { label: 'Category' },
     tileColor: { label: 'Tile colour', hint: "— used when there's no image", swatch: 'colour' },
-    headline: { label: 'Offer headline', counter: (n: number) => `— ${n}/48`, placeholder: 'Buy 2 bottles, get 1 free' },
+    headline: { label: 'Offer headline', counter: (n: number, max: number) => `— ${n}/${max}`, placeholder: 'Buy 2 bottles, get 1 free' },
     description: {
       label: 'What the consumer gets and how',
       hint: '— betting and draws: include the licence or approval number',
@@ -170,7 +170,6 @@ export const CAMPAIGN_FORM_COPY = {
     reward: (amount: string) => `${amount} airtime per successful share`,
     // Ours: each value's way back to its field on the edit step (the confirmation is asked for again).
     edit: 'Edit',
-    none: 'None attached',
     editLabel: (field: string) => `Edit ${field}`,
   },
 
@@ -211,10 +210,10 @@ export const CAMPAIGN_FORM_COPY = {
   // A field's own shape (its length, whole numbers, a real date), judged in that field's place among the ADV §3 rules;
   // `other` is for what only a request crafted past the form can send (a market or colour the form never offers).
   invalid: {
-    name: 'Give the campaign a name of 2 to 80 characters.',
-    brand: 'Keep the brand to 80 characters.',
-    headline: 'Keep the headline to 48 characters.',
-    description: 'Keep the description to 240 characters.',
+    name: (min: number, max: number) => `Give the campaign a name of ${min} to ${max} characters.`,
+    brand: (max: number) => `Keep the brand to ${max} characters.`,
+    headline: (max: number) => `Keep the headline to ${max} characters.`,
+    description: (max: number) => `Keep the description to ${max} characters.`,
     budgetUsd: 'Budget is in whole dollars.',
     rewardLocal: 'Share reward is a whole number, 0 or more.',
     startsAt: 'Pick a start date.',

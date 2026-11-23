@@ -31,13 +31,20 @@ const calendarDay = z.string().regex(YMD).refine(isRealDay)
 // in cents at any exchange rate of 1 or more to the dollar. money.ts holds the cents (it is server-only).
 export const MAX_REWARD_LOCAL = 21_474_836
 
+// The text fields' lengths, trimmed: the schema, the rules, the inputs' maxLength and the copy all read these.
+export const NAME_MIN = 2
+export const NAME_MAX = 80
+export const BRAND_MAX = 80
+export const HEADLINE_MAX = 48
+export const DESCRIPTION_MAX = 240
+
 const base = z.object({
-  name: z.string().trim().min(2).max(80),
-  brand: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(NAME_MIN).max(NAME_MAX),
+  brand: z.string().trim().min(1).max(BRAND_MAX),
   country: z.enum(COUNTRIES),
   category: z.enum(CATEGORIES),
-  headline: z.string().trim().max(48),
-  description: z.string().trim().max(240),
+  headline: z.string().trim().max(HEADLINE_MAX),
+  description: z.string().trim().max(DESCRIPTION_MAX),
   tileColor: z.string().refine((c) => (tokens.tileColors as readonly string[]).includes(c)),
   creativeImageKey: z.string().regex(IMAGE_KEY_RE).optional(),
   creativeVideoKey: z.string().regex(VIDEO_KEY_RE).optional(),
@@ -109,9 +116,12 @@ export type ValidationContext = {
 
 // The form field a refusal is about (the form's own names: FormValues has the same keys), so the form can mark
 // it, move the cursor to it and say why beside it. null: nothing on the form fixes it (a missing rate).
-export type CampaignField =
-  | 'name' | 'brand' | 'country' | 'category' | 'tileColor' | 'headline' | 'description' | 'placement' | 'creative'
-  | 'redeemMethod' | 'linkUrl' | 'budgetUsd' | 'runsFor' | 'startsAt' | 'endsAt' | 'rewardLocal' | 'termsAccepted'
+export const CAMPAIGN_FIELDS = [
+  'name', 'brand', 'country', 'category', 'tileColor', 'headline', 'description', 'placement', 'creative', 'redeemMethod',
+  'linkUrl', 'budgetUsd', 'runsFor', 'startsAt', 'endsAt', 'rewardLocal', 'termsAccepted',
+] as const
+export type CampaignField = (typeof CAMPAIGN_FIELDS)[number]
+const isField = (key: string): key is CampaignField => (CAMPAIGN_FIELDS as readonly string[]).includes(key)
 export type Refusal = { field: CampaignField | null; message: string }
 
 // An address Phoenix users can open: https, and a host with a dot in it ("https://" alone, or a name with a space
@@ -129,21 +139,22 @@ export function isHttpsLink(raw: string | undefined): boolean {
 const isWhole = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n)
 const within = (s: string, min: number, max: number) => s.trim().length >= min && s.trim().length <= max
 
-// The first failing rule, in the order the New campaign form shows them (ADV §3), and the field it is about. Each
-// field's own shape (a name's length, a whole-dollar budget, a real date) is judged in that field's place, so the
-// form walks top to bottom and never jumps back to a field it has already passed.
+// The first failing rule, in the prototype's ADV §3 order, and the field it is about. Each field's own shape (a name's
+// length, a whole-dollar budget, a real date) is judged beside that field's rule, not after every other rule. The order
+// is the prototype's, not the page's: the link is judged before the creative above it, and the reward before the dates
+// above it, so pressing the primary can move the cursor down the page and then back up.
 export function firstRefusal(i: CampaignInput, ctx: ValidationContext): Refusal | null {
   const V = COPY.validation
   const X = COPY.invalid
   const no = (field: CampaignField, message: string): Refusal => ({ field, message })
   if (!i.name.trim()) return no('name', V.name)
-  if (!within(i.name, 2, 80)) return no('name', X.name)
+  if (!within(i.name, NAME_MIN, NAME_MAX)) return no('name', X.name(NAME_MIN, NAME_MAX))
   if (!i.brand.trim()) return no('brand', V.brand)
-  if (!within(i.brand, 1, 80)) return no('brand', X.brand)
+  if (!within(i.brand, 1, BRAND_MAX)) return no('brand', X.brand(BRAND_MAX))
   if (!i.headline.trim()) return no('headline', V.headline)
-  if (!within(i.headline, 1, 48)) return no('headline', X.headline)
+  if (!within(i.headline, 1, HEADLINE_MAX)) return no('headline', X.headline(HEADLINE_MAX))
   if (!i.description.trim()) return no('description', V.description)
-  if (!within(i.description, 1, 240)) return no('description', X.description)
+  if (!within(i.description, 1, DESCRIPTION_MAX)) return no('description', X.description(DESCRIPTION_MAX))
   if (needsLicence(i)) return no('description', V.licence)
   if (i.redeemMethod === 'link') {
     if (!i.linkUrl?.trim().toLowerCase().startsWith('https://')) return no('linkUrl', V.link)
@@ -260,10 +271,6 @@ function candidate(raw: unknown): CampaignInput {
 const SCHEMA_FIELD: Record<string, CampaignField> = {
   creativeImageKey: 'creative', creativeVideoKey: 'creative', runsForDays: 'runsFor', claimCode: 'redeemMethod',
 }
-const FIELDS: readonly string[] = [
-  'name', 'brand', 'country', 'category', 'tileColor', 'headline', 'description', 'placement', 'redeemMethod', 'linkUrl',
-  'budgetUsd', 'startsAt', 'endsAt', 'rewardLocal', 'termsAccepted',
-]
 
 // The form's verdict: the first ADV §3 rule that fails, in order, then any field the schema refuses that the rules
 // do not name (a market or a colour the form never offers, sent past it). Never throws, and never says the schema's
@@ -277,6 +284,6 @@ export function checkCampaign(raw: unknown, ctx: ValidationContext): Checked {
   const rule = firstRefusal(candidate(raw), ctx)
   if (rule) return { ok: false, ...rule }
   const key = String(parsed.error.issues[0]?.path[0] ?? '')
-  const field = SCHEMA_FIELD[key] ?? (FIELDS.includes(key) ? (key as CampaignField) : null)
+  const field = SCHEMA_FIELD[key] ?? (isField(key) ? key : null)
   return { ok: false, field, message: COPY.invalid.other }
 }

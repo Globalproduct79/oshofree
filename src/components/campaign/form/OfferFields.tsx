@@ -2,10 +2,11 @@
 
 import type { RefObject } from 'react'
 import { Swatches } from '@/components/og'
+import { BRAND_MAX, DESCRIPTION_MAX, HEADLINE_MAX, NAME_MAX } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { CATEGORIES, COUNTRIES, MARKETS, type Category, type Country } from '@/lib/markets'
 import { tokens } from '@/lib/tokens'
-import { FieldError, fieldProps, type Marked } from './field'
+import { FieldError, fieldProps, groupProps, type Marked } from './field'
 import type { FormValues } from './values'
 
 const L = F.fields
@@ -33,7 +34,7 @@ export function OfferFields({ values: v, update, agency, locked, brandRef, marke
           value={v.name}
           disabled={locked}
           placeholder={L.name.placeholder}
-          maxLength={80}
+          maxLength={NAME_MAX}
           onChange={(e) => update({ name: e.target.value })}
         />
         <FieldError field="name" marked={marked} />
@@ -46,7 +47,7 @@ export function OfferFields({ values: v, update, agency, locked, brandRef, marke
           ref={brandRef}
           value={v.brand}
           readOnly={!agency}
-          maxLength={80}
+          maxLength={BRAND_MAX}
           onChange={(e) => update({ brand: e.target.value })}
         />
         <FieldError field="brand" marked={marked} />
@@ -75,17 +76,17 @@ export function OfferFields({ values: v, update, agency, locked, brandRef, marke
         <label className="f" id="cf-colour">
           {L.tileColor.label} <small>{L.tileColor.hint}</small>
         </label>
-        <div role="group" aria-labelledby="cf-colour" {...fieldProps('tileColor', marked)}>
+        <div role="group" aria-labelledby="cf-colour" {...groupProps('tileColor')}>
           <Swatches colors={tokens.tileColors} value={v.tileColor} onChange={(c) => update({ tileColor: c })} />
         </div>
         <FieldError field="tileColor" marked={marked} spoken />
       </div>
       <label className="f full">
-        {L.headline.label} <small>{L.headline.counter(v.headline.trim().length)}</small>
+        {L.headline.label} <small>{L.headline.counter(v.headline.trim().length, HEADLINE_MAX)}</small>
         <input
           {...fieldProps('headline', marked)}
           value={v.headline}
-          maxLength={48}
+          maxLength={HEADLINE_MAX}
           placeholder={L.headline.placeholder}
           onChange={(e) => update({ headline: e.target.value })}
         />
@@ -96,7 +97,7 @@ export function OfferFields({ values: v, update, agency, locked, brandRef, marke
         <textarea
           {...fieldProps('description', marked)}
           value={v.description}
-          maxLength={240}
+          maxLength={DESCRIPTION_MAX}
           placeholder={L.description.placeholder}
           onChange={(e) => update({ description: e.target.value })}
         />

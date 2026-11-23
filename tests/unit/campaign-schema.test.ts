@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ageGated, campaignDates, campaignDraftInput, campaignInput, checkCampaign, firstRefusal, flightDays, isBettingOrDraw,
-  isHttpsLink, MAX_REWARD_LOCAL, validateCampaign, type CampaignInput, type ValidationContext,
+  ageGated, BRAND_MAX, campaignDates, campaignDraftInput, campaignInput, checkCampaign, DESCRIPTION_MAX, firstRefusal,
+  flightDays, HEADLINE_MAX, isBettingOrDraw, isHttpsLink, MAX_REWARD_LOCAL, NAME_MAX, NAME_MIN, validateCampaign,
+  type CampaignInput, type ValidationContext,
 } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY } from '@/lib/copy-campaign-form'
+import { expectCopySentence } from '../stubs/copy-sentence'
 import { MAX_LIMIT_CENTS } from '@/lib/money'
 
 const valid: CampaignInput = {
@@ -154,6 +156,18 @@ describe('isBettingOrDraw', () => {
   })
 })
 
+describe('the text limits', () => {
+  it('are one set of numbers: the schema refuses one past each, and the sentence names it', () => {
+    expect([NAME_MIN, NAME_MAX, BRAND_MAX, HEADLINE_MAX, DESCRIPTION_MAX]).toEqual([2, 80, 80, 48, 240])
+    expect(campaignInput.safeParse({ ...valid, headline: 'h'.repeat(HEADLINE_MAX) }).success).toBe(true)
+    expect(campaignInput.safeParse({ ...valid, headline: 'h'.repeat(HEADLINE_MAX + 1) }).success).toBe(false)
+    expect(campaignInput.safeParse({ ...valid, description: 'd'.repeat(DESCRIPTION_MAX + 1) }).success).toBe(false)
+    expect(campaignInput.safeParse({ ...valid, name: 'n'.repeat(NAME_MAX + 1) }).success).toBe(false)
+    expect(check({ headline: 'h'.repeat(HEADLINE_MAX + 1) })).toBe('Keep the headline to 48 characters.')
+    expect(check({ name: 'n'.repeat(NAME_MAX + 1) })).toBe('Give the campaign a name of 2 to 80 characters.')
+  })
+})
+
 describe('isHttpsLink', () => {
   it('takes an https address with a real host and nothing else', () => {
     for (const ok of ['https://kolabright.com', 'https://kolabright.com/offer?x=1', 'HTTPS://Kolabright.com', ' https://a.ng '])
@@ -171,13 +185,13 @@ describe('firstRefusal: each rule names its field, in the order the form shows t
 
   it.each([
     ['empty name', { name: ' ' }, 'name', V.name],
-    ['one-letter name', { name: 'E' }, 'name', X.name],
+    ['one-letter name', { name: 'E' }, 'name', X.name(2, 80)],
     ['empty brand', { brand: '' }, 'brand', V.brand],
-    ['long brand', { brand: 'b'.repeat(81) }, 'brand', X.brand],
+    ['long brand', { brand: 'b'.repeat(81) }, 'brand', X.brand(80)],
     ['empty headline', { headline: '' }, 'headline', V.headline],
-    ['long headline', { headline: 'h'.repeat(49) }, 'headline', X.headline],
+    ['long headline', { headline: 'h'.repeat(49) }, 'headline', X.headline(48)],
     ['empty description', { description: '' }, 'description', V.description],
-    ['long description', { description: 'd'.repeat(241) }, 'description', X.description],
+    ['long description', { description: 'd'.repeat(241) }, 'description', X.description(240)],
     ['licence', { category: 'Betting' }, 'description', V.licence],
     ['http link', { redeemMethod: 'link', linkUrl: 'http://acme.com' }, 'linkUrl', V.link],
     ['bare https://', { redeemMethod: 'link', linkUrl: 'https://' }, 'linkUrl', V.linkInvalid],
@@ -212,7 +226,6 @@ describe('firstRefusal: each rule names its field, in the order the form shows t
 })
 
 describe('checkCampaign: every refusal is a sentence from the copy file', () => {
-  const sentences = new Set<unknown>([...Object.values(CAMPAIGN_FORM_COPY.validation), ...Object.values(CAMPAIGN_FORM_COPY.invalid)])
   const refused = (raw: unknown) => {
     const r = checkCampaign(raw, ctx)
     if (r.ok) throw new Error('expected a refusal')
@@ -234,7 +247,7 @@ describe('checkCampaign: every refusal is a sentence from the copy file', () => 
     ]) {
       const r = checkCampaign(raw, ctx)
       expect(r.ok).toBe(false)
-      if (!r.ok) expect(sentences.has(r.message)).toBe(true)
+      if (!r.ok) expectCopySentence(r.message, JSON.stringify(raw))
     }
   })
 })
