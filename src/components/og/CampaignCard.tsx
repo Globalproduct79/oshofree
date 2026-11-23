@@ -1,4 +1,4 @@
-import Link from '@/components/og/Link'
+import Link from 'next/link'
 import { COMPONENTS, type PlacementKey } from '@/lib/copy-components'
 import { CreativeMedia } from './CreativeMedia'
 import { DemoPill } from './DemoPill'

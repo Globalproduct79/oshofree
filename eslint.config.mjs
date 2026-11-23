@@ -35,22 +35,7 @@ const eslintConfig = [
           message: "Colours come from src/lib/tokens.ts",
         },
       ],
-      "no-restricted-imports": [
-        "error",
-        {
-          paths: [
-            {
-              name: "next/link",
-              message: "Links come from @/components/og/Link (prefetching off: see that file).",
-            },
-          ],
-        },
-      ],
     },
-  },
-  {
-    files: ["src/components/og/Link.tsx"],
-    rules: { "no-restricted-imports": "off" },
   },
 ];
 

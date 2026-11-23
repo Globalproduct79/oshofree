@@ -1,4 +1,4 @@
-import Link from '@/components/og/Link'
+import Link from 'next/link'
 import { Box } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { db } from '@/lib/db'

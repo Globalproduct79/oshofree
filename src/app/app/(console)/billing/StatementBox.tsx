@@ -1,4 +1,4 @@
-import Link from '@/components/og/Link'
+import Link from 'next/link'
 import { Box, DataTable } from '@/components/og'
 import { MONEY } from '@/lib/copy-money'
 import { fd, loc, usd } from '@/lib/format'

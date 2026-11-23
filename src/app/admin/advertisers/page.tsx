@@ -1,4 +1,4 @@
-import Link from '@/components/og/Link'
+import Link from 'next/link'
 import { switchWorkspaceToAction } from '@/app/app/(console)/switch/actions'
 import { Box, DataTable, DemoPill, StatusBadge } from '@/components/og'
 import { ActionButton, CommitInput } from '@/components/platform/InlineControls'

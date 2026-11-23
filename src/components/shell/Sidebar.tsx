@@ -1,6 +1,6 @@
 'use client'
 
-import Link from '@/components/og/Link'
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useSyncExternalStore } from 'react'
 import { DemoPill } from '@/components/og/DemoPill'

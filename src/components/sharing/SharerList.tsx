@@ -1,4 +1,4 @@
-import Link from '@/components/og/Link'
+import Link from 'next/link'
 import { Box, LinkButton } from '@/components/og'
 import { MAX_SHARERS, PAGE, type SharerRow } from '@/lib/activity'
 import { SHARERS as S } from '@/lib/copy-activity'

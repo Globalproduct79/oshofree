@@ -1,4 +1,4 @@
-import Link from '@/components/og/Link'
+import Link from 'next/link'
 import { INVITE_PAGE } from '@/lib/copy-people'
 
 // A link that can no longer be accepted (accepted, revoked, expired, or retired by Resend): it says so and to ask

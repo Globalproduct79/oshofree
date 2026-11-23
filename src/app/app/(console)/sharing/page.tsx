@@ -1,4 +1,4 @@
-import Link from '@/components/og/Link'
+import Link from 'next/link'
 import { SimulateDayButton } from '@/components/demo/SimulateDayButton'
 import { Box, DataTable, EstimatePanel, HBarList, MetricCard, Steps, TokenChip } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'

@@ -1,4 +1,4 @@
-import Link from '@/components/og/Link'
+import Link from 'next/link'
 import { COMPONENTS } from '@/lib/copy-components'
 
 // The line under the value is a percentage; anything outside 0–100 is pinned to the ends.

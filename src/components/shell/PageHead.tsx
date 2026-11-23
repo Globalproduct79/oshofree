@@ -1,4 +1,4 @@
-import Link from '@/components/og/Link'
+import Link from 'next/link'
 import { Fragment } from 'react'
 import { SHELL } from '@/lib/copy-shell'
 
