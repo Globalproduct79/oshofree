@@ -137,6 +137,18 @@ describe('Billing page', () => {
     expect(nov).toContain('−$100 −KSh14,000')
   })
 
+  it("prints a line on an invoice issued in another currency at today's rate in the workspace's currency", async () => {
+    const { ws } = await setup()
+    // Issued in naira before the workspace moved to Kenya: its rate (1550 per dollar) is not a shilling rate.
+    const inv = await db.invoice.create({
+      data: { workspaceId: ws.id, number: 'INV-0052', period: at('2026-09-30T23:00:00Z'), amountCents: 10000, status: 'due', fxPerUsd: 1550, country: 'NG', issuedAt: at('2026-11-01T00:00:00Z'), dueAt: at('2026-11-15T00:00:00Z') },
+    })
+    await db.ledgerEntry.create({ data: { workspaceId: ws.id, at: at('2026-10-20T09:00:00Z'), amountCents: -10000, description: 'Send money free — delivery', kind: 'delivery', invoiceId: inv.id } })
+    const oct = (await render('2026-10')).text
+    expect(oct).toContain('−$100 −KSh12,900')
+    expect(oct).not.toContain('155,000')
+  })
+
   it('offers the current month even with no rows, and an empty statement says so', async () => {
     await setup()
     const { markup, text: t } = await render()
