@@ -296,6 +296,14 @@ describe('POST /api/v1/share', () => {
     expect(await db.consumer.count()).toBe(0)
   })
 
+  it('answers 409 not_delivering for a live campaign whose budget is spent, as for a paused one', async () => {
+    await seedChannel()
+    const c = await seedCampaign({ budgetUsd: 100 })
+    await db.ledgerEntry.create({ data: { workspaceId: c.workspaceId, campaignId: c.id, kind: 'reward', amountCents: -10_000, description: 'reward' } })
+    await expectError(await share({ offer_id: c.id, session_id: 's', via: 'sms' }), 409, 'not_delivering')
+    expect(await db.shareLink.count({ where: { sharerType: 'Channel' } })).toBe(0)
+  })
+
   it('answers 409 for a live campaign in a declined workspace', async () => {
     await seedChannel()
     const c = await seedCampaign({}, 'declined')

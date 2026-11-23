@@ -131,8 +131,8 @@ export const ERRORS: [number, string, string][] = [
   [400, 'missing_idempotency_key', 'POST /events without an Idempotency-Key header.'],
   [400, 'too_many_events', 'More than 500 events in one batch.'],
   [400, 'channel_mismatch', "The channel named in the body or the query is not the key's channel."],
-  [404, 'unknown_offer', 'No such offer, or for POST /claims one that is not delivering now.'],
+  [404, 'unknown_offer', 'No such offer, or for POST /claims one that is not delivering now (paused, ended or out of budget).'],
   [404, 'unknown_link', 'No such link for this channel.'],
-  [409, 'not_delivering', 'POST /share for an offer that is not delivering now.'],
+  [409, 'not_delivering', 'POST /share for an offer that is not delivering now (paused, ended or out of budget).'],
   [500, 'server_error', 'Something failed on our side. Retry with the same Idempotency-Key.'],
 ]

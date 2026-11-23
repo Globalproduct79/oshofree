@@ -134,7 +134,10 @@ describe('POST /api/v1/claims', () => {
     const ended = await seedCampaign({ status: 'ended' })
     const paused = await seedCampaign({ status: 'paused' })
     const declined = await seedCampaign({}, 'declined')
-    for (const offer_id of ['nope', ended.id, paused.id, declined.id]) {
+    // Live, but its budget is spent: not delivering, as the feed says.
+    const spent = await seedCampaign({ budgetUsd: 100 })
+    await db.ledgerEntry.create({ data: { workspaceId: spent.workspaceId, campaignId: spent.id, kind: 'delivery', amountCents: -10_000, description: 'delivery' } })
+    for (const offer_id of ['nope', ended.id, paused.id, declined.id, spent.id]) {
       const res = await claim({ offer_id, session_id: 's' })
       expect(res.status).toBe(404)
       expect(await res.json()).toEqual({ error: 'unknown_offer' })

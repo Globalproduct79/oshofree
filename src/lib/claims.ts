@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { deliveringWhere } from '@/lib/campaign-status'
+import { isDeliveringNow } from '@/lib/delivering'
 import { db, isUniqueViolation } from '@/lib/db'
 import { startOfUtcDay } from '@/lib/link-events'
 
@@ -53,14 +53,13 @@ export async function issueClaimCode(
   }
 }
 
-// POST /claims: a code for an offer that is delivering now, or unknown_offer.
+// POST /claims: a code for an offer that is delivering now with budget left (delivering.ts), or unknown_offer.
 export async function claimOffer(
   offerId: string,
   channelId: string,
   sessionId: string,
   now: Date = new Date(),
 ): Promise<IssuedClaimCode | 'unknown_offer'> {
-  const delivering = await db.campaign.findFirst({ where: { id: offerId, ...deliveringWhere(now) }, select: { id: true } })
-  if (!delivering) return 'unknown_offer'
+  if (!(await isDeliveringNow(offerId, now))) return 'unknown_offer'
   return issueClaimCode(offerId, channelId, sessionId, now)
 }

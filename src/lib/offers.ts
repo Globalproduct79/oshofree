@@ -1,13 +1,13 @@
 import type { Campaign, Country, Placement, ShareVia } from '@prisma/client'
 import { appUrl } from '@/lib/app-url'
 import { deliveringWhere } from '@/lib/campaign-status'
+import { deliveringWithBudget, isDeliveringNow } from '@/lib/delivering'
 import { normalisePhone, upsertConsumer } from '@/lib/consumers'
 import { API_COPY } from '@/lib/copy-api'
 import { db } from '@/lib/db'
 import { isoInZone } from '@/lib/format'
 import { linkUrl, mintChannelLink, mintRootLink } from '@/lib/links'
 import { MARKETS } from '@/lib/markets'
-import { spendByCampaign } from '@/lib/money'
 import type { PreviewOffer } from '@/lib/preview-merge'
 import { imageUrl } from '@/lib/image-rules'
 
@@ -43,12 +43,6 @@ async function rootCodes(campaignIds: string[], channelId: string): Promise<Map<
   return codes
 }
 
-// Budget left per campaign in USD cents: budget − (delivery + reward charges), one grouped read.
-async function remainingCents(campaigns: Campaign[]): Promise<Map<string, number>> {
-  const spent = await spendByCampaign(campaigns.map((c) => c.id))
-  return new Map(campaigns.map((c) => [c.id, c.budgetUsd * 100 - (spent.get(c.id) ?? 0)]))
-}
-
 // Phoenix renders from another host, so a creative's URL is absolute, on this server.
 const absolute = (key: string | null) => (key ? appUrl(imageUrl(key)) : null)
 
@@ -77,13 +71,12 @@ function toDto(c: Campaign, rootCode: string | undefined): OfferDto {
   }
 }
 
-// Delivering campaigns in the country with budget left, ordered by placement then remaining budget (most left first).
-// A reward is charged the moment a friend claims, so a campaign can spend its last cent mid-day; it leaves the feed
-// at once rather than at the daily job's 02:00 run, which ends it.
+// Delivering campaigns in the country with budget left (delivering.ts), ordered by placement then remaining budget
+// (most left first).
 export async function offersFor(country: Country, channelId: string, now: Date): Promise<OfferDto[]> {
-  const delivering = await db.campaign.findMany({ where: { ...deliveringWhere(now), country } })
-  const left = await remainingCents(delivering)
-  const campaigns = delivering.filter((c) => left.get(c.id)! > 0)
+  const delivering = await deliveringWithBudget({ country }, now)
+  const left = new Map(delivering.map((d) => [d.campaign.id, d.leftCents]))
+  const campaigns = delivering.map((d) => d.campaign)
   campaigns.sort(
     (a, b) =>
       PLACEMENT_ORDER.indexOf(a.placement) - PLACEMENT_ORDER.indexOf(b.placement) ||
@@ -140,8 +133,7 @@ export async function shareOffer(
 ): Promise<ShareResult> {
   const offer = await db.campaign.findUnique({ where: { id: offerId }, select: { country: true } })
   if (!offer) return 'unknown_offer'
-  const delivering = await db.campaign.findFirst({ where: { id: offerId, ...deliveringWhere(now) }, select: { id: true } })
-  if (!delivering) return 'not_delivering'
+  if (!(await isDeliveringNow(offerId, now))) return 'not_delivering'
   let consumerId: string | undefined
   if (msisdn !== undefined) {
     const phone = normalisePhone(msisdn, offer.country)
