@@ -1,4 +1,6 @@
-import { checkCampaign, ruleContext, type CreditPosition, type FormEdit, type Refusal } from '@/lib/campaign-schema'
+import {
+  checkCampaign, ruleContext, type CampaignField, type CreditPosition, type FormEdit, type Refusal,
+} from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { MARKETS } from '@/lib/markets'
 import { revisionInput, toInput, type FormValues } from './values'
@@ -36,4 +38,17 @@ export function formProblem({ values, isNew, stage, edit, workspace, credit, cpm
   if (fxPerUsd === null) return { field: 'country', message: F.errors.noFx(country) }
   if (workspace.declined) return { field: null, message: F.errors.workspaceDeclined }
   return null
+}
+
+// What the server's refusal does to the form: its sentence by the buttons, marked on the field it names (which takes
+// the cursor). A creative whose file is not stored comes off the form, so its picker shows the empty zone to attach it
+// again rather than a broken image. `values` is returned unchanged when nothing comes off.
+export function afterRefusal(
+  values: FormValues,
+  res: { error: string; field?: CampaignField; creativeGone?: true },
+): { values: FormValues; notice: Refusal } {
+  return {
+    values: res.creativeGone ? { ...values, creative: null } : values,
+    notice: { field: res.field ?? null, message: res.error },
+  }
 }

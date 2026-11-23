@@ -298,17 +298,25 @@ describe('submitAction', () => {
   it('refuses a creative whose file is not stored (a draft naming a file deleted since, a key crafted past the form)', async () => {
     await setup('Owner')
     const gone = '9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f.png'
-    expect(await submitAction({ ...input(), placement: 'card', creativeImageKey: gone })).toEqual({
-      error: "The creative's file is no longer stored. Attach it again.",
-    })
+    // The form marks the creative and takes it off, so the picker asks for it again.
+    const refusal = { error: "The creative's file is no longer stored. Attach it again.", field: 'creative', creativeGone: true }
+    expect(await submitAction({ ...input(), placement: 'card', creativeImageKey: gone })).toEqual(refusal)
     expect(await db.campaign.count()).toBe(0)
     const live = await campaign(mine.id, 'live')
-    expect(await editOfferAction(live.id, { ...offer, creativeImageKey: gone })).toEqual({
-      error: "The creative's file is no longer stored. Attach it again.",
-    })
+    expect(await editOfferAction(live.id, { ...offer, creativeImageKey: gone })).toEqual(refusal)
     expect(await db.campaignRevision.count()).toBe(0)
     // The file there, the same submission goes through.
     expect(await submitAction({ ...input(), placement: 'card', creativeImageKey: IMAGE_KEY })).toEqual({ id: expect.any(String) })
+  })
+
+  it("Edit offer: a creative it does not change is not checked for its file, so a missing one never blocks a change to the words", async () => {
+    await setup('Owner')
+    const gone = '9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f.png'
+    const live = await campaign(mine.id, 'live', { creativeImageKey: gone })
+    expect(await editOfferAction(live.id, { ...offer, creativeImageKey: gone })).toEqual({ revision: true })
+    // Changing it to another file that is not stored is still refused.
+    const other = await campaign(mine.id, 'live', { creativeImageKey: IMAGE_KEY })
+    expect(await editOfferAction(other.id, { ...offer, creativeImageKey: gone })).toMatchObject({ field: 'creative', creativeGone: true })
   })
 
   it('refuses a stored creative larger than the placement takes, crafted past the form', async () => {

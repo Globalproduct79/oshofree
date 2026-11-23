@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { backToEdit, left, markedOf, NO_MARKS, pressedOn, pressOutcome, toReview } from '@/components/campaign/form/marks'
+import { afterRefusal } from '@/components/campaign/form/problem'
+import { newCampaignDefaults } from '@/components/campaign/form/values'
 import type { Refusal } from '@/lib/campaign-schema'
 
 // Which refused field the New campaign form marks (red edge, aria-invalid, the sentence under it), and what a press
@@ -72,5 +74,28 @@ describe('pressOutcome', () => {
   it('otherwise the hint says why: no field, or a field that cannot take the cursor on the one-page Edit offer', () => {
     expect(pressOutcome(null, false, true)).toBe('hint')
     expect(pressOutcome('country', false, false)).toBe('hint')
+  })
+})
+
+describe("afterRefusal: the server's refusal on the form", () => {
+  const values = {
+    ...newCampaignDefaults({ name: 'Kola Bright', type: 'Brand', country: 'NG' }),
+    placement: 'video' as const,
+    creative: { key: '0f8fad5b-d9cb-469f-a165-70867728950e.mp4', kind: 'video' as const, url: '/uploads/x.mp4' },
+  }
+  const gone = { error: "The creative's file is no longer stored. Attach it again.", field: 'creative' as const, creativeGone: true as const }
+
+  it('a creative whose file is gone comes off, and the creative field is marked with the sentence', () => {
+    const next = afterRefusal(values, gone)
+    expect(next.values).toEqual({ ...values, creative: null })
+    expect(next.notice).toEqual({ field: 'creative', message: gone.error })
+    // Marked whatever the form's own marks say: the form falls back to the notice when its rules mark nothing.
+    expect(markedOf(null, NO_MARKS) ?? next.notice).toEqual({ field: 'creative', message: gone.error })
+  })
+
+  it('any other refusal leaves the values as they are and names no field (the hint by the buttons says it)', () => {
+    const next = afterRefusal(values, { error: 'No exchange rate is set for Nigeria yet. Ask Global.' })
+    expect(next.values).toBe(values)
+    expect(next.notice).toEqual({ field: null, message: 'No exchange rate is set for Nigeria yet. Ask Global.' })
   })
 })

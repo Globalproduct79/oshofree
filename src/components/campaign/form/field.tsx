@@ -32,7 +32,8 @@ export function fieldProps(field: CampaignField, marked: Marked, describedBy = e
 }
 
 // The sentence under the refused field. Inside a label it is hidden from the label's name (the control reads it as
-// its description instead); `spoken` leaves it readable where no control points at it (the creative picker).
+// its description instead). `spoken` leaves it readable in the page too, where it sits outside any label: under the
+// placement tiles and the creative picker, whose chosen tile, empty zone or Replace also points at it as its description.
 export function FieldError({ field, marked, spoken }: { field: CampaignField; marked: Marked; spoken?: boolean }) {
   if (marked?.field !== field) return null
   return (
@@ -43,14 +44,15 @@ export function FieldError({ field, marked, spoken }: { field: CampaignField; ma
 }
 
 // Brings the field into the middle of the screen and puts the cursor on it: the control itself, or in a group the
-// chosen option (a swatch, a placement tile), else the picker's zone, else the first control. False when the field
+// chosen option (a swatch, a placement tile), else its first button (the creative picker's empty zone, or Replace),
+// else its first control. False when the field
 // is not on the page, or cannot take the cursor (a control locked while the campaign runs).
 export function focusField(field: CampaignField): boolean {
   const box = typeof document === 'undefined' ? null : document.getElementById(fieldId(field))
   if (!box) return false
   const target = box.matches('input,select,textarea,button')
     ? box
-    : (box.querySelector<HTMLElement>('[aria-pressed="true"],[role="button"],button,input:not([type="file"]),select,textarea') ?? box)
+    : (box.querySelector<HTMLElement>('[aria-pressed="true"],button,input:not([type="file"]),select,textarea') ?? box)
   if (target.matches(':disabled')) return false
   target.scrollIntoView?.({ block: 'center' })
   target.focus({ preventScroll: true })

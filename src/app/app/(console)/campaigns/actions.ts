@@ -5,7 +5,8 @@ import { revalidatePath } from 'next/cache'
 import { campaignActivity, isLineKey, type ActivityLine } from '@/lib/activity'
 import { audit } from '@/lib/audit'
 import {
-  ageGated, campaignDates, checkCampaign, isRealDay, localMidnight, REVISION_TERMS, ruleContext, type CampaignInput,
+  ageGated, campaignDates, checkCampaign, isRealDay, localMidnight, REVISION_TERMS, ruleContext, type CampaignField,
+  type CampaignInput,
   type FormEdit,
 } from '@/lib/campaign-schema'
 import {
@@ -26,7 +27,10 @@ import { creativeMissing, creativeOverCap } from '@/lib/storage'
 import { requireMember, type Member } from '@/lib/permissions'
 import type { PreviewOffer } from '@/lib/preview-merge'
 
-type Failure = { error: string }
+// `field` is the field the refusal is about, which the form marks and moves the cursor to; `creativeGone` says the
+// creative's file is not stored, so the form takes it off (its picker shows the empty zone, not a broken image).
+type Failure = { error: string; field?: CampaignField; creativeGone?: true }
+const CREATIVE_GONE: Failure = { error: F.validation.creativeMissing, field: 'creative', creativeGone: true }
 type Done = { ok: true; toast: string }
 
 const campaignPath = (id: string) => `/app/campaigns/${id}`
@@ -76,7 +80,7 @@ export async function submitAction(input: unknown): Promise<{ id: string } | Fai
   const country = isCountry(raw.country) ? raw.country : ws.country
   const checked = checkCampaign(raw, ruleContext(ws.type, await creditSummary(ws.id), country))
   if (!checked.ok) return { error: checked.message }
-  if (await creativeMissing(checked.input)) return { error: F.validation.creativeMissing }
+  if (await creativeMissing(checked.input)) return CREATIVE_GONE
   if (await creativeOverCap(checked.input)) return { error: F.validation.creativeTooLarge }
   // The signed-in member is its creator (Global too, when acting inside the workspace).
   const created = await createCampaign(ws.id, checked.input, user.id)
@@ -130,9 +134,12 @@ export async function editOfferAction(id: unknown, input: unknown): Promise<{ re
   const edit: FormEdit = { running, heldCents: COMMITTED.includes(c.status) ? c.budgetUsd * 100 : spendCents }
   const checked = checkCampaign(raw, ruleContext(ws.type, await creditSummary(ws.id), c.country, edit))
   if (!checked.ok) return { error: checked.message }
-  if (await creativeMissing(checked.input)) return { error: F.validation.creativeMissing }
-  if (await creativeOverCap(checked.input)) return { error: F.validation.creativeTooLarge }
   const i = checked.input
+  // Only a creative the edit changes must be stored: the one the campaign already runs, even if its file has gone
+  // missing, never stops a change to its words.
+  const changed = (i.creativeVideoKey ?? i.creativeImageKey ?? null) !== (c.creativeVideoKey ?? c.creativeImageKey)
+  if (changed && (await creativeMissing(i))) return CREATIVE_GONE
+  if (await creativeOverCap(i)) return { error: F.validation.creativeTooLarge }
   const offer = offerOf(i, c)
   const change: OfferFields | CampaignEdit = running
     ? offer

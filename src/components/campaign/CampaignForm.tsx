@@ -6,7 +6,7 @@ import { editOfferAction, previewOffers, submitAction } from '@/app/app/(console
 import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { Box, Button, type PickerStatus } from '@/components/og'
 import { toast } from '@/components/shell/toast-store'
-import { todayIn, type CampaignField, type CreditPosition, type FormEdit } from '@/lib/campaign-schema'
+import { todayIn, type CampaignField, type CreditPosition, type FormEdit, type Refusal } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import type { PlacementKey } from '@/lib/copy-components'
 import { clearDraft, loadDraft, saveDraft, startOver } from '@/lib/draft-store'
@@ -18,7 +18,7 @@ import { backToEdit, left, markedOf, NO_MARKS, pressedOn, pressOutcome, toReview
 import { OfferFields } from './form/OfferFields'
 import { formPreview } from './form/preview'
 import { PlacementFields } from './form/PlacementFields'
-import { formProblem, type FormStage } from './form/problem'
+import { afterRefusal, formProblem, type FormStage } from './form/problem'
 import { ReviewStep } from './form/ReviewStep'
 import { TermsFields } from './form/TermsFields'
 import { pickCreative, SessionUploads, switchPlacement } from './form/upload'
@@ -51,8 +51,10 @@ const HOME = '/app'
 export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleLink }: Props) {
   const router = useRouter()
   const [values, setValues] = useState(defaults)
-  // The server's refusal, shown until the next change.
-  const [notice, setNotice] = useState<string | null>(null)
+  // The server's refusal, shown until the next change, and marked on its field when it names one.
+  const [notice, setNotice] = useState<Refusal | null>(null)
+  // The field a refusal on Edit offer (one page) puts the cursor in, once the form has drawn it.
+  const focusAfter = useRef<CampaignField | null>(null)
   // The creative picker: resting, uploading (with its percentage) or refused (its Retry sends the file to pick again).
   const [creativeStatus, setCreativeStatus] = useState<PickerStatus>({ state: 'idle' })
   const uploading = creativeStatus.state === 'uploading'
@@ -87,6 +89,12 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     if (stage === 'review') reviewHeading.current?.focus()
     else if (!field || !focusField(field)) primary.current?.focus()
   }, [stage])
+
+  useEffect(() => {
+    const field = focusAfter.current
+    focusAfter.current = null
+    if (field) focusField(field)
+  }, [notice])
 
   const isNew = mode.kind === 'new'
   const edit: FormEdit | undefined = mode.kind === 'edit' ? { running: mode.running, heldCents: mode.heldCents } : undefined
@@ -199,13 +207,26 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
   const problem = formProblem({
     values, isNew, stage, edit, workspace, credit, cpmCents: cpmCents[values.placement], fxPerUsd,
   })
-  const hint = uploading ? F.upload.uploading : (notice ?? problem?.message ?? '')
-  const marked: Marked = markedOf(problem, marks)
+  const hint = uploading ? F.upload.uploading : (notice?.message ?? problem?.message ?? '')
+  const marked: Marked = markedOf(problem, marks) ?? (notice?.field ? notice : null)
   function onBlur(e: FocusEvent) {
     const field = fieldOf(e.target)
     if (field) setMarks((m) => left(m, field))
   }
   const dirty = hasDraft || !sameValues(values, defaults)
+
+  // The server refused what the form's own rules let through: its sentence by the buttons and on its field, with the
+  // cursor there (on the Review step, back on the edit step first); a creative whose file is gone comes off.
+  function refused(res: { error: string; field?: CampaignField; creativeGone?: true }) {
+    const next = afterRefusal(latest.current, res)
+    if (next.values !== latest.current) {
+      setValues(next.values)
+      setCreativeStatus({ state: 'idle' })
+    }
+    if (reviewing && res.field) onBack(res.field)
+    else focusAfter.current = res.field ?? null
+    setNotice(next.notice)
+  }
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -227,7 +248,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     startTransition(async () => {
       if (mode.kind === 'new') {
         const res = await submitAction(toInput(values))
-        if ('error' in res) return setNotice(res.error)
+        if ('error' in res) return refused(res)
         sent.current = true
         clearDraft(workspace.id)
         toast(F.toasts.submitted)
@@ -235,7 +256,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
         return
       }
       const res = await editOfferAction(mode.id, locked ? offerInput(values) : toInput(values))
-      if ('error' in res) return setNotice(res.error)
+      if ('error' in res) return refused(res)
       toast(F.toasts.resubmitted)
       router.push(`/app/campaigns/${mode.id}`)
     })
