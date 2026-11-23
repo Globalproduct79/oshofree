@@ -296,18 +296,21 @@ describe('campaignActivity', () => {
   it("reads a link offer's claims as clicks through, and its own link's events as follows", async () => {
     const w = await world({ redeemMethod: 'link' })
     await event(w, 'Claim', '2026-11-13T10:00:00Z')
+    // The same tap's click-through on the Root link: one tap, one line (the claim's).
     await linkEvent(w.root.id, 'Claim', '2026-11-13T10:01:00Z')
+    // A click-through Phoenix did not report as a claim is a line of its own.
+    await linkEvent(w.root.id, 'Claim', '2026-11-13T10:30:00Z', { visitor: 'v-other' })
     await linkEvent(w.root.id, 'Open', '2026-11-13T10:02:00Z')
     await linkEvent(w.root.id, 'Open', '2026-11-13T10:03:00Z', { deduped: true })
     const l = await link(w, { sharerSessionId: 'anon-77ab', via: 'facebook', createdAt: at('2026-11-13T10:04:00Z') })
     const c = await linkEvent(l.id, 'Claim', '2026-11-13T10:05:00Z')
     await payout(w, l.id, c.id, '2026-11-13T10:05:00Z', 'held', { session: 'anon-77ab', reason: 'no_phone' })
     expect(texts((await campaignActivity(w.campaign)).lines)).toEqual([
+      'Someone followed the link to your site · 13 Nov, 11:30',
       '₦50 airtime for Phoenix user ••77ab held — No phone number · 13 Nov, 11:05',
       'A friend of Phoenix user ••77ab clicked through to your site · 13 Nov, 11:05',
       'Phoenix user ••77ab shared via Facebook · 13 Nov, 11:04',
       'Someone opened the offer page · 13 Nov, 11:02',
-      'Someone followed the link to your site · 13 Nov, 11:01',
       'A Phoenix user clicked through to your site · 13 Nov, 11:00',
     ])
   })

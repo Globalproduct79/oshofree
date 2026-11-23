@@ -12,7 +12,9 @@ import { MARKETS, type Country } from '@/lib/markets'
 //   open, claim   ChannelEvent Open / Claim; a claim carries the code POST /claims issued that session that day
 //   claim (code)  a ClaimCode with no claim event and no offer-page claim behind it (Phoenix asked, never posted)
 //   follow        LinkEvent Claim on the campaign's own (Root) link: the click-through to a link offer, or a code
-//                 taken on that page; pageOpen is an Open there, deduped rows left out
+//                 taken on that page; pageOpen is an Open there, deduped rows left out. One tap is one line: a link
+//                 offer's click-through that its channel also reported as a claim (a Claim ChannelEvent on that channel
+//                 within FOLLOW_PAIR of it) is that claim's line, not a second one
 //   share         a sharer's ShareLink that went out on a medium; ownLink, a friend's own link not shared on yet. A
 //                 link's moment is its earliest record: the row, Phoenix's share event for its token, or the
 //                 details its friend left
@@ -167,7 +169,11 @@ const codes = (ids: Ids): Branch => ({
       WHERE vl."campaignId" = cc."campaignId" AND v."type" = 'Claim' AND v."visitorId" = cc."sessionId")`,
 })
 
-// The campaign's own link: Phoenix's click-through (or a code taken on its page) and opens of its page.
+// How far apart a link offer's click-through on its Root link and the channel's claim event for the same tap can be.
+const FOLLOW_PAIR = raw(`interval '5 minutes'`)
+
+// The campaign's own link: Phoenix's click-through (or a code taken on its page) and opens of its page. A link offer's
+// click-through the channel also posted as a claim is left to the claim's line (one tap, one line).
 const rootEvents = (ids: Ids): Branch => ({
   prefix: 'root', id: sql`e."id"`, at: sql`e."at"`, rank: sql`CASE e."type" WHEN 'Claim' THEN 2 ELSE 1 END`,
   key: sql`'root-' || e."id"`,
@@ -177,7 +183,11 @@ const rootEvents = (ids: Ids): Branch => ({
   },
   from: sql`FROM "LinkEvent" e JOIN "ShareLink" l ON l."id" = e."linkId"
   ${codeOf('e', 'l."campaignId"', 'l."channelId"', 'e."visitorId"')}`,
-  where: sql`l."campaignId" IN (${ids}) AND l."depth" = 0 AND (e."type" = 'Claim' OR (e."type" = 'Open' AND e."deduped" = false))`,
+  where: sql`l."campaignId" IN (${ids}) AND l."depth" = 0 AND (e."type" = 'Claim' OR (e."type" = 'Open' AND e."deduped" = false))
+    AND NOT (e."type" = 'Claim'
+      AND EXISTS (SELECT 1 FROM "Campaign" rc WHERE rc."id" = l."campaignId" AND rc."redeemMethod" = 'link')
+      AND EXISTS (SELECT 1 FROM "ChannelEvent" ce WHERE ce."campaignId" = l."campaignId" AND ce."channelId" = l."channelId"
+        AND ce."type" = 'Claim' AND ce."at" BETWEEN e."at" - ${FOLLOW_PAIR} AND e."at" + ${FOLLOW_PAIR}))`,
 })
 
 // Sharers' links: one that went out on a medium is a share; a friend's own link not shared on yet is still a line. The
