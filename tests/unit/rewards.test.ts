@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import type { PayoutStatus, Prisma, ShareLink } from '@prisma/client'
+import { Prisma, type PayoutStatus, type ShareLink } from '@prisma/client'
 import { POST as postClaim } from '@/app/o/[code]/claim/route'
 import { POST as postDetails } from '@/app/o/[code]/details/route'
 import { db } from '@/lib/db'
@@ -8,7 +8,7 @@ import { normalisePhone, upsertConsumer } from '@/lib/consumers'
 import { recordClaim } from '@/lib/link-events'
 import { mintChannelLink, mintRootLink } from '@/lib/links'
 import {
-  onSuccessfulShare, rejectPayout, releasePayout, sendQueuedPayouts, topUpAggregator,
+  onSuccessfulShare, rejectPayout, releasePayout, rewardCents, sendQueuedPayouts, topUpAggregator,
 } from '@/lib/rewards'
 
 const DAY = 86_400_000
@@ -118,6 +118,23 @@ describe('onSuccessfulShare', () => {
     // A zero reward still earns points but posts no empty ledger line.
     expect(await rewardLines()).toHaveLength(2)
     expect(await points()).toHaveLength(3)
+  })
+
+  it('stores the airtime in cents rounded half up from the exact quotient: ₦145 at ₦1,000 to the dollar is 15 cents, not 14', async () => {
+    // (145 / 1000) × 100 is 14.499999999999998 in floating point; the stored cents come from the exact decimal.
+    expect(rewardCents(145, 1000)).toBe(15)
+    expect(rewardCents(15, 1000)).toBe(2)
+    expect(rewardCents(1005, 1000)).toBe(101)
+    expect(rewardCents(50, 1550)).toBe(3)
+    expect(rewardCents(90_000, 1550)).toBe(5806)
+    expect(rewardCents(5, 129)).toBe(4)
+    expect(rewardCents(31, new Prisma.Decimal('15.5'))).toBe(200)
+    expect(rewardCents(50, new Prisma.Decimal('1550.000000000000000000000000000000'))).toBe(3)
+    expect(rewardCents(0, 1550)).toBe(0)
+    const w = await world({}, { rewardLocal: 145, fxPerUsd: 1000 })
+    const link = await sharerLink(w, ADA, 'dev-ada')
+    expect(await share(link)).toMatchObject({ amountLocal: 145, amountCents: 15, status: 'queued' })
+    expect((await rewardLines()).map((l) => l.amountCents)).toEqual([-15])
   })
 
   it('awards points for a held share but charges nothing; a blocked or rejected share earns neither', async () => {

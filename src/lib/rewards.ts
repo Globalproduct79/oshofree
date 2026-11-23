@@ -1,4 +1,4 @@
-import type { RewardPayout } from '@prisma/client'
+import { Prisma, type RewardPayout } from '@prisma/client'
 import { audit } from '@/lib/audit'
 import { MONEY } from '@/lib/copy-money'
 import { db, isUniqueViolation, type Tx } from '@/lib/db'
@@ -32,6 +32,13 @@ async function lock(tx: Tx, key: string): Promise<void> {
 // caps count every payout made before them. Releasing takes only the campaign lock.
 const sharerLock = (tx: Tx, sharer: string) => lock(tx, `reward:sharer:${sharer}`)
 const campaignLock = (tx: Tx, campaignId: string) => lock(tx, `reward:campaign:${campaignId}`)
+
+// A reward's price in US cents: its local amount over the FX, × 100, rounded half up once from the exact decimal.
+// Plain floating point drifts at a half cent: (145 / 1000) × 100 is 14.499999999999998, which would store 14, not 15.
+export function rewardCents(amountLocal: number, fxPerUsd: Prisma.Decimal | number): number {
+  if (!amountLocal) return 0
+  return new Prisma.Decimal(amountLocal).times(100).div(fxPerUsd).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toNumber()
+}
 
 // The points row of a payout has a known id, so a rejection can take back exactly what was given.
 const pointsId = (payoutId: string) => `points:${payoutId}`
@@ -69,8 +76,9 @@ async function createPayout(tx: Tx, input: ShareInput): Promise<RewardPayout> {
   const { campaign } = link
   const { workspace } = campaign
   const amountLocal = campaign.rewardLocal
-  const fxPerUsd = !amountLocal ? 1 : campaign.fxPerUsd !== null ? Number(campaign.fxPerUsd) : await currentFx(campaign.country, now)
-  const amountCents = Math.round((amountLocal / fxPerUsd) * 100)
+  // The campaign's FX snapshot (taken at submission), else the market's rate now; a free reward needs neither.
+  const fxPerUsd = !amountLocal ? 1 : (campaign.fxPerUsd ?? (await currentFx(campaign.country, now)))
+  const amountCents = rewardCents(amountLocal, fxPerUsd)
   const verdict = await evaluate({
     link, campaign, workspace, amountCents, now,
     friendVisitorId: input.friendVisitorId, friendSessionId: input.friendSessionId, friendPhone: input.friendPhone,
