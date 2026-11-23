@@ -148,9 +148,11 @@ describe('Rewards', () => {
 
   it("a Viewer's page has no inputs and no Save", async () => {
     const { ws } = await setup('Viewer')
-    await mkCampaign(ws.id, 'Live one')
+    await mkCampaign(ws.id, 'Live one', 'live', { rewardLocal: 90000 })
     const { markup, text } = await page()
     expect(markup).not.toContain('<input')
+    // The reward reads grouped, as every other local amount does.
+    expect(text).toContain('90,000 NGN')
     expect(text).not.toContain('Save')
     expect(text).toContain(REWARDS.caps.maxPerDay)
   })

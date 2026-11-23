@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { Button, DataTable } from '@/components/og'
 import { toast } from '@/components/shell/toast-store'
 import { REWARDS } from '@/lib/copy-rewards'
+import { num } from '@/lib/format'
 import { saveCapsAction, setRewardAction } from './actions'
 
 export type RewardRow = { id: string; name: string; country: string; currency: string; rewardLocal: number; paid: string; cap: string }
@@ -38,7 +39,7 @@ export function RewardsTable({ rows, editable, empty }: { rows: RewardRow[]; edi
         {r.currency}
       </span>
     ) : (
-      `${r.rewardLocal} ${r.currency}`
+      `${num(r.rewardLocal)} ${r.currency}`
     ),
     r.paid,
     r.cap,
