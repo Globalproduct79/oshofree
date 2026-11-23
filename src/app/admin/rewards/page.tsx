@@ -27,8 +27,7 @@ export default async function RewardsLedgerPage() {
     db.fraudRule.findMany(), heldPayouts(),
   ])
   const enabled = new Map(rules.map((r) => [r.key, r.enabled]))
-  const { earnedCents, sentCents } = totals
-  const queuedCents = earnedCents - sentCents
+  const { earnedCents, sentCents, queuedCents } = totals
   const balanceSub =
     balance < LOW_BALANCE_CENTS ? R.kpi.balanceLow
     : earnedCents > 0 ? R.kpi.balanceDays(Math.round(balance / (earnedCents / 30)))

@@ -65,7 +65,8 @@ describe('/admin/rewards', () => {
     const html = await render()
     expect(html).toContain('$500') // earned 50000
     expect(html).toContain('$300') // sent
-    expect(html).toContain('40.0% still queued')
+    // Queued is what the next run sends (10000 of 50000 earned); a held reward waits for Global, not the queue.
+    expect(html).toContain('20.0% still queued')
     expect(html).toContain('top up soon')
     expect(html).toContain('1.5k')
     expect(html).toContain('10 per successful share')

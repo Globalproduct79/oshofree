@@ -9,10 +9,13 @@ import { AGGREGATOR_ID } from '@/lib/rewards'
 export const LOW_BALANCE_CENTS = 50_000
 export const FULL_BALANCE_CENTS = 200_000
 
-export async function monthTotals(now: Date): Promise<{ earnedCents: number; sentCents: number }> {
+// This month's earned rewards (queued, sent and held), what was sent, and what is still queued for the next run. A held
+// reward is earned but waits for Global, so it is not "still queued".
+export async function monthTotals(now: Date): Promise<{ earnedCents: number; sentCents: number; queuedCents: number }> {
   const workspaces = await db.workspace.findMany({ select: { id: true, country: true } })
   let earnedCents = 0
   let sentCents = 0
+  let queuedCents = 0
   for (const ws of workspaces) {
     const { start, end } = monthBounds(ws.country, now)
     const rows = await db.rewardPayout.groupBy({
@@ -23,9 +26,10 @@ export async function monthTotals(now: Date): Promise<{ earnedCents: number; sen
     for (const r of rows) {
       earnedCents += r._sum.amountCents ?? 0
       if (r.status === 'sent') sentCents += r._sum.amountCents ?? 0
+      if (r.status === 'queued') queuedCents += r._sum.amountCents ?? 0
     }
   }
-  return { earnedCents, sentCents }
+  return { earnedCents, sentCents, queuedCents }
 }
 
 export async function aggregatorBalance(): Promise<number> {

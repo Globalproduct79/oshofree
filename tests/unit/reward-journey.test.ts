@@ -114,7 +114,7 @@ describe('the referral journey', () => {
     const before = (await workspaceSharers(ws.id)).rows
     expect(before).toMatchObject([{ who: sharer, opened: 1, claimed: 1, rewards: `${reward} queued` }])
     expect(await rewardsLedgerRows()).toMatchObject([{ campaignId: campaign.id, successfulShares: 1, owedCents: 3 }])
-    expect(await monthTotals(new Date())).toEqual({ earnedCents: 3, sentCents: 0 })
+    expect(await monthTotals(new Date())).toEqual({ earnedCents: 3, sentCents: 0, queuedCents: 3 })
 
     // 6. The daily job sends it: sent, dated, and the aggregator balance down by exactly its cents.
     const now = new Date()
@@ -122,7 +122,7 @@ describe('the referral journey', () => {
     expect(await db.rewardPayout.findUniqueOrThrow({ where: { id: payout.id } })).toMatchObject({ status: 'sent', sentAt: now })
     expect(await balance()).toBe(10_000 - 3)
     expect((await workspaceSharers(ws.id)).rows).toMatchObject([{ who: sharer, rewards: `${reward} sent` }])
-    expect(await monthTotals(new Date())).toEqual({ earnedCents: 3, sentCents: 3 })
+    expect(await monthTotals(new Date())).toEqual({ earnedCents: 3, sentCents: 3, queuedCents: 0 })
     const lines = (await campaignActivity(campaign)).lines.map((l) => l.text)
     expect(lines.some((t) => t.startsWith(`${ACTIVITY.reward(reward, sharer, 'sent', null)} · `))).toBe(true)
     expect(lines.some((t) => t.startsWith(`${ACTIVITY.points(10, sharer)} · `))).toBe(true)
