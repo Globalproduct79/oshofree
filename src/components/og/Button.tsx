@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/og/Link'
 import type { ComponentProps } from 'react'
 import { tokens } from '@/lib/tokens'
 

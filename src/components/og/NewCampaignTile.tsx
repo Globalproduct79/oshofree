@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/og/Link'
 import { COMPONENTS } from '@/lib/copy-components'
 
 // The dashed "+ New campaign" tile that ends the home grid.

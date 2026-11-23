@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/og/Link'
 import { useActionState } from 'react'
 import { SubmitButton } from '@/components/og/SubmitButton'
 import { COPY } from '@/lib/copy'
