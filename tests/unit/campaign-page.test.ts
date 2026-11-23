@@ -283,7 +283,8 @@ describe('the numbers', () => {
     await db.rewardPayout.createMany({
       data: (['sent', 'queued', 'blocked'] as const).map((status) => ({
         campaignId: c.id, workspaceId: ws.id, shareLinkId: shared.id, sharerConsumerId: consumer.id,
-        claimEventKey: `claim${next()}`, amountLocal: 50, amountCents: 350, status,
+        // ₦5,426 at ₦1,550 to the dollar is 350 cents (₦5,425 back again): the page sums the stored airtime.
+        claimEventKey: `claim${next()}`, amountLocal: 5426, amountCents: 350, status,
       })),
     })
     await charge(ws.id, c.id, 'delivery', -12_600)
@@ -332,8 +333,8 @@ describe('the numbers', () => {
     // Friend opens ÷ opens.
     expect(t).toContain('Friends opened 4 viral coefficient 0.03')
     expect(t).toContain('Friends claimed 2 50.0% of opens')
-    // $7 at the campaign's ₦1,550.
-    expect(t).toContain('Rewards paid $7 ₦10,850 airtime')
+    // The sent and queued payouts' stored airtime (2 × ₦5,426), not their $7 converted back at ₦1,550 (₦10,850).
+    expect(t).toContain('Rewards paid $7 ₦10,852 airtime')
     expect(t).toContain('Where it was shared WhatsApp 1 X 1 Facebook 0 SMS 1')
     expect(t).toContain('Top sharers (anonymised) 1 +234 80• ••• 4471 2 claims')
     // The grid wraps instead of overflowing at 390 px (ADV §16).

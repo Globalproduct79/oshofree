@@ -194,6 +194,8 @@ describe('campaignMetrics', () => {
       sClaims: 8,
       spendCents: 333 + 1200 + 300 + 24,
       rewardCents: 24,
+      // The airtime of the charged payouts (queued and sent: 4 + 1 + 1 + 1), ₦50 each as stored.
+      rewardLocal: 7 * 50,
       channels: { whatsapp: 3, x: 1, facebook: 1, sms: 1 },
       topSharers: [
         { phone: 'Phoenix user · ••1234', claims: 4 },
@@ -222,7 +224,7 @@ describe('campaignMetrics', () => {
     const ws = await db.workspace.create({ data: { name: 'W', type: 'Brand', country: 'NG' } })
     const c = await mkCampaign(ws.id, 'Quiet', 'review')
     expect(await campaignMetrics(c.id, NOW)).toEqual({
-      imp: 0, opens: 0, claims: 0, shares: 0, sOpens: 0, sClaims: 0, spendCents: 0, rewardCents: 0,
+      imp: 0, opens: 0, claims: 0, shares: 0, sOpens: 0, sClaims: 0, spendCents: 0, rewardCents: 0, rewardLocal: 0,
       days: Array(14).fill(0),
       channels: { whatsapp: 0, x: 0, facebook: 0, sms: 0 },
       topSharers: [],

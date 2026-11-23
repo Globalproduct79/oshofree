@@ -4,6 +4,7 @@ import { HOME_FILTERS, type HomeFilter } from '@/lib/campaign-filters'
 import { rejectReasonText } from '@/lib/copy-campaign'
 import { REPORT_COPY } from '@/lib/copy-report'
 import { db } from '@/lib/db'
+import { CHARGED } from '@/lib/fraud'
 import { daysLeft, fd, fmt, initials, maskPhone, pct } from '@/lib/format'
 import { COUNTRIES, MARKETS, type Country } from '@/lib/markets'
 import { campaignSpendCents, monthBounds } from '@/lib/money'
@@ -147,6 +148,8 @@ export type CampaignMetrics = {
   sClaims: number
   spendCents: number
   rewardCents: number
+  // The airtime behind rewardCents, in whole local units as each payout stored it (queued and sent: the charged ones).
+  rewardLocal: number
   // 14 market-local days, last = today.
   days: number[]
   channels: Record<Split, number>
@@ -162,13 +165,14 @@ export type CampaignMetrics = {
 
 export async function campaignMetrics(id: string, now: Date): Promise<CampaignMetrics> {
   const { country } = await db.campaign.findUniqueOrThrow({ where: { id }, select: { country: true } })
-  const [event, shareRows, friendOpens, successful, spendCents, rewards, days, sharers] = await Promise.all([
+  const [event, shareRows, friendOpens, successful, spendCents, rewards, airtime, days, sharers] = await Promise.all([
     channelEventsBy([id], ['Impression', 'Open', 'Claim']),
     sharesBy([id]),
     friendOpensBy([id]),
     successfulBy({ campaignId: id }),
     campaignSpendCents(id),
     chargedBy([id], ['reward']),
+    db.rewardPayout.aggregate({ where: { campaignId: id, status: { in: CHARGED } }, _sum: { amountLocal: true } }),
     dailyImpressions(id, MARKETS[country].timezone, now),
     topSharers(id),
   ])
@@ -186,6 +190,7 @@ export async function campaignMetrics(id: string, now: Date): Promise<CampaignMe
     sClaims,
     spendCents,
     rewardCents: rewards.get(id) ?? 0,
+    rewardLocal: airtime._sum.amountLocal ?? 0,
     days,
     channels: splitOf(shareRows),
     topSharers: sharers,

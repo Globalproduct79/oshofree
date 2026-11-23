@@ -6,9 +6,9 @@ import { isRejectReason, rejectReasonText } from '@/lib/copy-campaign'
 import { PLACEMENT_LABEL } from '@/lib/copy-components'
 import { CAMPAIGN_COPY as C, REPORT_COPY } from '@/lib/copy-report'
 import { db } from '@/lib/db'
-import { fd, fmt, loc, localAmount, pct, usd } from '@/lib/format'
+import { fd, fmt, localAmount, pct, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
-import { currentCpmCents, currentFx } from '@/lib/rates'
+import { currentCpmCents } from '@/lib/rates'
 import { campaignMetrics, type CampaignMetrics, type Sharer } from '@/lib/reports'
 import { creativeUrl } from '@/lib/storage'
 
@@ -123,7 +123,7 @@ function kpis(c: Campaign, m: CampaignMetrics, f: CampaignFacts): Metric[] {
   ]
 }
 
-function sharing(c: Campaign, m: CampaignMetrics, pointsPerShare: number, fxPerUsd: number): CampaignReport['sharing'] {
+function sharing(c: Campaign, m: CampaignMetrics, pointsPerShare: number): CampaignReport['sharing'] {
   const S = C.sharingBox
   const capCents = (c.budgetUsd * 100 * c.rewardCapPct) / 100
   return {
@@ -141,7 +141,8 @@ function sharing(c: Campaign, m: CampaignMetrics, pointsPerShare: number, fxPerU
       {
         title: S.rewardsPaid,
         value: usd(m.rewardCents),
-        sub: S.airtime(loc(m.rewardCents, c.country, fxPerUsd)),
+        // The airtime the payouts stored, not the dollars converted back: a ₦50 reward is 3 cents, which is ₦46.50 again.
+        sub: S.airtime(localAmount(m.rewardLocal, c.country)),
         fill: ratio(m.rewardCents, capCents) * 100,
       },
     ],
@@ -179,12 +180,6 @@ async function placementCpmCents(c: Campaign, now: Date): Promise<number | null>
   return phoenix ? currentCpmCents(phoenix.id, c.country, c.placement, now).catch(() => null) : null
 }
 
-// The FX the campaign was priced at. One never submitted has paid no rewards, so without a rate its
-// ₦0 is still right.
-async function fxOf(c: Campaign, now: Date): Promise<number> {
-  return c.fxPerUsd !== null ? Number(c.fxPerUsd) : currentFx(c.country, now).catch(() => 0)
-}
-
 // Who created the campaign; null when no one was recorded (a campaign from before the column, or a deleted user).
 async function creatorOf(c: Campaign): Promise<string | null> {
   if (!c.createdById) return null
@@ -201,13 +196,12 @@ function creativeOf(c: Campaign): CampaignReport['offer']['creative'] {
 export async function campaignReport(
   c: Campaign, ws: Pick<Workspace, 'pointsPerShare'>, now: Date,
 ): Promise<CampaignReport> {
-  const [m, f, revisions, actions, cpmCents, fxPerUsd, creator] = await Promise.all([
+  const [m, f, revisions, actions, cpmCents, creator] = await Promise.all([
     campaignMetrics(c.id, now),
     campaignFacts(c.id, now),
     db.campaignRevision.findMany({ where: { campaignId: c.id }, orderBy: { submittedAt: 'desc' } }),
     db.reviewAction.findMany({ where: { targetType: 'Campaign', targetId: c.id }, orderBy: { at: 'desc' } }),
     placementCpmCents(c, now),
-    fxOf(c, now),
     creatorOf(c),
   ])
   const { name: country, currency, timezone } = MARKETS[c.country]
@@ -230,7 +224,7 @@ export async function campaignReport(
       ],
       base: m.imp,
     },
-    sharing: sharing(c, m, ws.pointsPerShare, fxPerUsd),
+    sharing: sharing(c, m, ws.pointsPerShare),
     change: {
       budgetUsd: c.budgetUsd,
       minBudgetUsd: Math.ceil(m.spendCents / 100),
