@@ -3,12 +3,13 @@
 import type { ReactNode, RefObject } from 'react'
 import { PhoneThumb } from '@/components/campaign/PhoneFrame'
 import { CreativeMedia, KVGrid } from '@/components/og'
-import { ageGated, campaignDates, hasLicence, isBettingOrDraw, type CreditPosition } from '@/lib/campaign-schema'
+import { ageGated, campaignDates, hasLicence, isBettingOrDraw, type CampaignField, type CreditPosition } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import { fd, loc, localAmount, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
 import type { PreviewOffer } from '@/lib/preview-merge'
 import { CostBox } from './CostBox'
+import { fieldProps, HINT_ID, type Marked } from './field'
 import { amount, flightLength, type FormValues } from './values'
 
 const L = F.fields
@@ -24,6 +25,11 @@ type Props = {
   mine: PreviewOffer
   // The confirmation is the one thing given here.
   update: (patch: Partial<FormValues>) => void
+  // Back to the edit step with the cursor on that field (a brand workspace's brand is its own, so it has no Edit).
+  onEdit: (field: CampaignField) => void
+  agency: boolean
+  // The confirmation, once Submit was pressed without it.
+  marked?: Marked
   // The heading takes the focus when the step opens.
   headingRef?: RefObject<HTMLHeadingElement | null>
   // The form's buttons, last.
@@ -56,11 +62,24 @@ function flight(v: FormValues): string {
 }
 
 // The New form's Review step (Prompt 6): everything the campaign will be, read-only and in the form's order (the
-// offer, its creative, where and when it runs, the money with the Cost box's estimate), then the confirmation the
-// rules ask for before "Submit for review". It opens only once every other rule passes, so every value is usable.
-export function ReviewStep({ values: v, cpmCents, fxPerUsd, credit, mine, update, headingRef, children }: Props) {
+// offer, its creative, where and when it runs, the money with the Cost box's estimate), each value with an Edit back to
+// its field, then the confirmation the rules ask for before "Submit for review". It opens only once every other rule
+// passes, so every value is usable.
+export function ReviewStep({ values: v, cpmCents, fxPerUsd, credit, mine, update, onEdit, agency, marked = null, headingRef, children }: Props) {
   const placement = F.placements[v.placement].name
   const budgetCents = amount(v.budgetUsd) * 100
+  // A value's label with its Edit, which names the field for a screen reader.
+  const label = (text: string, field?: CampaignField) =>
+    field ? (
+      <>
+        {text}
+        <button type="button" className="linkbtn" aria-label={R.editLabel(text)} onClick={() => onEdit(field)}>
+          {R.edit}
+        </button>
+      </>
+    ) : (
+      text
+    )
   return (
     <>
       <h3 ref={headingRef} tabIndex={-1}>
@@ -72,32 +91,46 @@ export function ReviewStep({ values: v, cpmCents, fxPerUsd, credit, mine, update
           <b className="subt">{R.offer}</b>
           <KVGrid
             items={[
-              { label: L.name.label, value: v.name.trim() },
-              { label: L.brand.label, value: v.brand.trim() },
-              { label: L.category.label, value: v.category },
-              { label: L.headline.label, value: v.headline.trim() },
-              { label: L.redeem.label, value: L.redeem.options[v.redeemMethod] },
-              ...(v.redeemMethod === 'link' ? [{ label: L.link.label, value: v.linkUrl.trim() }] : []),
+              { label: label(L.name.label, 'name'), value: v.name.trim() },
+              { label: label(L.brand.label, agency ? 'brand' : undefined), value: v.brand.trim() },
+              { label: label(L.category.label, 'category'), value: v.category },
+              { label: label(L.headline.label, 'headline'), value: v.headline.trim() },
+              { label: label(L.description.label, 'description'), value: v.description.trim(), wide: true },
+              { label: label(L.redeem.label, 'redeemMethod'), value: L.redeem.options[v.redeemMethod] },
+              ...(v.redeemMethod === 'link' ? [{ label: label(L.link.label, 'linkUrl'), value: v.linkUrl.trim() }] : []),
             ]}
           />
-          <p className="desc">{v.description.trim()}</p>
         </section>
         <section>
           <b className="subt">{R.creative}</b>
           <Creative values={v} mine={mine} />
+          <KVGrid
+            items={[
+              { label: label(F.drop[v.placement].label, 'creative'), value: v.creative ? (v.creative.kind === 'image' ? R.image : R.video) : R.none },
+              {
+                label: label(L.tileColor.label, 'tileColor'),
+                value: (
+                  <>
+                    <span className="tc" style={{ background: v.tileColor }} aria-hidden="true" />
+                    {v.tileColor}
+                  </>
+                ),
+              },
+            ]}
+          />
         </section>
         <section>
           <b className="subt">{R.targeting}</b>
           <KVGrid
             items={[
-              { label: L.country.label, value: MARKETS[v.country].name },
+              { label: label(L.country.label, 'country'), value: MARKETS[v.country].name },
               {
-                label: L.placement.label,
+                label: label(L.placement.label, 'placement'),
                 value: cpmCents === null ? placement : R.placementAt(placement, F.placements.cpm((cpmCents / 100).toFixed(2))),
               },
               { label: R.age, value: ageGated(v) ? R.ageGated : R.open },
               ...(isBettingOrDraw(v) && hasLicence(v.description) ? [{ label: R.licence, value: R.licenceFound }] : []),
-              { label: R.flight, value: flight(v) },
+              { label: label(R.flight, 'startsAt'), value: flight(v) },
             ]}
           />
         </section>
@@ -106,16 +139,22 @@ export function ReviewStep({ values: v, cpmCents, fxPerUsd, credit, mine, update
           <KVGrid
             items={[
               {
-                label: L.budget.label,
+                label: label(L.budget.label, 'budgetUsd'),
                 value: fxPerUsd === null ? usd(budgetCents) : `${usd(budgetCents)} · ${loc(budgetCents, v.country, fxPerUsd)}`,
               },
-              { label: L.reward.label, value: R.reward(localAmount(amount(v.rewardLocal), v.country)) },
+              { label: label(L.reward.label, 'rewardLocal'), value: R.reward(localAmount(amount(v.rewardLocal), v.country)) },
             ]}
           />
           <CostBox values={v} cpmCents={cpmCents} fxPerUsd={fxPerUsd} credit={credit} />
         </section>
+        {/* Its sentence is the hint beside Submit, just below. */}
         <label className="chk">
-          <input type="checkbox" checked={v.termsAccepted} onChange={(e) => update({ termsAccepted: e.target.checked })} />{' '}
+          <input
+            {...fieldProps('termsAccepted', marked, HINT_ID)}
+            type="checkbox"
+            checked={v.termsAccepted}
+            onChange={(e) => update({ termsAccepted: e.target.checked })}
+          />{' '}
           {L.terms}
         </label>
         {children}

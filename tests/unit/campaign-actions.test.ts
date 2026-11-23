@@ -7,7 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { editOfferAction, pause, previewOffers, resume, submitAction } from '@/app/app/(console)/campaigns/actions'
 import EditOfferPage from '@/app/app/(console)/campaigns/[id]/edit/page'
 import NewCampaignPage from '@/app/app/(console)/campaigns/new/page'
-import { newCampaignDefaults, sameValues, type FormValues } from '@/components/campaign/form/values'
+import { formProblem } from '@/components/campaign/form/problem'
+import { newCampaignDefaults, sameValues, toInput, type FormValues } from '@/components/campaign/form/values'
 import { auth } from '@/lib/auth'
 import type { CampaignInput } from '@/lib/campaigns'
 import { db } from '@/lib/db'
@@ -153,6 +154,43 @@ describe('submitAction', () => {
     const res = (await submitAction(input())) as { id: string }
     const rows = await db.auditEvent.findMany({ where: { action: 'campaign.submit' } })
     expect(rows).toEqual([expect.objectContaining({ actorId: actor.id, targetId: res.id, workspaceId: mine.id })])
+  })
+
+  it('refuses what the form refuses, in the same sentence: the form and the server judge one set of rules', async () => {
+    await setup('Owner')
+    const filled: FormValues = {
+      ...newCampaignDefaults(mine), name: 'Easter bundle', headline: 'Free 50cl with any 6-pack',
+      description: 'Buy a 6-pack at any Shoprite and get a free 50cl bottle.', linkUrl: 'https://kolabright.example/easter',
+      termsAccepted: true,
+    }
+    const cases: Partial<FormValues>[] = [
+      { name: '' }, { name: 'E' }, { headline: '' }, { description: '' }, { category: 'Betting' },
+      { headline: 'Win the weekly draw' }, { linkUrl: '' }, { linkUrl: 'http://kolabright.example' }, { linkUrl: 'https://' },
+      { linkUrl: 'https://kola bright.com' }, { placement: 'video' }, { budgetUsd: '' }, { budgetUsd: '49' },
+      { budgetUsd: '55.5' }, { budgetUsd: '2000' }, { rewardLocal: '' }, { rewardLocal: '-5' }, { rewardLocal: '2.5' },
+      { rewardLocal: '21474837' }, { startsAt: '' }, { startsAt: '2020-01-01' }, { runsFor: 'custom', endsAt: '' },
+      { runsFor: 'custom', endsAt: '2020-01-01' }, { termsAccepted: false },
+    ]
+    const said = new Set<string>()
+    for (const patch of cases) {
+      const v = { ...filled, ...patch }
+      const client = formProblem({
+        values: v, isNew: true, stage: 'review', workspace: { type: 'Brand', declined: false },
+        credit: { limitCents: 150_000, inUseCents: 0 }, cpmCents: 120, fxPerUsd: 1550,
+      })
+      expect(client, JSON.stringify(patch)).not.toBeNull()
+      expect(await submitAction(toInput(v)), JSON.stringify(patch)).toEqual({ error: client!.message })
+      said.add(client!.message)
+    }
+    // Not one catch-all: the cases above are 18 different sentences.
+    expect(said.size).toBe(18)
+    expect(await db.campaign.count()).toBe(0)
+    // And what the form lets through, the server takes.
+    expect(formProblem({
+      values: filled, isNew: true, stage: 'review', workspace: { type: 'Brand', declined: false },
+      credit: { limitCents: 150_000, inUseCents: 0 }, cpmCents: 120, fxPerUsd: 1550,
+    })).toBeNull()
+    expect(await submitAction(toInput(filled))).toEqual({ id: expect.any(String) })
   })
 
   it('answers a date that is not on the calendar with the validation message, without throwing', async () => {
@@ -376,7 +414,8 @@ describe('the pages', () => {
     expect(html).toContain('<span><b>$300</b> · ₦465,000</span>')
     expect(html).toContain('$1,200 left')
     expect(html).toContain('Give the campaign a name.')
-    expect(html).toContain('<button class="btn p" type="submit" disabled=""')
+    // Pressable, so a press can take the cursor to the field to fix; aria-disabled says it cannot submit yet.
+    expect(html).toContain('<button class="btn p" type="submit" aria-disabled="true" aria-describedby="cf-hint">Review before submitting</button>')
     expect(html).toContain('— 0/48')
     expect(html).toContain('— NGN airtime per successful share')
     expect(html).not.toContain('Cancel')
@@ -388,7 +427,7 @@ describe('the pages', () => {
     await setup('Owner')
     const html = renderToStaticMarkup(await NewCampaignPage({ searchParams: Promise.resolve({}) }))
     expect(html).toContain('<div class="box"><p class="sub">One offer per campaign. Add another campaign for another offer.</p><div class="form">')
-    expect(html).toMatch(/<button class="btn p" type="submit" disabled=""[^>]*>Review before submitting<\/button>/)
+    expect(html).toMatch(/<button class="btn p" type="submit" aria-disabled="true"[^>]*>Review before submitting<\/button>/)
     expect(html).not.toContain('Submit for review')
     // Nothing to save yet: a fresh form is the defaults.
     expect(html).toMatch(/<button class="btn g" type="button" disabled="">Save draft<\/button>/)
@@ -418,7 +457,7 @@ describe('the pages', () => {
     expect(html).toContain('Save and resubmit')
     expect(html).toContain('<button class="btn g" type="button">Cancel</button>')
     expect(html).toContain('Change these without review on the campaign page.')
-    expect(html).toMatch(/<input type="number"[^>]*disabled=""[^>]*value="300"/)
+    expect(html).toMatch(/<input [^>]*type="number"[^>]*disabled=""[^>]*value="300"/)
     expect(html).toContain('value="Buy 2 get 1"')
     expect(html).not.toMatch(/type="checkbox"[^>]*checked=""/)
     // Edit offer is one page: its confirmation is on it, and there is no Review step, draft or one-offer line.

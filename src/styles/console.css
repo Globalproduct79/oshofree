@@ -98,7 +98,7 @@ label.f{display:block;font-size:13px;color:var(--ink2);font-weight:600}label.f i
 .opts{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.opt{border:1px solid var(--line);border-radius:11px;padding:12px;text-align:left;background:#fff;position:relative}.opt[aria-pressed=true]{border-color:var(--phx);background:var(--phx2)}.opt b{display:block;font-size:14px}.opt span{font-size:12px;color:var(--ink2);display:block;margin-top:2px}.opt .big{font-size:16px;font-weight:800;margin-top:6px;color:var(--ink)}.opt .soon{position:absolute;top:8px;right:8px;font-size:10px;background:var(--amb2);color:var(--amb);border-radius:999px;padding:2px 7px;font-weight:700}
 .drop{border:2px dashed var(--line);border-radius:11px;padding:14px;text-align:center;color:var(--ink3);font-size:13px;cursor:pointer}.drop:hover{border-color:var(--phx)}.drop img{max-height:90px;border-radius:8px;display:block;margin:0 auto 6px}
 .chk{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--ink2);padding:6px 0}
-.est{background:var(--bg);border-radius:12px;padding:16px}.est b{font-size:28px;letter-spacing:-.025em;display:block}.est small{color:var(--ink3)}.est .r{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}.est .r:last-child{border:0}
+.est{background:var(--bg);border-radius:12px;padding:16px}.est > b{font-size:28px;letter-spacing:-.025em;display:block}.est small{color:var(--ink3)}.est .r{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}.est .r:last-child{border:0}
 .swatches{display:flex;gap:8px;margin-top:6px}.swatches button{width:26px;height:26px;border-radius:50%;border:3px solid transparent}.swatches button[aria-pressed=true]{border-color:var(--ink)}
 .roles li{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);list-style:none}.roles{padding:0;margin:0}
 .tog{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}.tog:last-child{border:0}.tog small{display:block;color:var(--ink3)}
@@ -269,6 +269,14 @@ label.f select,.edit select,select.sel{appearance:none;-webkit-appearance:none;b
 label.f input:focus,label.f select:focus,label.f textarea:focus,.edit input:focus,.edit select:focus,.edit textarea:focus,select.sel:focus{outline:none;border-color:var(--phx);box-shadow:0 0 0 3px var(--phx3)}
 label.f input:disabled,label.f select:disabled,label.f textarea:disabled,label.f input[readonly],label.f textarea[readonly],select.sel:disabled{background-color:var(--bg);color:var(--ink2);-webkit-text-fill-color:var(--ink2);opacity:1;border-color:var(--line2);cursor:not-allowed}
 label.f .hint{display:block;margin-top:6px;font-weight:400;font-size:12px;color:var(--ink3);line-height:1.4}
+/* A refused field (slice 2, Prompt 1): a red edge, a red ring when focused, and its sentence under it. */
+label.f input[aria-invalid=true],label.f select[aria-invalid=true],label.f textarea[aria-invalid=true]{border-color:var(--red)}
+label.f input[aria-invalid=true]:focus,label.f select[aria-invalid=true]:focus,label.f textarea[aria-invalid=true]:focus{border-color:var(--red);box-shadow:0 0 0 3px var(--red2)}
+.chk input[aria-invalid=true]{outline:2px solid var(--red);outline-offset:2px}
+.ferr{display:block;margin-top:6px;font-weight:400;font-size:12px;color:var(--red);line-height:1.4}
+/* The Review step: each value's Edit, on its label's line. */
+.summary .kv small{display:flex;justify-content:space-between;gap:8px}.summary .kv .linkbtn{font-size:11px;font-weight:600}
+.kv .wide{grid-column:1 / -1}.summary .tc{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px;margin-right:6px}
 select.sel{height:34px;padding:0 32px 0 10px;border:1px solid var(--line);border-radius:9px;font-size:13px;font-weight:600;color:var(--ink)}
 .btn{transition:background-color .12s,color .12s,border-color .12s}
 .btn:hover:not(:disabled):not([aria-disabled=true]):not([aria-busy=true]){background:var(--line2)}

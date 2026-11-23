@@ -1,18 +1,19 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
+import { useEffect, useRef, useState, useTransition, type FocusEvent, type FormEvent } from 'react'
 import { editOfferAction, previewOffers, submitAction } from '@/app/app/(console)/campaigns/actions'
 import { PreviewButton } from '@/components/campaign/PreviewButton'
 import { Box, Button, type PickerStatus } from '@/components/og'
 import { toast } from '@/components/shell/toast-store'
-import { todayIn, type CreditPosition, type FormEdit } from '@/lib/campaign-schema'
+import { todayIn, type CampaignField, type CreditPosition, type FormEdit } from '@/lib/campaign-schema'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import type { PlacementKey } from '@/lib/copy-components'
 import { clearDraft, loadDraft, saveDraft, startOver } from '@/lib/draft-store'
 import type { MarketRates } from '@/lib/rates'
 import { CardPreview } from './form/CardPreview'
 import { CostBox } from './form/CostBox'
+import { fieldOf, fieldProps, focusField, HINT_ID, type Marked } from './form/field'
 import { OfferFields } from './form/OfferFields'
 import { formPreview } from './form/preview'
 import { PlacementFields } from './form/PlacementFields'
@@ -64,6 +65,12 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
   const primary = useRef<HTMLButtonElement>(null)
   const moved = useRef(false)
   const brandRef = useRef<HTMLInputElement>(null)
+  // The field an Edit on the Review step goes back to.
+  const editing = useRef<CampaignField | null>(null)
+  // A field is marked with its refusal once the person has left it, or pressed the primary while it was the one
+  // refused (the next field is not marked ahead of them).
+  const [touched, setTouched] = useState<ReadonlySet<CampaignField>>(new Set())
+  const [pressed, setPressed] = useState<CampaignField | null>(null)
   const restored = useRef(false)
   const sent = useRef(false)
   // The values as they are now, for an upload that resolves after the placement has changed.
@@ -74,8 +81,10 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
   useEffect(() => {
     if (!moved.current) return
     moved.current = false
+    const field = editing.current
+    editing.current = null
     if (stage === 'review') reviewHeading.current?.focus()
-    else primary.current?.focus()
+    else if (!field || !focusField(field)) primary.current?.focus()
   }, [stage])
 
   const isNew = mode.kind === 'new'
@@ -144,8 +153,10 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
     if (!uploading) setCreativeStatus({ state: 'idle' })
   }
   // The confirmation is for what was reviewed: going back to change anything asks for it again.
-  function onBack() {
+  function onBack(field?: CampaignField) {
     moved.current = true
+    editing.current = field ?? null
+    setPressed(null)
     setStage('edit')
     update({ termsAccepted: false })
   }
@@ -161,15 +172,27 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
   const problem = formProblem({
     values, isNew, stage, edit, workspace, credit, cpmCents: cpmCents[values.placement], fxPerUsd,
   })
-  const hint = uploading ? F.upload.uploading : (notice ?? problem ?? '')
+  const hint = uploading ? F.upload.uploading : (notice ?? problem?.message ?? '')
+  const marked: Marked = problem?.field && (problem.field === pressed || touched.has(problem.field)) ? problem : null
+  function onBlur(e: FocusEvent) {
+    const field = fieldOf(e.target)
+    if (field && !touched.has(field)) setTouched((t) => new Set(t).add(field))
+  }
   const dirty = hasDraft || !sameValues(values, defaults)
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
-    if (problem || pending || uploading) return
+    if (pending || uploading) return
+    // The primary says why it does nothing beside it, and the cursor goes to the field that needs the fix.
+    if (problem) {
+      setPressed(problem.field)
+      if (problem.field) focusField(problem.field)
+      return
+    }
     if (isNew && stage === 'edit') {
       moved.current = true
       setNotice(null)
+      setPressed(null)
       setStage('review')
       return
     }
@@ -195,11 +218,21 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
 
   const buttons = (
     <div className="full" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-      <Button ref={primary} type="submit" aria-busy={pending || undefined} variant="primary" disabled={problem !== null || pending || uploading} aria-describedby="cf-hint">
+      {/* Not disabled while a rule fails: pressing it moves the cursor to the field to fix (aria-disabled says it
+          cannot submit, and the hint it points at says why). */}
+      <Button
+        ref={primary}
+        type="submit"
+        aria-busy={pending || undefined}
+        variant="primary"
+        disabled={pending || uploading}
+        aria-disabled={problem !== null || undefined}
+        aria-describedby={HINT_ID}
+      >
         {!isNew ? F.buttons.saveResubmit : reviewing ? F.buttons.submit : F.buttons.review}
       </Button>
       {reviewing && (
-        <Button type="button" variant="ghost" disabled={pending} onClick={onBack}>
+        <Button type="button" variant="ghost" disabled={pending} onClick={() => onBack()}>
           {F.buttons.back}
         </Button>
       )}
@@ -225,7 +258,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
       {/* The draft autosaves while the form differs from its defaults, and only to this browser (Prompt 9). */}
       {isNew && dirty && <span className="saved-here">{F.savedHere}</span>}
       <span
-        id="cf-hint"
+        id={HINT_ID}
         role={notice ? 'alert' : undefined}
         style={{ marginLeft: 'auto', color: 'var(--ink3)', fontSize: 13 }}
       >
@@ -240,7 +273,7 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
   )
 
   return (
-    <form className="two" onSubmit={onSubmit} noValidate>
+    <form className="two" onSubmit={onSubmit} onBlur={onBlur} noValidate>
       <div className="box">
         {reviewing ? (
           <ReviewStep
@@ -250,6 +283,9 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
             credit={credit}
             mine={mine}
             update={update}
+            onEdit={onBack}
+            agency={workspace.type === 'Agency'}
+            marked={marked}
             headingRef={reviewHeading}
           >
             {buttons}
@@ -258,7 +294,14 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
           <>
             {isNew && <p className="sub">{F.oneOffer}</p>}
             <div className="form">
-              <OfferFields values={values} update={update} agency={workspace.type === 'Agency'} locked={locked} brandRef={brandRef} />
+              <OfferFields
+                values={values}
+                update={update}
+                agency={workspace.type === 'Agency'}
+                locked={locked}
+                brandRef={brandRef}
+                marked={marked}
+              />
               <PlacementFields
                 values={values}
                 cpmCents={cpmCents}
@@ -268,12 +311,24 @@ export function CampaignForm({ workspace, rates, credit, defaults, mode, sampleL
                 remove={removeCreative}
                 mine={mine}
                 loadLive={() => previewOffers(values.country)}
+                marked={marked}
               />
-              <TermsFields values={values} update={update} locked={locked} minStart={isNew ? todayIn(values.country) : undefined} />
+              <TermsFields
+                values={values}
+                update={update}
+                locked={locked}
+                minStart={isNew ? todayIn(values.country) : undefined}
+                marked={marked}
+              />
               {/* A new campaign is confirmed on its Review step. */}
               {!isNew && (
                 <label className="chk full">
-                  <input type="checkbox" checked={values.termsAccepted} onChange={(e) => update({ termsAccepted: e.target.checked })} />{' '}
+                  <input
+                    {...fieldProps('termsAccepted', marked, HINT_ID)}
+                    type="checkbox"
+                    checked={values.termsAccepted}
+                    onChange={(e) => update({ termsAccepted: e.target.checked })}
+                  />{' '}
                   {F.fields.terms}
                 </label>
               )}

@@ -7,6 +7,7 @@ import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
 import type { PlacementKey } from '@/lib/copy-components'
 import { MARKETS } from '@/lib/markets'
 import type { PreviewCampaign, PreviewOffer } from '@/lib/preview-merge'
+import { FieldError, fieldProps, type Marked } from './field'
 import { ACCEPT, PLACEMENT_ORDER, type FormValues } from './values'
 
 type Props = {
@@ -21,13 +22,15 @@ type Props = {
   // The draft as the preview draws it, and the live offers around it: a splash's View full size opens the preview on it.
   mine: PreviewCampaign
   loadLive: () => Promise<PreviewOffer[]>
+  // The refused field, marked with its sentence.
+  marked?: Marked
 }
 
 const INVENTORY_TBC: readonly PlacementKey[] = ['video', 'splash']
 
 // ADV §3 fields 8–9: the four placement tiles with their live CPM, then the creative picker the placement asks for:
 // an image for a card or tile, an MP4 (played with controls) for video, either for a splash, shown in a small phone.
-export function PlacementFields({ values: v, cpmCents, choose, status, pick, remove, mine, loadLive }: Props) {
+export function PlacementFields({ values: v, cpmCents, choose, status, pick, remove, mine, loadLive, marked = null }: Props) {
   const drop = F.drop[v.placement]
   const splash = v.placement === 'splash' && v.creative !== null
   const country = MARKETS[v.country].name
@@ -37,7 +40,7 @@ export function PlacementFields({ values: v, cpmCents, choose, status, pick, rem
         <label className="f" id="cf-placement">
           {F.fields.placement.label} <small>{F.fields.placement.hint}</small>
         </label>
-        <div className="opts" role="group" aria-labelledby="cf-placement" style={{ marginTop: 6 }}>
+        <div className="opts" role="group" aria-labelledby="cf-placement" style={{ marginTop: 6 }} {...fieldProps('placement', marked)}>
           {PLACEMENT_ORDER.map((p) => {
             const cpm = cpmCents[p]
             return (
@@ -53,8 +56,9 @@ export function PlacementFields({ values: v, cpmCents, choose, status, pick, rem
             )
           })}
         </div>
+        <FieldError field="placement" marked={marked} spoken />
       </div>
-      <div className="full">
+      <div className="full" id={fieldProps('creative', marked).id}>
         <CreativePicker
           label={drop.label}
           hint={drop.hint}
@@ -81,6 +85,7 @@ export function PlacementFields({ values: v, cpmCents, choose, status, pick, rem
           onPick={pick}
           onRemove={remove}
         />
+        <FieldError field="creative" marked={marked} spoken />
       </div>
     </>
   )

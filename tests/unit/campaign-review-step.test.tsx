@@ -36,13 +36,21 @@ const mine = (v: FormValues): PreviewOffer => ({
 })
 
 const credit = { limitCents: 150_000, inUseCents: 0 }
-const render = (v: FormValues, cpmCents: number | null = 120, fxPerUsd: number | null = 1550) =>
-  renderToStaticMarkup(<ReviewStep values={v} cpmCents={cpmCents} fxPerUsd={fxPerUsd} credit={credit} mine={mine(v)} update={vi.fn()} />)
+const render = (v: FormValues, cpmCents: number | null = 120, fxPerUsd: number | null = 1550, agency = false) =>
+  renderToStaticMarkup(
+    <ReviewStep values={v} cpmCents={cpmCents} fxPerUsd={fxPerUsd} credit={credit} mine={mine(v)} update={vi.fn()} onEdit={vi.fn()} agency={agency} />,
+  )
 
 const text = (m: string) =>
   m.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').replace(/&#x27;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"').trim()
-// The label and value of every key-value cell, in order.
-const cells = (m: string) => [...m.matchAll(/<div><small>(.*?)<\/small><b>(.*?)<\/b><\/div>/g)].map((c) => [text(c[1]), text(c[2])])
+// The label and value of every key-value cell, in order (a label's Edit left out: `edits` lists those).
+const cells = (m: string) =>
+  [...m.matchAll(/<div(?: class="wide")?><small>(.*?)<\/small><b>(.*?)<\/b><\/div>/g)].map((c) => [
+    text(c[1].replace(/<button[^>]*>.*?<\/button>/, '')),
+    text(c[2]),
+  ])
+// The fields the step's Edits go back to, by their accessible names.
+const edits = (m: string) => [...m.matchAll(/<button type="button" class="linkbtn" aria-label="([^"]*)">Edit<\/button>/g)].map((c) => text(c[1]))
 const section = (m: string, title: string) => {
   const from = m.indexOf(`>${title}</b>`)
   return from < 0 ? '' : m.slice(from + 1, m.indexOf('</section>', from))
@@ -55,6 +63,16 @@ describe('the Review step', () => {
     expect(text(m)).toContain('Nothing goes to Global until you submit. Go back to change anything.')
   })
 
+  it('gives every value the person entered an Edit back to its field, named for a screen reader', () => {
+    expect(edits(render(filled()))).toEqual([
+      'Edit Campaign name', 'Edit Category', 'Edit Offer headline', 'Edit What the consumer gets and how',
+      'Edit How consumers redeem', 'Edit Link', 'Edit Ad image', 'Edit Tile colour', 'Edit Country', 'Edit Placement',
+      'Edit Flight', 'Edit Budget (USD)', 'Edit Share reward',
+    ])
+    // A brand workspace's brand is its own; an agency's client is typed in, so it has an Edit.
+    expect(edits(render(filled(), 120, 1550, true))).toContain('Edit Brand')
+  })
+
   it('summarises every field: the offer, its creative, its targeting, its money with the estimate, and the confirmation', () => {
     const m = render(filled())
     expect(cells(section(m, 'The offer'))).toEqual([
@@ -62,11 +80,17 @@ describe('the Review step', () => {
       ['Brand', 'Kola Bright'],
       ['Category', 'Food & drink'],
       ['Offer headline', 'Harmattan sale: 20% off 1L bottles'],
+      ['What the consumer gets and how', 'Show your claim code at any participating store for 20% off a 1L Kola Bright.'],
       ['How consumers redeem', 'Send them to our site / app'],
       ['Link', 'https://kolabright.example/harmattan'],
     ])
-    expect(text(section(m, 'The offer'))).toContain('Show your claim code at any participating store for 20% off a 1L Kola Bright.')
+    // The description spans the grid.
+    expect(section(m, 'The offer')).toContain('<div class="wide"><small>What the consumer gets and how')
     expect(section(m, 'Creative')).toContain(`<img src="/uploads/${IMAGE}" alt="The image you attached" class="cr"/>`)
+    expect(cells(section(m, 'Creative'))).toEqual([
+      ['Ad image', 'The image you attached'],
+      ['Tile colour', tokens.tileColors[0]],
+    ])
     expect(cells(section(m, 'Targeting'))).toEqual([
       ['Country', 'Nigeria'],
       ['Placement', 'Wall card · $1.20 CPM'],
@@ -82,7 +106,7 @@ describe('the Review step', () => {
     expect(money).toContain('<div class="est"><small>Estimated impressions</small><b>200.0k</b>')
     expect(text(money)).toContain('Credit after $1,200 left')
     // The confirmation is given here, unticked.
-    expect(m).toMatch(/<label class="chk"><input type="checkbox"\/> This offer is genuine, available in the country and dates above, and the brand will honour it.<\/label>/)
+    expect(m).toMatch(/<label class="chk"><input id="cf-field-termsAccepted" type="checkbox"\/> This offer is genuine, available in the country and dates above, and the brand will honour it.<\/label>/)
   })
 
   it('a code offer has no link; a betting offer shows 18+ and its licence number; a custom flight ends on its date', () => {
@@ -116,7 +140,8 @@ describe('the Review step', () => {
 
   it('says so when there is no creative: the card shows the tile colour and initials', () => {
     const m = render(filled({ creative: null }))
-    expect(text(section(m, 'Creative'))).toBe('Creative No image. The card shows your tile colour and initials.')
+    expect(text(section(m, 'Creative'))).toMatch(/^Creative No image\. The card shows your tile colour and initials\. Ad image Edit None attached Tile colour/)
+    expect(section(m, 'Creative')).toContain(`<span class="tc" style="background:${tokens.tileColors[0]}" aria-hidden="true"></span>`)
   })
 
   it('prints a dash where a rate is missing, as the Cost box does', () => {
@@ -132,31 +157,37 @@ describe('formProblem: what stops the primary button', () => {
 
   it("a new campaign's edit step asks for every rule but the confirmation, which the Review step asks for", () => {
     expect(formProblem({ ...ctx, values: filled(), isNew: true, stage: 'edit' })).toBeNull()
-    expect(formProblem({ ...ctx, values: filled(), isNew: true, stage: 'review' })).toBe('Confirm the offer is genuine.')
+    expect(formProblem({ ...ctx, values: filled(), isNew: true, stage: 'review' })).toEqual({
+      field: 'termsAccepted', message: 'Confirm the offer is genuine.',
+    })
     expect(formProblem({ ...ctx, values: filled({ termsAccepted: true }), isNew: true, stage: 'review' })).toBeNull()
   })
 
   it('the edit step still names the first rule that fails', () => {
-    expect(formProblem({ ...ctx, values: filled({ name: '' }), isNew: true, stage: 'edit' })).toBe('Give the campaign a name.')
-    expect(formProblem({ ...ctx, values: filled({ budgetUsd: '20' }), isNew: true, stage: 'edit' })).toBe('Minimum budget is $50.')
+    expect(formProblem({ ...ctx, values: filled({ name: '' }), isNew: true, stage: 'edit' })).toEqual({
+      field: 'name', message: 'Give the campaign a name.',
+    })
+    expect(formProblem({ ...ctx, values: filled({ budgetUsd: '20' }), isNew: true, stage: 'edit' })).toEqual({
+      field: 'budgetUsd', message: 'Minimum budget is $50.',
+    })
   })
 
   it('Edit offer keeps its confirmation on the one page', () => {
     const edit = { running: false, heldCents: 0 }
-    expect(formProblem({ ...ctx, values: filled(), isNew: false, stage: 'edit', edit })).toBe('Confirm the offer is genuine.')
+    expect(formProblem({ ...ctx, values: filled(), isNew: false, stage: 'edit', edit })?.message).toBe('Confirm the offer is genuine.')
   })
 
   it('then a missing rate, a missing exchange rate, and a declined workspace', () => {
     const v = filled({ termsAccepted: true })
-    expect(formProblem({ ...ctx, values: v, isNew: true, stage: 'review', cpmCents: null })).toBe(
-      'No rate is set for this placement in Nigeria yet. Ask Global.',
-    )
-    expect(formProblem({ ...ctx, values: v, isNew: true, stage: 'review', fxPerUsd: null })).toBe(
-      'No exchange rate is set for Nigeria yet. Ask Global.',
-    )
-    expect(formProblem({ ...ctx, values: v, isNew: true, stage: 'edit', workspace: { type: 'Brand', declined: true } })).toBe(
-      "Your workspace was declined, so campaigns can't be submitted.",
-    )
+    expect(formProblem({ ...ctx, values: v, isNew: true, stage: 'review', cpmCents: null })).toEqual({
+      field: 'placement', message: 'No rate is set for this placement in Nigeria yet. Ask Global.',
+    })
+    expect(formProblem({ ...ctx, values: v, isNew: true, stage: 'review', fxPerUsd: null })).toEqual({
+      field: 'country', message: 'No exchange rate is set for Nigeria yet. Ask Global.',
+    })
+    expect(formProblem({ ...ctx, values: v, isNew: true, stage: 'edit', workspace: { type: 'Brand', declined: true } })).toEqual({
+      field: null, message: "Your workspace was declined, so campaigns can't be submitted.",
+    })
   })
 })
 

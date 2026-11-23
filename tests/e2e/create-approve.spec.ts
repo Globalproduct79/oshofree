@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { rewardLabel } from '@/lib/campaign-schema'
+import { campaignDates, rewardLabel } from '@/lib/campaign-schema'
 import { COPY } from '@/lib/copy'
 import { ADVERTISERS } from '@/lib/copy-advertisers'
 import { CAMPAIGN_FORM_COPY as F } from '@/lib/copy-campaign-form'
@@ -10,10 +10,10 @@ import { NOTIFY } from '@/lib/copy-notifications'
 import { CAMPAIGN_COPY, PREVIEW_COPY } from '@/lib/copy-report'
 import { REVIEW } from '@/lib/copy-review'
 import { SHELL } from '@/lib/copy-shell'
-import { fd } from '@/lib/format'
+import { fd, localAmount, usd } from '@/lib/format'
 import {
-  ADMIN, approveCampaign, box, expectToast, homeCard, KOLA, metricValue, openReview, queueRow, signIn, submitCampaign, TUNDE,
-  type NewCampaign,
+  ADMIN, approveCampaign, box, expectToast, homeCard, KOLA, metricValue, openReview, queueRow, reviewValue, signIn, submitCampaign,
+  todayInLagos, TUNDE, type NewCampaign,
 } from './helpers'
 
 // F1: Tunde creates "Harmattan sale" as a Wall card with the seed's JPG (attached, replaced, removed, attached again,
@@ -28,6 +28,7 @@ const HARMATTAN: NewCampaign = {
   headline: 'Harmattan sale: 20% off 1L bottles',
   description: 'Show your claim code at any participating store for 20% off a 1L Kola Bright.',
   budgetUsd: 120,
+  rewardLocal: 75,
 }
 
 // Who Tunde is (prisma/seed/users.ts), as the pages name the campaign's creator.
@@ -105,7 +106,7 @@ async function attachReplaceRemoveReattach(page: Page): Promise<string> {
 // The preview (Prompt 7): "On Phoenix", a tab per format. A Wall card's other placements are off, saying why.
 const P = PREVIEW_COPY
 const L = COPY.landing
-const REWARD = rewardLabel('NG', 50)
+const REWARD = rewardLabel('NG', HARMATTAN.rewardLocal!)
 const previewDialog = (page: Page) => page.getByRole('dialog', { name: P.title })
 async function expectWallCardTabs(dialog: Locator) {
   await expect(dialog.getByRole('tab', { name: F.placements.card.name, exact: true })).toHaveAttribute('aria-selected', 'true')
@@ -151,9 +152,32 @@ async function saveDraftAndReopen(page: Page, image: string) {
   await expect(page.getByRole('img', { name: COMPONENTS.drop.chosen.image })).toHaveAttribute('src', image)
 }
 
+// The Review step shows what was typed, exactly: the offer's words, the budget (and the Cost box's), the share reward,
+// and the flight from today for the default 14 days. Each value has an Edit back to its field: the share reward's puts
+// the cursor in that field, and the step opens again with the confirmation asked for afresh.
+async function reviewMatchesTheForm(page: Page) {
+  const L = F.fields
+  await expect(reviewValue(page, L.name.label)).toHaveText(HARMATTAN.name)
+  await expect(reviewValue(page, L.headline.label)).toHaveText(HARMATTAN.headline)
+  await expect(reviewValue(page, L.description.label)).toHaveText(HARMATTAN.description)
+  const budget = usd(HARMATTAN.budgetUsd * 100)
+  await expect(reviewValue(page, L.budget.label)).toHaveText(new RegExp(`^\\${budget} · ₦[\\d,]+$`))
+  await expect(box(page, F.review.title).locator('.est')).toContainText(budget)
+  await expect(reviewValue(page, L.reward.label)).toHaveText(F.review.reward(localAmount(HARMATTAN.rewardLocal!, 'NG')))
+  const { startsAt, endsAt } = campaignDates(todayInLagos(), 14, 'NG')
+  await expect(reviewValue(page, F.review.flight)).toHaveText(F.review.flightValue(fd(startsAt, LAGOS), fd(endsAt, LAGOS), 14))
+  await page.getByRole('button', { name: F.review.editLabel(L.reward.label), exact: true }).click()
+  const reward = page.getByLabel(L.reward.label)
+  await expect(reward).toBeFocused()
+  await expect(reward).toHaveValue(String(HARMATTAN.rewardLocal))
+  await openReview(page, HARMATTAN)
+  await expect(page.getByRole('checkbox', { name: F.fields.terms })).not.toBeChecked()
+}
+
 // The Review step summarises the creative that will run. A confirmation given there is for what was reviewed: Back to
 // edit returns to the form (focus on the button that opened the step), and the step opens again unconfirmed.
 async function reviewTheCreative(page: Page, image: string) {
+  await reviewMatchesTheForm(page)
   await expect(page.getByRole('img', { name: F.review.image })).toHaveAttribute('src', image)
   // The preview, from the Review step: the card in the wall's grid carries the uploaded image, and the landing page is
   // the real one with this campaign's words.
@@ -182,6 +206,14 @@ test('F1: a brand previews and submits a Wall card, Global approves it, and it i
   await test.step('the form previews the Wall card as the Phoenix user sees it', async () => {
     await signIn(tunde, TUNDE)
     await tunde.goto('/app/campaigns/new')
+    // Pressing the way to the Review step on an empty form puts the cursor on the first field to fix, marked, with
+    // the reason under it as well as by the button.
+    await tunde.getByRole('button', { name: F.buttons.review }).click({ force: true })
+    const name = tunde.getByLabel(F.fields.name.label)
+    await expect(name).toBeFocused()
+    await expect(name).toHaveAttribute('aria-invalid', 'true')
+    await expect(name).toHaveAccessibleDescription(F.validation.name)
+    await expect(tunde.locator('.ferr')).toHaveText(F.validation.name)
     await tunde.getByLabel(F.fields.headline.label).fill(HARMATTAN.headline)
     const preview = box(tunde, F.previewBox.title)
     await expect(preview.getByText(HARMATTAN.headline, { exact: true })).toBeVisible()

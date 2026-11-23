@@ -66,7 +66,8 @@ export const CAMPAIGN_PAGE = /\/app\/campaigns\/(?!new$)[^/]+$/
 // Today in Lagos, as the form's date field takes it: a campaign that starts today is live the moment Global approves it.
 export const todayInLagos = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date())
 
-export type NewCampaign = { name: string; headline: string; description: string; budgetUsd: number }
+// `rewardLocal` is typed over the form's default share reward when given.
+export type NewCampaign = { name: string; headline: string; description: string; budgetUsd: number; rewardLocal?: number }
 
 // Fills the New campaign form for a brand workspace (the brand is the workspace's): a Wall card, redeemed
 // with a claim code, starting today, then reviews and submits it. `creative` runs once the placement is chosen (F1
@@ -80,7 +81,7 @@ export async function submitCampaign(
   await expect(page.getByRole('heading', { name: F.head.new.title })).toBeVisible()
   await expect(page.getByText(F.oneOffer, { exact: true })).toBeVisible()
   // The hint names the first rule that fails; the way to the Review step waits for none.
-  await expect(page.getByText(F.validation.name)).toBeVisible()
+  await expect(page.locator('#cf-hint')).toHaveText(F.validation.name)
   await expect(page.getByRole('button', { name: F.buttons.review })).toBeDisabled()
   await page.getByLabel(L.name.label).fill(c.name)
   await page.getByLabel(L.headline.label).fill(c.headline)
@@ -89,6 +90,7 @@ export async function submitCampaign(
   await creative?.(page)
   await page.getByLabel(L.redeem.label).selectOption('code')
   await page.getByLabel(L.budget.label).fill(String(c.budgetUsd))
+  if (c.rewardLocal !== undefined) await page.getByLabel(L.reward.label).fill(String(c.rewardLocal))
   await page.getByLabel(L.startsAt.label).fill(todayInLagos())
   // The confirmation is given on the Review step, not here.
   await expect(page.getByRole('checkbox', { name: L.terms })).toHaveCount(0)
@@ -97,7 +99,7 @@ export async function submitCampaign(
   // Submit waits for the confirmation, and says so.
   const submit = page.getByRole('button', { name: F.buttons.submit })
   await expect(submit).toBeDisabled()
-  await expect(page.getByText(F.validation.terms, { exact: true })).toBeVisible()
+  await expect(page.locator('#cf-hint')).toHaveText(F.validation.terms)
   await page.getByRole('checkbox', { name: L.terms }).check()
   await expect(submit).toBeEnabled()
   await submit.click()
@@ -115,6 +117,13 @@ export async function openReview(page: Page, c: Pick<NewCampaign, 'headline'>) {
   await expect(page.getByRole('heading', { name: F.review.title })).toBeFocused()
   await expect(box(page, F.review.title).getByText(c.headline, { exact: true })).toBeVisible()
 }
+
+// A value on the Review step, by its label (the label's line also holds its Edit).
+export const reviewValue = (page: Page, label: string): Locator =>
+  box(page, F.review.title)
+    .locator('.kv > div')
+    .filter({ has: page.locator('small', { hasText: new RegExp(`^${label.replace(/[()]/g, '\\$&')}`) }) })
+    .locator('b')
 
 // Global approves a campaign from Review's queue; the row leaves it.
 export async function approveCampaign(admin: Page, headline: string) {
