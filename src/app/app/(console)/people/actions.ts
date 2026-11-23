@@ -9,7 +9,8 @@ import { inviteExpiry } from './invite-views'
 const ROLES: Role[] = ['Owner', 'Manager', 'Viewer']
 const isRole = (r: string): r is Role => (ROLES as string[]).includes(r)
 
-// The page that lists the team and its invites.
+// The page that lists the team and its invites. Every answer revalidates it, refusals included: GONE and LAST_OWNER
+// mean the page the person acted from was stale, and the client no longer refreshes on its own.
 const revalidate = () => revalidatePath('/app/people')
 
 export type InviteResult =
@@ -50,7 +51,10 @@ export async function resendInviteAction(id: string): Promise<ResendResult> {
   try {
     again = await resendInvite(id, user.id, workspace.id)
   } catch (e) {
-    if (e === 'NOT_PENDING' || e === 'NOT_FOUND') return { error: 'GONE' }
+    if (e === 'NOT_PENDING' || e === 'NOT_FOUND') {
+      revalidate()
+      return { error: 'GONE' }
+    }
     throw e
   }
   revalidate()
@@ -63,7 +67,10 @@ export async function changeRoleAction(userId: string, role: string): Promise<{ 
   try {
     await changeRole(workspace.id, userId, role, user.id)
   } catch (e) {
-    if (e === 'LAST_OWNER') return { error: e }
+    if (e === 'LAST_OWNER') {
+      revalidate()
+      return { error: e }
+    }
     throw e
   }
   revalidate()
@@ -75,7 +82,10 @@ export async function removeMemberAction(userId: string): Promise<{ error?: 'LAS
   try {
     await removeMember(workspace.id, userId, user.id)
   } catch (e) {
-    if (e === 'LAST_OWNER') return { error: e }
+    if (e === 'LAST_OWNER') {
+      revalidate()
+      return { error: e }
+    }
     throw e
   }
   revalidate()
@@ -89,7 +99,10 @@ export async function revokeInviteAction(id: string): Promise<{ error?: 'GONE' }
   try {
     revoked = await revokeInvite(id, user.id, workspace.id)
   } catch (e) {
-    if (e === 'NOT_FOUND') return { error: 'GONE' }
+    if (e === 'NOT_FOUND') {
+      revalidate()
+      return { error: 'GONE' }
+    }
     throw e
   }
   revalidate()

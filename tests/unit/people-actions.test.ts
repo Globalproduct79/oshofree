@@ -1,5 +1,6 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { revalidatePath } from 'next/cache'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { copyInviteLink, InviteLinkField } from '@/app/app/(console)/people/InviteLink'
 import { InviteRowView, resendRow, revokeRow } from '@/app/app/(console)/people/InvitesList'
@@ -146,6 +147,26 @@ describe('people actions', () => {
     expect(await inviteAction('o@x.test', 'Manager')).toEqual({ error: 'ALREADY_MEMBER' })
     expect(await changeRoleAction(owner.id, 'Viewer')).toEqual({ error: 'LAST_OWNER' })
     expect(await removeMemberAction(owner.id)).toEqual({ error: 'LAST_OWNER' })
+  })
+
+  // The client no longer refreshes after an action, so a refusal (the page the person acted from was stale) must
+  // bring the fresh page back with it.
+  it('a refused action still revalidates People: GONE and LAST_OWNER answers carry the fresh page', async () => {
+    const { owner } = await setup('Owner')
+    const sent = await inviteAction('n@x.test', 'Viewer')
+    if (!('ok' in sent)) throw new Error('invite failed')
+    await revokeInviteAction(sent.id)
+    for (const refused of [
+      () => resendInviteAction(sent.id),
+      () => revokeInviteAction(sent.id),
+      () => resendInviteAction('missing'),
+      () => changeRoleAction(owner.id, 'Viewer'),
+      () => removeMemberAction(owner.id),
+    ]) {
+      vi.mocked(revalidatePath).mockClear()
+      expect(await refused()).toHaveProperty('error')
+      expect(revalidatePath).toHaveBeenCalledWith('/app/people')
+    }
   })
 
   it('the page lists members, the role table and a pending row with Resend and Revoke, and ships no link', async () => {

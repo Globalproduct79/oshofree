@@ -116,8 +116,8 @@ export function InviteRow({
   )
 }
 
-// The invites still to be taken up (People's Open invites). Resend and Revoke revalidate /app/people, so their answer
-// carries the list and its dates as the server has them (no router.refresh() on top: see TeamList).
+// The invites still to be taken up (People's Open invites). Resend and Revoke revalidate /app/people on every answer,
+// GONE included, so the list and its dates come back as the server has them (no router.refresh() on top: see TeamList).
 export function InvitesList({ canManage, invites, empty }: { canManage: boolean; invites: InviteView[]; empty: string }) {
   if (invites.length === 0) return <p className="sub">{empty}</p>
   return (
