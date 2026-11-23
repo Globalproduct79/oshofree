@@ -118,7 +118,7 @@ function kpis(c: Campaign, m: CampaignMetrics, f: CampaignFacts): Metric[] {
     {
       title: K.claims[c.redeemMethod],
       value: fmt(m.claims),
-      sub: m.costPerClaimCents === null ? K.none : K.each((m.costPerClaimCents / 100).toFixed(2)),
+      sub: m.costPerClaimCents === null ? K.none : K.each(usd(m.costPerClaimCents)),
       fill: ratio(m.claims, m.opens) * 100,
     },
     {

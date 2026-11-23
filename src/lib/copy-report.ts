@@ -35,7 +35,8 @@ export const CAMPAIGN_COPY = {
     opened: (n: string) => `${n} opened`,
     claims: { code: 'Claim codes', link: 'Clicks to you' } satisfies Record<RedeemMethod, string>,
     // Spend (rewards included) ÷ claims, in dollars and cents.
-    each: (dollars: string) => `$${dollars} each`,
+    // The cost per claim, formatted by usd: '$2.66 each', '$10 each'.
+    each: (amount: string) => `${amount} each`,
     none: '—',
     spent: 'Spent',
     spentOf: (budget: string, rewards: string) => `of ${budget} · ${rewards} in rewards`,

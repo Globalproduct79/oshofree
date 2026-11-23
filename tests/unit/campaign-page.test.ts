@@ -323,6 +323,13 @@ describe('the numbers', () => {
     // Spend ÷ budget, open rate ÷ 10%, claims ÷ opens, spend ÷ budget; then the Sharing cards.
     expect(fills.slice(0, 4).map((f) => f.toFixed(2))).toEqual(['44.33', '65.00', '32.05', '44.33'])
     expect(chartSub(markup)).toBe('$167 left over 8 days.')
+
+    // Cost per claim follows the money rule: a whole dollar stays whole, thousands are grouped.
+    const charge = (cents: number) => db.ledgerEntry.create({ data: { workspaceId: c.workspaceId, campaignId: c.id, kind: 'delivery', amountCents: -cents, description: 'd' } })
+    await charge(36_700) // $500 over 50 claims
+    expect((await page(c.id)).text).toContain('Claim codes 50 $10 each')
+    await charge(5_000_000) // $50,500 over 50 claims
+    expect((await page(c.id)).text).toContain('Claim codes 50 $1,010 each')
   })
 
   it('names the claims "Clicks to you" when the offer sends people to a link', async () => {
