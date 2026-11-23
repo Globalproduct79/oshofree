@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { COPY } from '@/lib/copy'
 import { ACTIVITY, SHARERS } from '@/lib/copy-activity'
+import { API_COPY } from '@/lib/copy-api'
 import { STATUS_LABEL } from '@/lib/copy-components'
 import { HOME } from '@/lib/copy-home'
 import { NOTIFY } from '@/lib/copy-notifications'
@@ -9,14 +10,16 @@ import { REVIEW } from '@/lib/copy-review'
 import { REWARDS_LEDGER } from '@/lib/copy-rewards-ledger'
 import { SHELL } from '@/lib/copy-shell'
 import {
-  ADMIN, approveCampaign, box, CAMPAIGN_PAGE, expectToast, metricValue, signIn, submitCampaign, type NewCampaign,
+  ADMIN, approveCampaign, box, CAMPAIGN_PAGE, dollars, expectToast, metricValue, signIn, submitCampaign, type NewCampaign,
 } from './helpers'
 
-// The loop you can show: a brand signs up, Global approves it and its offer, a Phoenix user shares
-// the offer from the wall, a friend claims it and asks for a link of their own, and the brand's
-// campaign page counts every step and lists each one in Recent activity; the Sharing page opens the
-// sharer's row to the chain, and Global's held reward links to its line. Runs against the seeded
-// oshofree_test database (npm run test:e2e).
+// The loop you can show: a brand signs up, Global approves it and its offer, a Phoenix user finds the offer on
+// the wall (retrieved through GET /api/v1/offers, an impression), opens it, takes a claim code and shares it; a
+// friend opens the shared link, claims and gets a link of their own, which opens for the next friend; and the
+// brand's campaign page counts every step and lists each one in Recent activity; the Sharing page opens the
+// sharer's row to the chain, and Global's held reward links to its line. A link offer's button (a seeded Kenyan
+// offer) sends the Phoenix user through its landing page to the brand and counts as a click on its campaign.
+// Runs against the seeded oshofree_test database (npm run test:e2e).
 
 const BRAND = { name: 'Nkem Brand', email: 'new@brand.demo', password: 'password123' }
 const WORKSPACE = 'Brand Demo'
@@ -29,6 +32,10 @@ const OFFER: NewCampaign = {
 const SHARE_URL = /^http:\/\/localhost:3101\/o\/[0-9A-Z]{8}$/
 const L = COPY.landing
 const S = CAMPAIGN_COPY.sharingBox
+const KEY = process.env.DEMO_CHANNEL_KEY ?? 'phx_dev_oshofree'
+// Pesa Link's live link offer in Kenya (prisma/seed/campaigns.ts), and its owner.
+const PESA = { headline: 'KSh 50 cashback on first airtime top-up', brandUrl: 'https://pesalink.example/' }
+const WANJIRU = 'wanjiru@pesalink.demo'
 
 test('the loop: sign up, approve, share from the wall, claim, and see it counted', async ({ browser }) => {
   const brandContext = await browser.newContext()
@@ -78,13 +85,16 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
   })
 
   let sharedUrl = ''
-  await test.step('a Phoenix user opens the offer on the wall and shares it', async () => {
+  await test.step('a Phoenix user finds the offer on the wall, opens it, takes a claim code and shares it', async () => {
     const wall = await adminContext.newPage() // the demo wall needs no sign-in; any browser stands in for Phoenix
     await wall.goto('/wall?country=NG')
     // The card's button takes no accessible name from its <article>, so find it by the headline inside.
     const card = wall.getByRole('button').filter({ has: wall.getByRole('heading', { name: OFFER.headline }) })
     await expect(card).toBeVisible()
     await card.click()
+    // A code offer: the session's own code from POST /claims, reported as the claim.
+    await wall.getByRole('button', { name: COPY.wall.claim, exact: true }).click()
+    await expect(wall.getByLabel(COPY.wall.code)).toHaveText(/^PHX-[0-9A-Z]{4}$/)
     await wall.getByRole('button', { name: COPY.wall.share, exact: true }).click()
     const link = wall.getByRole('textbox', { name: COPY.wall.shareLead })
     await expect(link).toHaveValue(SHARE_URL)
@@ -118,17 +128,26 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
     expect(target.host).toBe('wa.me')
     expect(target.searchParams.get('text')).toContain(myUrl)
     await friendContext.close()
+    // Their link opens the same offer for the next friend, which counts as a friend's open.
+    const nextContext = await browser.newContext()
+    const next = await nextContext.newPage()
+    await next.goto(myUrl)
+    await expect(next.getByRole('heading', { name: OFFER.headline })).toBeVisible()
+    await nextContext.close()
   })
 
-  await test.step("the brand's campaign page counts both shares, the friend's open and the friend's claim", async () => {
+  await test.step("the brand's campaign page counts the impression, the claim, both shares, the friends' opens and the friend's claim", async () => {
     await brand.goto('/app')
     await brand.getByRole('link', { name: HOME.open }).click()
     await brand.waitForURL(CAMPAIGN_PAGE)
     await expect(brand.getByRole('heading', { name: OFFER.headline })).toBeVisible()
+    await expect(metricValue(brand, CAMPAIGN_COPY.kpi.impressions)).toHaveText('1')
+    await expect(metricValue(brand, CAMPAIGN_COPY.kpi.claims.code)).toHaveText('1')
     const sharing = box(brand, S.title)
     // A share counts once it goes out on a medium (spec §6.14.2): the wall's share and the friend's own WhatsApp.
     await expect(metricValue(brand, S.shares, sharing)).toHaveText('2')
-    await expect(metricValue(brand, S.friendsOpened, sharing)).toHaveText('1')
+    // The friend's open of the wall's link, and the next friend's open of the friend's own link.
+    await expect(metricValue(brand, S.friendsOpened, sharing)).toHaveText('2')
     await expect(metricValue(brand, S.friendsClaimed, sharing)).toHaveText('1')
   })
 
@@ -139,13 +158,16 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
   await test.step("Recent activity lists every step, newest first: the friend's claim attributed to the sharer, the held reward and why", async () => {
     const activity = box(brand, ACTIVITY.title)
     const lines = activity.getByRole('listitem')
+    const FRIEND = '\\+234 80• ••• 4567'
     const expected = [
-      line(`\\+234 80• ••• 4567 shared via WhatsApp \\(friend of ${SHARER}\\)`),
+      line(`A friend of ${FRIEND} opened the offer`),
+      line(`${FRIEND} shared via WhatsApp \\(friend of ${SHARER}\\)`),
       line(`\\d+ points for ${SHARER}`),
       line(`₦[\\d,]+ airtime for ${SHARER} held — ${REWARDS_LEDGER.reasons.no_phone}`),
       line(`A friend of ${SHARER} took claim code PHX-••••`),
       line(`A friend of ${SHARER} opened the offer`),
       line(`${SHARER} shared via WhatsApp`),
+      line(`A Phoenix user took claim code PHX-••••`),
       line('A Phoenix user opened the offer'),
       new RegExp(`^1 impression from Phoenix · \\d{1,2} \\w{3}, \\d\\d:00–\\d\\d:00$`),
     ]
@@ -153,7 +175,7 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
     const texts = await lines.allTextContents()
     expected.forEach((re, i) => expect(texts[i]).toMatch(re))
     // The ids behind a line are its tooltip only: the claim's event, the payout it is keyed by and the friend's code.
-    expect(await lines.nth(3).getAttribute('title')).toMatch(/^\w+ · \w+ · \w+$/)
+    expect(await lines.nth(4).getAttribute('title')).toMatch(/^\w+ · \w+ · \w+$/)
     expect(texts.join(' ')).not.toContain('8031234567')
   })
 
@@ -180,6 +202,42 @@ test('the loop: sign up, approve, share from the wall, claim, and see it counted
     await expect(lit).toBeInViewport()
     // The page opens at that line, so it leads back to the newest.
     await expect(box(admin, ACTIVITY.title).getByRole('link', { name: ACTIVITY.newest })).toBeVisible()
+  })
+
+  await test.step("a link offer's button sends the Phoenix user through its landing page to the brand, counted as a click", async () => {
+    const offers = await (await brand.request.get('/api/v1/offers?country=KE', { headers: { Authorization: `Bearer ${KEY}` } })).json()
+    const pesa = offers.offers.find((o: { headline: string }) => o.headline === PESA.headline)
+    expect(pesa.cta).toMatchObject({ type: 'link', url: expect.stringMatching(/^http:\/\/localhost:3101\/o\/[0-9A-Z]{8}\?go=claim$/) })
+    const ownerContext = await browser.newContext()
+    const owner = await ownerContext.newPage()
+    await signIn(owner, WANJIRU)
+    await owner.goto(`/app/campaigns/${pesa.id}`)
+    const clicks = metricValue(owner, CAMPAIGN_COPY.kpi.claims.link)
+    const before = dollars(await clicks.textContent())
+
+    const phoenixContext = await browser.newContext()
+    // The click-through reaches the server for real; its redirect is read, not followed, so the test never leaves
+    // this machine (a route does not see the request a redirect makes).
+    let hop: { status: number; location?: string } | undefined
+    await phoenixContext.route(/\/o\/[0-9A-Z]{8}\?go=claim$/, async (route) => {
+      const res = await route.fetch({ maxRedirects: 0 })
+      hop = { status: res.status(), location: res.headers()['location'] }
+      await route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Pesa Link</title>' })
+    })
+    const wall = await phoenixContext.newPage()
+    await wall.goto('/wall?country=KE')
+    await wall.getByRole('button').filter({ has: wall.getByRole('heading', { name: PESA.headline }) }).click()
+    const opened = phoenixContext.waitForEvent('page')
+    await wall.getByRole('button', { name: API_COPY.ctaLabel, exact: true }).click()
+    const site = await opened
+    await expect(site).toHaveURL(pesa.cta.url)
+    await expect.poll(() => hop).toEqual({ status: 302, location: PESA.brandUrl })
+    await expect(async () => {
+      await owner.reload()
+      expect(dollars(await clicks.textContent())).toBe(before + 1)
+    }).toPass()
+    await phoenixContext.close()
+    await ownerContext.close()
   })
 
   await test.step('an unknown link answers 410 Gone', async () => {
