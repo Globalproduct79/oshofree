@@ -182,9 +182,12 @@ describe('each tab, drawn from the campaign', () => {
     expect(p).not.toContain(P.explainer)
   })
 
-  it('Landing page for a video offer: the tile colour the real page shows when there is no image', async () => {
-    const page = srcdoc(panel(body(offerPreview(await videoOffer()), 'landing')))
-    expect(page).toContain('<div class="art tile" style="background:#2B5FD9" aria-hidden="true">KB</div>')
+  it('Landing page for a video offer: its clip from the first frame, as the real page plays it', async () => {
+    const c = offerPreview(await videoOffer())
+    const page = srcdoc(panel(body(c, 'landing')))
+    expect(page).toBe(previewLanding(c, 'offer'))
+    expect(page).toContain(`<video class="art" src="/uploads/${CLIP}#t=0.1" controls playsinline preload="metadata"`)
+    expect(page).not.toContain('<div class="art tile"')
   })
 
   it("Share: the sharer's page with their buttons and the sample link, and the message those buttons send", async () => {

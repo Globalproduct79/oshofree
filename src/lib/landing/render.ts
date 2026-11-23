@@ -14,6 +14,8 @@ export type LandingView = {
   headline: string
   description: string
   imageUrl: string | null
+  // An MP4 creative (a video or splash offer), played on the page; it takes the place of the image.
+  videoUrl?: string | null
   color: string | null
   rewardLabel: string
   endsAtText: string
@@ -45,7 +47,10 @@ function initials(brand: string) {
   return letters.slice(0, 2).toUpperCase() || '?'
 }
 
+// A video opens at its first frame (#t=0.1 makes Safari draw it) and plays with the browser's own controls: no script.
 function art(v: LandingView) {
+  if (v.videoUrl)
+    return `<video class="art" src="${esc(v.videoUrl)}#t=0.1" controls playsinline preload="metadata" aria-label="${esc(L.video)}"></video>`
   if (v.imageUrl) return `<img class="art" src="${esc(v.imageUrl)}" alt="" width="480" height="270">`
   const color = v.color ?? tokens.tileColors[0]
   return `<div class="art tile" style="background:${esc(color)}" aria-hidden="true">${esc(initials(v.brand))}</div>`

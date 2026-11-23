@@ -74,6 +74,7 @@ export const COPY = {
   landing: {
     title: (brand: string, headline: string) => `${brand}: ${headline}`,
     ends: (date: string) => `Offer ends ${date}`,
+    video: "The offer's video",
     showCode: 'Show my code',
     openOffer: 'Open offer',
     yourCode: 'Your code',
@@ -101,8 +102,8 @@ export const COPY = {
     shareLead: 'Send this link to a friend',
     claim: 'Claim',
     code: 'Your code',
-    empty: 'No offers in this market right now.',
     video: "The offer's video",
+    empty: 'No offers in this market right now.',
     error: "Couldn't reach the OshoFree API. Check the dev server and the channel key.",
     actionFailed: "That didn't reach the API. Try again.",
   },

@@ -18,10 +18,11 @@ const TILE_COLORS: readonly string[] = tokens.tileColors
 const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 const endsAtText = (endsAt: Date) => day.format(lastDay(endsAt))
 
-// The offer as every view prints it: its words, its image, its tile colour when it is one of the wall's, its reward and
+// The offer as every view prints it: its words, its image or video, its tile colour when it is one of the wall's, its reward and
 // its last day. A stored campaign (viewFor) and the console's preview of one (lib/landing/preview) both build it here.
 export type LandingOffer = Pick<Campaign, 'brand' | 'headline' | 'description' | 'tileColor' | 'shareRewardLabel' | 'endsAt' | 'redeemMethod'> & {
   imageUrl: string | null
+  videoUrl?: string | null
 }
 
 export function offerView(o: LandingOffer, state: LandingView['state'], code: string, extras: Partial<LandingView> = {}): LandingView {
@@ -32,6 +33,7 @@ export function offerView(o: LandingOffer, state: LandingView['state'], code: st
     headline: o.headline,
     description: o.description,
     imageUrl: o.imageUrl,
+    videoUrl: o.videoUrl ?? null,
     color: o.tileColor && TILE_COLORS.includes(o.tileColor) ? o.tileColor : null,
     rewardLabel: o.shareRewardLabel,
     endsAtText: endsAtText(o.endsAt),
@@ -44,7 +46,11 @@ export function offerView(o: LandingOffer, state: LandingView['state'], code: st
 export function viewFor(link: LinkWithCampaign, state: LandingView['state'], extras: Partial<LandingView> = {}): LandingView {
   const c = link.campaign
   // The claim code is the visitor's own (issueClaimCode), passed in only once they have asked for it.
-  return offerView({ ...c, imageUrl: c.creativeImageKey ? imageUrl(c.creativeImageKey) : null }, state, link.code, extras)
+  const creative = {
+    imageUrl: c.creativeImageKey ? imageUrl(c.creativeImageKey) : null,
+    videoUrl: c.creativeVideoKey ? imageUrl(c.creativeVideoKey) : null,
+  }
+  return offerView({ ...c, ...creative }, state, link.code, extras)
 }
 
 // The brand's link as a Location header can carry it: percent-encoded, punycoded host.

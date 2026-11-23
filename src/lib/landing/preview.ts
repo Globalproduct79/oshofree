@@ -24,6 +24,7 @@ export function previewLandingView(c: PreviewCampaign, state: 'offer' | 'shared'
     headline: headlineOf(c),
     description: c.description,
     imageUrl: c.creative.image,
+    videoUrl: c.creative.video,
     tileColor: c.creative.color,
     shareRewardLabel: c.rewardLabel,
     endsAt: new Date(c.endsAt),

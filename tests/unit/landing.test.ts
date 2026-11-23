@@ -130,6 +130,26 @@ describe('viewFor', () => {
   })
 })
 
+describe('the offer\'s creative on the landing page', () => {
+  const VIDEO = '0b5c8a4e-6f1d-4c1e-9a55-2f1b8f7c9d10.mp4'
+  const IMAGE = '0b5c8a4e-6f1d-4c1e-9a55-2f1b8f7c9d10.jpg'
+
+  it('plays a video offer\'s MP4 from its first frame with the browser\'s controls, still with no script', async () => {
+    const link = await seed({ placement: 'video', creativeVideoKey: VIDEO })
+    const html = await (await page(link.code)).text()
+    expect(html).toContain(`<video class="art" src="/uploads/${VIDEO}#t=0.1" controls playsinline preload="metadata" aria-label="${COPY.landing.video.replace("'", '&#39;')}"></video>`)
+    expect(html).not.toContain('<img class="art"')
+    expect(html.toLowerCase()).not.toContain('<script')
+  })
+
+  it('shows a splash offer\'s image, and a video splash\'s clip', async () => {
+    const image = await seed({ placement: 'splash', creativeImageKey: IMAGE })
+    expect(await (await page(image.code)).text()).toContain(`<img class="art" src="/uploads/${IMAGE}"`)
+    const clip = await seed({ placement: 'splash', creativeVideoKey: VIDEO })
+    expect(await (await page(clip.code)).text()).toContain(`<video class="art" src="/uploads/${VIDEO}#t=0.1"`)
+  })
+})
+
 describe('GET /o/[code]', () => {
   it('renders the offer, sets a year-long og_v cookie and logs an Open with a hashed IP', async () => {
     const link = await seed()
