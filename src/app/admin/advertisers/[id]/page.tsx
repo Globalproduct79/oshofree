@@ -21,7 +21,6 @@ const A = ADVERTISERS
 const D = ADVERTISERS.detail
 const TYPES = [{ value: 'Brand', label: 'Brand' }, { value: 'Agency', label: 'Agency' }] as const
 const MARKET_OPTIONS = COUNTRIES.map((c) => ({ value: c, label: MARKETS[c].name }))
-// The invoice's display status as its pill: the running month's `open` is the blue "Open".
 
 // Platform › Advertisers › {workspace} (spec §6.1, §6.5, §6.14.6): the facts Global controls, the campaigns,
 // invoices to mark paid, credit requests to decide and the audit trail. Not in the prototype.

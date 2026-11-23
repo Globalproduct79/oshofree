@@ -120,8 +120,9 @@ test("F4: Global marks MediaSpec's open invoice paid and Dolapo's credit in use 
 
   await openAdvertiser(MEDIASPEC)
   const row = admin.getByRole('row').filter({ hasText: INVOICE })
-  // Unpaid: Due until the 15th (the 1st's close plus 14 days' terms), Overdue from the 16th — either takes Mark paid.
-  await expect(row.getByText(new RegExp(`^(${STATUS_LABEL.due}|${STATUS_LABEL.overdue})$`))).toBeVisible()
+  // Unpaid, closed on the 1st with Net 14: Due all of the 15th in Lagos, Overdue from Lagos midnight on the 16th.
+  const lagosDay = Number(new Intl.DateTimeFormat('en-GB', { day: 'numeric', timeZone: 'Africa/Lagos' }).format(new Date()))
+  await expect(row.getByText(lagosDay <= 15 ? STATUS_LABEL.due : STATUS_LABEL.overdue, { exact: true })).toBeVisible()
   // The invoice's columns: number, period, status, due, USD, local, action.
   const amount = dollars(await row.getByRole('cell').nth(4).textContent())
   // Large enough that a drop of nothing cannot pass for it.
