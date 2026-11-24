@@ -6,25 +6,47 @@ their own, and each open, claim and onward share of that link is counted in the 
 
 ## Prerequisites
 
-- Node 20
-- Docker (runs Postgres 16 on port 5433 with two databases: `oshofree` and `oshofree_test`)
+- Node 20 (`.nvmrc`; `nvm use` picks it)
+- Docker with Compose v2 (`docker compose version`)
+
+That is all: Postgres runs in Docker, the app runs on your machine.
 
 ## Setup
 
+Every developer runs the same thing. From a fresh clone:
+
 ```sh
-cp .env.example .env
-npm install
-npm run docker:up
-npx prisma migrate deploy
-npm run db:seed
-npm run dev   # http://localhost:3100
+cp .env.example .env   # development defaults, no secrets; edit nothing to get started
+npm install            # also generates the Prisma client
+npm run setup          # starts Postgres and waits until it answers, applies every migration, seeds the demo data
+npm run dev            # http://localhost:3100
 ```
+
+`npm run setup` is three steps you can also run one at a time:
+
+| Step | Command | What it does |
+| --- | --- | --- |
+| 1 | `npm run docker:up` | `docker compose up -d --wait`: Postgres 16.15 on port 5433 with two databases, `oshofree` and `oshofree_test`, in a named volume that survives restarts. Returns only when the health check (`pg_isready`) passes. |
+| 2 | `npm run db:deploy` | `prisma migrate deploy`: applies the migrations in `prisma/migrations` that the database has not seen. Safe to run again; it does nothing when the database is up to date. |
+| 3 | `npm run db:seed` | Builds the demo world (see Demo data). Refuses a database that already has users. |
+
+Nobody creates a table by hand or edits the database directly: **`prisma/migrations` is the only source of
+database changes.** To change the schema, edit `prisma/schema.prisma`, run `npm run db:migrate` (`prisma migrate dev`,
+which writes a new migration folder and applies it), and commit the schema and the migration together. A migration
+that has been committed is never edited; a correction is a new migration. `npm run db:status` shows which
+migrations a database has.
 
 The seed needs an empty database. It refuses to run when users already exist; `SEED_FORCE=1` skips that
 check, so use it only on a database you have emptied yourself. To start again from nothing:
 
 - `npm run db:reset` wipes the development database, applies every migration and seeds it. Run it yourself
   in a terminal; Prisma refuses a reset started by an AI agent.
+- `npm run docker:down` stops Postgres and keeps its data; `docker compose down -v` also deletes the volume, so the
+  next `npm run setup` starts from an empty database.
+
+Environment: `.env.example` documents every variable and the one `DATABASE_URL` structure
+(`postgresql://USER:PASSWORD@HOST:PORT/DATABASE`). `.env` is yours and git-ignored; `.env.test` is committed and
+fixed on `oshofree_test`, which every test run empties.
 
 ### Development notes
 
@@ -264,6 +286,28 @@ npx tsx scripts/ux-sweep.ts      # writes .superpowers/ux/sweep.md; SWEEP_ROLES=
 It changes the test data the way a person clicking around would, so reseed before the next e2e run (the script
 does). It only ever runs against the test server: the address is fixed to port 3101, and it stops unless
 `.env.test`'s `APP_URL` is on 3101 too, so it can never reach the dev server or its database.
+
+## Shared integration database
+
+Local databases are personal: each developer seeds their own and tests empty their own `oshofree_test`. For
+testing together, the team runs one **staging environment**: the `staging` branch deployed to one host, with
+one Postgres 16.15 database of its own, named `oshofree_staging`.
+
+- **Schema.** Only `npx prisma migrate deploy` changes it, run by the deploy step on every merge to `staging`
+  (the same step production uses: migrate, then `npm run bootstrap`). Nobody runs `migrate dev`, `migrate reset`
+  or the seed against it, and nobody edits it by hand.
+- **Data.** It is seeded once (`SEED_SCALE=0.2` is enough) and then lives: sign-ups, campaigns and approvals
+  the team makes stay, so a bug found there can be reproduced there. When it needs a clean start, one person
+  empties it and reseeds, and says so in the team channel first.
+- **Access.** Developers use it through the staging app's URL, not through `DATABASE_URL`. A local `.env`
+  never points at it: `npm test` and `npm run test:e2e` empty whatever database they are given, and the name
+  `oshofree_staging` (no `_test` suffix) is what makes `scripts/db-truncate.ts` refuse it if someone tries.
+- **Secrets.** The staging host carries its own `AUTH_SECRET`, `IP_HASH_SALT`, `DATABASE_URL` and bootstrap
+  values in its environment, never in a file in the repository.
+
+Until a host exists, the same can run on one team member's machine from this `docker-compose.yml` with the port
+opened on the local network, but it then goes away with that laptop; a small managed Postgres 16 is the first
+thing to set up.
 
 ## Production build
 

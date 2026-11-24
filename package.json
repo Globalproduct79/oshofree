@@ -2,6 +2,9 @@
   "name": "oshofree",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "next dev -p 3100",
     "dev:test": "dotenv -o -e .env.test -v NEXT_DIST_DIR=.next-e2e -- next dev -p 3101",
@@ -11,13 +14,17 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "dotenv -o -e .env.test -- sh -c 'prisma migrate deploy && tsx scripts/db-truncate.ts && SEED_FORCE=1 SEED_SCALE=0.2 tsx prisma/seed.ts && playwright test \"$@\"' sh",
+    "db:deploy": "dotenv -- prisma migrate deploy",
+    "db:status": "dotenv -- prisma migrate status",
     "db:migrate": "dotenv -- prisma migrate dev",
     "db:seed": "dotenv -- tsx prisma/seed.ts",
     "db:reset": "dotenv -- prisma migrate reset --force",
     "demo:remove": "dotenv -- tsx scripts/demo-remove.ts",
     "job:daily": "dotenv -- tsx scripts/daily.ts",
     "bootstrap": "dotenv -- tsx scripts/bootstrap.ts",
-    "docker:up": "docker compose up -d",
+    "setup": "npm run docker:up && npm run db:deploy && npm run db:seed",
+    "docker:up": "docker compose up -d --wait",
+    "docker:down": "docker compose down",
     "pretest": "dotenv -o -e .env.test -- prisma migrate deploy",
     "postinstall": "prisma generate"
   },
