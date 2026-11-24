@@ -110,23 +110,21 @@ export const daysLeft = (end: Date, now: Date): number =>
 
 // First character of each word, where a digit run and a letter run in one word count separately
 // ('777Bet' → '7B'). A parenthesised suffix and punctuation are ignored.
-export const initials = (name: string): string =>
-  name
+// 'Kola Bright' → 'KB'; a one-word name gives its first two letters ('MediaSpec (agency)' → 'ME'), as the prototype's tiles.
+export const initials = (name: string): string => {
+  const segs = name
     .replace(/\([^)]*\)/g, ' ')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
     .split(' ')
     .flatMap((w) => w.match(/\p{N}+|\p{L}+/gu) ?? [])
-    .map((seg) => seg[0].toUpperCase())
-    .join('')
-
-// A workspace's tile colour, steady for its name, the same in the sidebar's head, the Workspaces panel and the
-// Workspace page (the prototype gave each one its own).
-export function tileColor(name: string): string {
-  let h = 0
-  for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0
-  return tokens.tileColors[h % tokens.tileColors.length]
+  if (segs.length === 1 && segs[0].length > 1) return segs[0].slice(0, 2).toUpperCase()
+  return segs.map((seg) => seg[0].toUpperCase()).join('')
 }
+
+// A workspace's tile colour: the palette in order down the person's Workspaces list (the prototype's), the same in
+// the sidebar's head, the panel and the Workspace page. `at` is the workspace's place in that list.
+export const tileColorAt = (at: number): string => tokens.tileColors[Math.max(at, 0) % tokens.tileColors.length]
 
 // '+2348012344471' → '+234 80• ••• 4471'
 export const maskPhone = (e164: string): string => {

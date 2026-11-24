@@ -58,7 +58,9 @@ describe('prototype formatting', () => {
     expect(daysLeft(new Date('2026-11-01T00:00:00Z'), now)).toBe(0)
   })
   it('initials', () => {
-    expect(initials('MediaSpec (agency)')).toBe('M')
+    expect(initials('MediaSpec (agency)')).toBe('ME')
+    expect(initials('Verism')).toBe('VE')
+    expect(initials('X')).toBe('X')
     expect(initials('Kola Bright')).toBe('KB')
     expect(initials('777Bet')).toBe('7B')
   })

@@ -3,6 +3,7 @@ import type { WorkspaceStatus, WorkspaceType } from '@prisma/client'
 import { cookies } from 'next/headers'
 import { audit } from '@/lib/audit'
 import { db } from '@/lib/db'
+import { tileColorAt } from '@/lib/format'
 import { isAdminInDb, requireUser, type SessionUser } from '@/lib/session'
 
 export const ACTIVE_WORKSPACE_COOKIE = 'of_ws'
@@ -43,6 +44,9 @@ export async function clearActiveWorkspace(): Promise<void> {
 export async function readActiveWorkspaceId(): Promise<string | undefined> {
   return (await cookies()).get(ACTIVE_WORKSPACE_COOKIE)?.value
 }
+
+// The tile colour of one workspace in the list (the sidebar's head, the Workspace page).
+export const tileOf = (items: SwitcherItem[], id: string): string => tileColorAt(items.findIndex((w) => w.id === id))
 
 export async function listSwitcher(user: Pick<SessionUser, 'id'>): Promise<SwitcherItem[]> {
   if (await isAdminInDb(user.id)) {

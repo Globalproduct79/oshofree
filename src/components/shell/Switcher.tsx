@@ -7,7 +7,7 @@ import { switchToPlatformAction, switchWorkspaceAction } from '@/app/app/(consol
 import { DemoPill } from '@/components/og/DemoPill'
 import { SubmitButton } from '@/components/og/SubmitButton'
 import { SHELL } from '@/lib/copy-shell'
-import { initials, tileColor } from '@/lib/format'
+import { initials, tileColorAt } from '@/lib/format'
 import { isCountry, MARKETS } from '@/lib/markets'
 import { tokens } from '@/lib/tokens'
 import { ROW_BUTTON } from './BellPanel'
@@ -92,7 +92,7 @@ export function Switcher({
           <div key={w.id} className={current ? 'cur' : undefined} data-hi={i === at || undefined}>
             <form action={switchWorkspaceAction.bind(null, w.id)} ref={(el) => void (forms.current[i] = el)}>
               <SubmitButton plain className={`${ROW_BUTTON} flex items-center gap-3`} aria-current={current ? 'true' : undefined}>
-                <span className="tile" style={{ background: tileColor(w.name) }} aria-hidden="true">
+                <span className="tile" style={{ background: tileColorAt(items.indexOf(w)) }} aria-hidden="true">
                   {initials(w.name)}
                 </span>
                 <span className="min-w-0 flex-1">

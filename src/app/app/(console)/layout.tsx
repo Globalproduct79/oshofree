@@ -3,9 +3,9 @@ import { Palette } from '@/components/shell/Palette'
 import { Sidebar } from '@/components/shell/Sidebar'
 import { Toaster } from '@/components/shell/Toast'
 import { TopBar } from '@/components/shell/TopBar'
-import { listSwitcher } from '@/lib/active-workspace'
+import { listSwitcher, tileOf } from '@/lib/active-workspace'
 import { SHELL } from '@/lib/copy-shell'
-import { initials, tileColor } from '@/lib/format'
+import { initials } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
 import { navFor } from '@/lib/nav'
 import { requireMember } from '@/lib/permissions'
@@ -35,7 +35,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
           initials: initials(workspace.name),
           name: workspace.name,
           sub: SHELL.brand.workspaceSub(workspace.type, MARKETS[workspace.country].name),
-          tile: tileColor(workspace.name),
+          tile: tileOf(switcher, workspace.id),
           demo: workspace.demo,
         }}
         groups={navFor({ role, inWorkspace: true, counts })}

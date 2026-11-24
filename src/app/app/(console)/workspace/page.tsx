@@ -1,8 +1,9 @@
+import { listSwitcher, tileOf } from '@/lib/active-workspace'
 import { Box, LinkButton, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { COPY } from '@/lib/copy'
 import { SHELL } from '@/lib/copy-shell'
-import { initials, tileColor, usd } from '@/lib/format'
+import { initials, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
 import { can, requireMember } from '@/lib/permissions'
 import { clientBrands, workspaceStatusBox } from '@/lib/workspaces'
@@ -15,7 +16,8 @@ const W = COPY.workspace
 // kind, the approval — over a strip of facts; then the details Owners (and Global) can change, and for an agency the
 // client brands it runs campaigns for. The head carries no control: Save is the form's.
 export default async function WorkspacePage() {
-  const { workspace: ws, role } = await requireMember('view')
+  const { user, workspace: ws, role } = await requireMember('view')
+  const tile = tileOf(await listSwitcher(user), ws.id)
   const status = workspaceStatusBox(ws)
   const brands = ws.type === 'Agency' ? await clientBrands(ws.id) : null
   const locked = ws.status !== 'pending' && role !== 'Global'
@@ -34,7 +36,7 @@ export default async function WorkspacePage() {
       <PageHead crumb={[{ label: ws.name }, { label: SHELL.groups.organisation }, { label: W.crumb }]} title={W.title} lead={W.lead} />
       <Box>
         <div className="ident">
-          <div className="lg" style={{ background: tileColor(ws.name) }} aria-hidden="true">
+          <div className="lg" style={{ background: tile }} aria-hidden="true">
             {initials(ws.name)}
           </div>
           <div className="nm">
