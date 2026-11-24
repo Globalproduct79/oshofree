@@ -15,7 +15,8 @@ type Popover = 'bell' | 'switcher' | 'account'
 const PANEL_ID: Record<Popover, string> = { bell: 'bell-panel', switcher: 'switcher', account: 'account' }
 
 // The topbar (GLB §4.3): menu (below 980 px), search, bell, "Workspaces", then the signed-in person's avatar and
-// name, which open the account menu (who you are here, Sign out). The workspace's name is the sidebar's head.
+// name and role in a chip, which opens the account menu (who you are here, Sign out). The workspace's name is the
+// sidebar's head.
 // Each panel (bell, switcher, account) hangs under its own button (`.pop`), so the eye finds it where it clicked.
 export function TopBar({
   unread,
@@ -106,19 +107,17 @@ export function TopBar({
         />
       </div>
       <div className="who pop min-w-0">
-        <span className="av" aria-hidden="true">
-          {avatar}
-        </span>
-        <button
-          type="button"
-          className="acct flex min-w-0 max-w-[190px] items-center gap-1.5 border-0 bg-transparent px-0 py-1.5 text-inherit"
-          aria-label={SHELL.account.button(account.name)}
-          {...trigger('account')}
-        >
-          <span className="truncate">{account.name}</span>
+        <button type="button" className="acct" aria-label={SHELL.account.button(account.name)} {...trigger('account')}>
+          <span className="av" aria-hidden="true">
+            {avatar}
+          </span>
+          <span className="min-w-0">
+            <b className="truncate">{account.name}</b>
+            <small className="truncate">{account.where}</small>
+          </span>
           <ChevronDown size={16} aria-hidden="true" className="shrink-0" />
         </button>
-        <Account id={PANEL_ID.account} open={open === 'account'} account={account} />
+        <Account id={PANEL_ID.account} open={open === 'account'} account={account} avatar={avatar} />
       </div>
     </header>
   )

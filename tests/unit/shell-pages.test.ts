@@ -255,16 +255,17 @@ describe('Account', () => {
         id: 'me',
         open: true,
         account: { name: 'Tunde Okafor', email: 'tunde@kolabright.demo', where: 'Owner · Kola Bright' },
+        avatar: 'TO',
       }),
     )
     expect(out).toContain('aria-label="Account"')
-    expect(text(out)).toContain('Tunde Okafor tunde@kolabright.demo Owner · Kola Bright Sign out')
+    expect(text(out)).toContain('TO Tunde Okafor tunde@kolabright.demo Owner · Kola Bright Sign out')
     expect(out).not.toContain('Workspaces')
   })
 
   it('is closed until the avatar opens it', () => {
     expect(
-      renderToStaticMarkup(createElement(Account, { id: 'me', open: false, account: { name: 'T', email: 'e', where: 'w' } })),
+      renderToStaticMarkup(createElement(Account, { id: 'me', open: false, account: { name: 'T', email: 'e', where: 'w' }, avatar: 'T' })),
     ).toBe('')
   })
 })
