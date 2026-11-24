@@ -4,7 +4,7 @@ import { HOME } from '@/lib/copy-home'
 import { INVITE_PAGE, PEOPLE } from '@/lib/copy-people'
 import { REVIEW } from '@/lib/copy-review'
 import { SHELL } from '@/lib/copy-shell'
-import { ADMIN, box, expectToast, signIn } from './helpers'
+import { ADMIN, box, expectInWorkspace, expectToast, signIn } from './helpers'
 
 // F6, onboarding: a new owner signs up and creates a workspace, which waits under the banner until Global approves
 // it on Review. The owner invites a Manager and a Viewer from People. The Manager opens their link, creates
@@ -29,7 +29,7 @@ const inviteUser = (page: Page) => page.getByRole('link', { name: PEOPLE.inviteU
 
 // The shell is drawn for this workspace (so an absence checked next is real, not a page still loading).
 async function inWorkspace(page: Page) {
-  await expect(page.getByRole('button', { name: SHELL.switcher.label(WORKSPACE) })).toBeVisible()
+  await expectInWorkspace(page, WORKSPACE)
 }
 
 // Sign-up opened from an invite: the line names the workspace and role, the email starts at the invited address.

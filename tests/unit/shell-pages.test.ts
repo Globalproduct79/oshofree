@@ -11,6 +11,7 @@ import { markReadAction } from '@/app/app/(console)/notifications/actions'
 import { signOutAction, switchToPlatformAction, switchWorkspaceAction } from '@/app/app/(console)/switch/actions'
 import { Modal } from '@/components/shell/Modal'
 import { PageHead } from '@/components/shell/PageHead'
+import { Account } from '@/components/shell/Account'
 import { Switcher } from '@/components/shell/Switcher'
 import { Toaster } from '@/components/shell/Toast'
 import { auth, signIn as authSignIn, signOut } from '@/lib/auth'
@@ -118,8 +119,10 @@ describe('workspace layout', () => {
     expect(out).not.toContain('class="grp">Platform<')
     expect(out).not.toContain('Back to Platform')
     expect(out).not.toContain('class="banner"')
-    // The avatar is the workspace's first Owner, not the Viewer.
-    expect(out).toMatch(/class="av"[^>]*>TO</)
+    // The avatar and the account button are the signed-in person; the workspace is the sidebar's head.
+    expect(out).toMatch(/class="av"[^>]*>KB</)
+    expect(out).toContain('aria-label="Account: Kemi Balogun"')
+    expect(out).not.toContain('aria-label="Workspace:')
     expect(text(out)).toContain('Brand workspace · Nigeria')
   })
 
@@ -197,29 +200,44 @@ describe('Platform layout', () => {
       'Platform — you are acting as Global. Approvals, rates and settlements here affect every advertiser.',
     )
     expect(out).toMatch(/class="av"[^>]*>GL</)
-    expect(text(out)).toContain('Platform (Global)')
+    expect(out).toContain('aria-label="Account: Ada Admin"')
+    expect(text(out)).not.toContain('Platform (Global)')
   })
 })
 
 describe('Switcher', () => {
-  it('lists each workspace with its type, country and status, then Platform for Global', () => {
-    const out = renderToStaticMarkup(
-      createElement(Switcher, {
-        id: 'sw',
-        open: true,
-        currentId: 'w1',
-        isGlobal: true,
-        items: [
-          { id: 'w1', name: 'Kola Bright', type: 'Brand', country: 'NG', status: 'approved', demo: false },
-          { id: 'w2', name: 'SunFresh Juices', type: 'Brand', country: 'GH', status: 'pending', demo: false },
-        ],
-      }),
-    )
-    expect(text(out)).toContain('Kola Bright Brand · Nigeria Approved')
-    expect(text(out)).toContain('SunFresh Juices Brand · Ghana Pending approval')
-    expect(out).toContain('st st-pending')
-    expect(text(out)).toContain('Platform (Global)')
-    expect(text(out)).toContain('Sign out')
+  const items = [
+    { id: 'w1', name: 'Kola Bright', type: 'Brand', country: 'NG', status: 'approved', demo: false },
+    { id: 'w2', name: 'SunFresh Juices', type: 'Brand', country: 'GH', status: 'pending', demo: false },
+  ] as const
+  const sw = (props: Partial<Parameters<typeof Switcher>[0]>) =>
+    renderToStaticMarkup(createElement(Switcher, { id: 'sw', open: true, currentId: 'w1', isGlobal: true, items: [...items], ...props }))
+
+  it('lists each workspace with its tile, type, country and state, a status dot and the count, then Platform for Global', () => {
+    const out = sw({})
+    expect(text(out)).toContain('Workspaces · 2')
+    expect(text(out)).toContain('KB Kola Bright Brand · Nigeria')
+    expect(text(out)).toContain('SJ SunFresh Juices Brand · Ghana · awaiting approval')
+    expect(out).toContain('dot dot-approved')
+    expect(out).toContain('dot dot-pending')
+    expect(text(out)).toContain('Platform (Global) Review, advertisers, rates, settlement')
+    expect(text(out)).not.toContain('Sign out')
+  })
+
+  it('ticks the row you are in, and only that one', () => {
+    const rows = sw({}).split('<form').slice(1)
+    expect(rows[0]).toContain('aria-current="true"')
+    expect(rows[0]).toContain('class="lucide lucide-check tick"')
+    expect(rows[1]).not.toContain('aria-current')
+    expect(rows[1]).not.toContain('tick')
+    const platform = sw({ currentId: null }).split('<form').slice(1)[2]
+    expect(platform).toContain('aria-current="true"')
+  })
+
+  it('offers a find field once the list is long enough, not for a short one', () => {
+    expect(sw({})).not.toContain('Find a workspace')
+    const many = [...items, { ...items[0], id: 'w3', name: 'Pesa Link' }, { ...items[0], id: 'w4', name: 'Ama Foods' }]
+    expect(sw({ items: many })).toContain('placeholder="Find a workspace…"')
   })
 
   it('has no Platform row for a member', () => {
@@ -227,6 +245,27 @@ describe('Switcher', () => {
       createElement(Switcher, { id: 'sw', open: true, currentId: 'w1', isGlobal: false, items: [] }),
     )
     expect(out).not.toContain('Platform (Global)')
+  })
+})
+
+describe('Account', () => {
+  it('names the signed-in person, their email and their role here, then Sign out', () => {
+    const out = renderToStaticMarkup(
+      createElement(Account, {
+        id: 'me',
+        open: true,
+        account: { name: 'Tunde Okafor', email: 'tunde@kolabright.demo', where: 'Owner · Kola Bright' },
+      }),
+    )
+    expect(out).toContain('aria-label="Account"')
+    expect(text(out)).toContain('Tunde Okafor tunde@kolabright.demo Owner · Kola Bright Sign out')
+    expect(out).not.toContain('Workspaces')
+  })
+
+  it('is closed until the avatar opens it', () => {
+    expect(
+      renderToStaticMarkup(createElement(Account, { id: 'me', open: false, account: { name: 'T', email: 'e', where: 'w' } })),
+    ).toBe('')
   })
 })
 

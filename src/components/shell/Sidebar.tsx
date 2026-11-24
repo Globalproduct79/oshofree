@@ -6,7 +6,6 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { DemoPill } from '@/components/og/DemoPill'
 import { DEMO } from '@/lib/copy-demo'
 import { isCurrent, type NavGroup } from '@/lib/nav'
-import { tokens } from '@/lib/tokens'
 import { NavIcon } from './Icons'
 
 // Below 980 px the sidebar is a drawer (spec §6.11): the topbar's menu button opens it.
@@ -28,7 +27,8 @@ export const useDrawer = () => useSyncExternalStore(subscribe, () => drawerOpen,
 export const SIDEBAR_ID = 'side'
 
 // `demo`: a workspace the seed made (Prompt 9) — the Demo pill beside its name and the demo line in the footer.
-export type SidebarBrand = { initials: string; name: string; sub: string; tile: 'ink' | 'phx'; demo?: boolean }
+// `tile`: the tile's colour (a workspace's own, from tileColor); unset, the console's orange (Platform).
+export type SidebarBrand = { initials: string; name: string; sub: string; tile?: string; demo?: boolean }
 
 export function Sidebar({
   brand,
@@ -59,7 +59,7 @@ export function Sidebar({
       )}
       <aside className="side" id={SIDEBAR_ID} data-open={open}>
         <div className="brand">
-          <div className="lg" style={brand.tile === 'ink' ? { background: tokens.ink } : undefined}>
+          <div className="lg" style={brand.tile ? { background: brand.tile } : undefined}>
             {brand.initials}
           </div>
           <div>

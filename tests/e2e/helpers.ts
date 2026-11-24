@@ -30,6 +30,11 @@ export async function signIn(page: Page, email: string, password = PASSWORD) {
   await expect(page.getByRole('button', { name: SHELL.search.label, exact: true })).toBeVisible()
 }
 
+// The shell is drawn for this workspace: its name heads the sidebar (the topbar's name is the signed-in person).
+export async function expectInWorkspace(page: Page, name: string) {
+  await expect(page.locator('.side .brand b')).toContainText(name)
+}
+
 // The shell's toast (one at a time). Its text stays while it fades, so a fast assertion still finds it.
 export async function expectToast(page: Page, text: string) {
   await expect(page.getByRole('status').filter({ hasText: text })).toBeVisible()

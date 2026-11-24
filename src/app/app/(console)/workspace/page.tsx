@@ -2,7 +2,7 @@ import { Box, LinkButton, StatusBadge } from '@/components/og'
 import { PageHead } from '@/components/shell/PageHead'
 import { COPY } from '@/lib/copy'
 import { SHELL } from '@/lib/copy-shell'
-import { initials, usd } from '@/lib/format'
+import { initials, tileColor, usd } from '@/lib/format'
 import { MARKETS } from '@/lib/markets'
 import { can, requireMember } from '@/lib/permissions'
 import { clientBrands, workspaceStatusBox } from '@/lib/workspaces'
@@ -34,7 +34,9 @@ export default async function WorkspacePage() {
       <PageHead crumb={[{ label: ws.name }, { label: SHELL.groups.organisation }, { label: W.crumb }]} title={W.title} lead={W.lead} />
       <Box>
         <div className="ident">
-          <div className="lg" aria-hidden="true">{initials(ws.name)}</div>
+          <div className="lg" style={{ background: tileColor(ws.name) }} aria-hidden="true">
+            {initials(ws.name)}
+          </div>
           <div className="nm">
             <b>{ws.name}</b>
             <small>{SHELL.brand.workspaceSub(COPY.workspace.types[ws.type], MARKETS[ws.country].name)}</small>

@@ -26,7 +26,7 @@ export default async function NewWorkspacePage() {
           lead={COPY.workspace.newLead}
           actions={
             <form action={signOutAction}>
-              <SubmitButton variant="ghost">{SHELL.switcher.signOut}</SubmitButton>
+              <SubmitButton variant="ghost">{SHELL.account.signOut}</SubmitButton>
             </form>
           }
         />

@@ -2,7 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import { COPY } from '@/lib/copy'
 import { INVITE_PAGE, PEOPLE } from '@/lib/copy-people'
 import { SHELL } from '@/lib/copy-shell'
-import { box, expectToast, KOLA, PASSWORD, signIn, TUNDE } from './helpers'
+import { box, expectInWorkspace, expectToast, KOLA, PASSWORD, signIn, TUNDE } from './helpers'
 
 // F5: Tunde opens People and Invite user, invites a Manager and sees the pending invite with its link. Back on
 // People, Resend gives a new link and the old one stops working. The invitee opens the new link in a browser of their
@@ -34,7 +34,7 @@ test('F5: an invite from People, resent, brings a new Manager into the workspace
     await tunde.getByRole('link', { name: SHELL.nav.people, exact: true }).click()
     await tunde.waitForURL((url) => url.pathname === '/app/people')
     await expect(tunde.getByRole('heading', { name: PEOPLE.title, exact: true })).toBeVisible()
-    await expect(tunde.getByRole('button', { name: SHELL.switcher.label(KOLA) })).toBeVisible()
+    await expectInWorkspace(tunde, KOLA)
     await expect(team.getByRole('listitem').filter({ hasText: 'Tunde Okafor' }).getByText(PEOPLE.you, { exact: true })).toBeVisible()
     await expect(pending.getByText(PEOPLE.noOpenInvites)).toBeVisible()
   })
@@ -114,7 +114,7 @@ test('F5: an invite from People, resent, brings a new Manager into the workspace
     await invitee.getByLabel(COPY.auth.passwordLabel).fill(PASSWORD)
     await invitee.getByRole('button', { name: COPY.auth.signUpAction }).click()
     await invitee.waitForURL((url) => url.pathname === '/app')
-    await expect(invitee.getByRole('button', { name: SHELL.switcher.label(KOLA) })).toBeVisible()
+    await expectInWorkspace(invitee, KOLA)
     await inviteeContext.close()
   })
 

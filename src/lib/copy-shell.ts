@@ -69,9 +69,21 @@ export const SHELL = {
   switcher: {
     button: 'Workspaces',
     title: 'Workspaces',
-    label: (name: string) => `Workspace: ${name}`,
+    find: 'Find a workspace…',
+    none: 'No workspace by that name.',
     platform: 'Platform (Global)',
-    sub: (type: string, country: string) => `${type} · ${country}`,
+    platformSub: 'Review, advertisers, rates, settlement',
+    sub: (type: string, country: string, state: string) => `${type} · ${country}${state ? ` · ${state}` : ''}`,
+    state: { pending: 'awaiting approval', declined: 'declined' } as Record<string, string>,
+    keys: '↑↓ to move · ↵ to open',
+  },
+  // The topbar's avatar and name are the signed-in person (the sidebar already names the workspace); the menu
+  // under them says who they are here and signs them out.
+  account: {
+    button: (name: string) => `Account: ${name}`,
+    title: 'Account',
+    where: (role: string, workspace: string) => `${role} · ${workspace}`,
+    platform: 'Global · Platform',
     signOut: 'Sign out',
     globalAvatar: 'GL',
   },

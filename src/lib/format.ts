@@ -10,6 +10,7 @@ export const shortDate = (d: Date) => days.format(d)
 // ---- Prototype formatting: counts, money (integer USD cents), dates, initials, phones. ----
 
 import { MARKETS, type Country } from './markets'
+import { tokens } from './tokens'
 
 const MINUS = '−'
 const grouped = new Intl.NumberFormat('en-US')
@@ -118,6 +119,14 @@ export const initials = (name: string): string =>
     .flatMap((w) => w.match(/\p{N}+|\p{L}+/gu) ?? [])
     .map((seg) => seg[0].toUpperCase())
     .join('')
+
+// A workspace's tile colour, steady for its name, the same in the sidebar's head, the Workspaces panel and the
+// Workspace page (the prototype gave each one its own).
+export function tileColor(name: string): string {
+  let h = 0
+  for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0
+  return tokens.tileColors[h % tokens.tileColors.length]
+}
 
 // '+2348012344471' → '+234 80• ••• 4471'
 export const maskPhone = (e164: string): string => {

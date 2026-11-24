@@ -2,12 +2,12 @@ import 'server-only'
 import type { BellItem } from '@/components/shell/BellPanel'
 import { SHELL } from '@/lib/copy-shell'
 import { db } from '@/lib/db'
-import { ageLabel, initials } from '@/lib/format'
+import { ageLabel } from '@/lib/format'
 import type { NavCounts } from '@/lib/nav'
 import { listNotifications, unreadCount } from '@/lib/notifications'
 import pkg from '../../package.json'
 
-// What the two layouts load for the shell: nav counts, the bell, the Owner's initials, the version.
+// What the two layouts load for the shell: nav counts, the bell, the Owner's name (the home greeting), the version.
 
 export const APP_VERSION = SHELL.version(pkg.version)
 
@@ -41,7 +41,7 @@ export async function bellFor(
   }
 }
 
-// The workspace's first Owner: the topbar avatar and the home greeting. Memberships carry no join
+// The workspace's first Owner: the home greeting. Memberships carry no join
 // date, so the earliest-created Owner account stands in for "first to join".
 export async function ownerName(workspaceId: string): Promise<string | null> {
   const owner = await db.workspaceMember.findFirst({
@@ -52,7 +52,3 @@ export async function ownerName(workspaceId: string): Promise<string | null> {
   return owner?.user.name ?? null
 }
 
-export async function ownerInitials(workspaceId: string): Promise<string | null> {
-  const name = await ownerName(workspaceId)
-  return name === null ? null : initials(name)
-}

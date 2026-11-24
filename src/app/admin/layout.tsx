@@ -16,7 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="shell min-h-screen min-[981px]:grid min-[981px]:grid-cols-[var(--sb)_minmax(0,1fr)]">
       <Sidebar
-        brand={{ initials: SHELL.brand.tile, name: SHELL.brand.product, sub: SHELL.brand.platform, tile: 'phx' }}
+        brand={{ initials: SHELL.brand.tile, name: SHELL.brand.product, sub: SHELL.brand.platform }}
         groups={navFor({ role: 'Global', inWorkspace: false, counts })}
         footer={APP_VERSION}
       />
@@ -24,8 +24,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <TopBar
           unread={bell.unread}
           notifications={bell.items}
-          switcher={{ items: switcher, currentId: null, currentName: SHELL.switcher.platform }}
-          avatar={SHELL.switcher.globalAvatar}
+          switcher={{ items: switcher, currentId: null }}
+          account={{ name: user.name, email: user.email, where: SHELL.account.platform }}
+          avatar={SHELL.account.globalAvatar}
           isGlobal
         />
         <Banner kind="global" />

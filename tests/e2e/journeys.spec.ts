@@ -15,7 +15,7 @@ import { SHARING } from '@/lib/copy-sharing'
 import { SHELL } from '@/lib/copy-shell'
 import { localAmount, maskPhone } from '@/lib/format'
 import {
-  ADMIN, approveCampaign, box, CAMPAIGN_PAGE, expectToast, metricValue, openReview, signIn, todayInLagos, type NewCampaign,
+  ADMIN, approveCampaign, box, CAMPAIGN_PAGE, expectInWorkspace, expectToast, metricValue, openReview, signIn, todayInLagos, type NewCampaign,
 } from './helpers'
 
 // Prompt 10: the product as three people use it, end to end, each step checked by what the person sees.
@@ -58,7 +58,7 @@ const L = COPY.landing
 const pendingBanner = (page: Page) => page.getByRole('status').filter({ hasText: SHELL.banner.pending.text })
 const sideLink = (page: Page, name: string) => page.locator('.side').getByRole('link', { name, exact: true })
 const inviteUser = (page: Page) => page.getByRole('link', { name: PEOPLE.inviteUser, exact: true })
-const inWorkspace = (page: Page) => expect(page.getByRole('button', { name: SHELL.switcher.label(WORKSPACE) })).toBeVisible()
+const inWorkspace = (page: Page) => expectInWorkspace(page, WORKSPACE)
 
 // What the journeys hand on: the owner's invite link, the member's browser, the campaign's page and Phoenix's link.
 const shared = { link: '', campaignPath: '', image: '', shareUrl: '' }

@@ -6,24 +6,29 @@ import type { SwitcherItem } from '@/lib/active-workspace'
 import { SHELL } from '@/lib/copy-shell'
 import { tokens } from '@/lib/tokens'
 import { openPalette } from './palette-store'
+import { Account, type AccountInfo } from './Account'
 import { BellPanel, type BellItem } from './BellPanel'
 import { setDrawer, SIDEBAR_ID, useDrawer } from './Sidebar'
 import { Switcher } from './Switcher'
 
-type Popover = 'bell' | 'switcher'
-const PANEL_ID: Record<Popover, string> = { bell: 'bell-panel', switcher: 'switcher' }
+type Popover = 'bell' | 'switcher' | 'account'
+const PANEL_ID: Record<Popover, string> = { bell: 'bell-panel', switcher: 'switcher', account: 'account' }
 
-// The topbar (GLB §4.3): menu (below 980 px), search, bell, "Workspaces", avatar + current name.
+// The topbar (GLB §4.3): menu (below 980 px), search, bell, "Workspaces", then the signed-in person's avatar and
+// name, which open the account menu (who you are here, Sign out). The workspace's name is the sidebar's head.
+// Each panel (bell, switcher, account) hangs under its own button (`.pop`), so the eye finds it where it clicked.
 export function TopBar({
   unread,
   notifications,
   switcher,
+  account,
   avatar,
   isGlobal,
 }: {
   unread: number
   notifications: BellItem[]
-  switcher: { items: SwitcherItem[]; currentId: string | null; currentName: string }
+  switcher: { items: SwitcherItem[]; currentId: string | null }
+  account: AccountInfo
   avatar: string
   isGlobal: boolean
 }) {
@@ -79,37 +84,42 @@ export function TopBar({
         <span>{SHELL.search.placeholder}</span>
         <kbd>{SHELL.search.kbd}</kbd>
       </button>
-      <button type="button" className="bell" {...trigger('bell')}>
-        <Bell size={18} aria-hidden="true" />
-        <span className="sr-only">{SHELL.bell.label}</span>
-        {unread > 0 && <i>{unread}</i>}
-      </button>
-      <button type="button" className="wsbtn" {...trigger('switcher')}>
-        <LayoutGrid size={16} aria-hidden="true" />
-        {SHELL.switcher.button}
-      </button>
-      <div className="who min-w-0">
+      <div className="pop">
+        <button type="button" className="bell" {...trigger('bell')}>
+          <Bell size={18} aria-hidden="true" />
+          <span className="sr-only">{SHELL.bell.label}</span>
+          {unread > 0 && <i>{unread}</i>}
+        </button>
+        <BellPanel id={PANEL_ID.bell} open={open === 'bell'} items={notifications} onClose={() => setOpen(null)} />
+      </div>
+      <div className="pop">
+        <button type="button" className="wsbtn" {...trigger('switcher')}>
+          <LayoutGrid size={16} aria-hidden="true" />
+          {SHELL.switcher.button}
+        </button>
+        <Switcher
+          id={PANEL_ID.switcher}
+          open={open === 'switcher'}
+          items={switcher.items}
+          currentId={switcher.currentId}
+          isGlobal={isGlobal}
+        />
+      </div>
+      <div className="who pop min-w-0">
         <span className="av" aria-hidden="true">
           {avatar}
         </span>
         <button
           type="button"
-          className="wsname flex min-w-0 max-w-[190px] items-center gap-1.5 border-0 bg-transparent px-0 py-1.5 text-inherit"
-          aria-label={SHELL.switcher.label(switcher.currentName)}
-          {...trigger('switcher')}
+          className="acct flex min-w-0 max-w-[190px] items-center gap-1.5 border-0 bg-transparent px-0 py-1.5 text-inherit"
+          aria-label={SHELL.account.button(account.name)}
+          {...trigger('account')}
         >
-          <span className="truncate">{switcher.currentName}</span>
+          <span className="truncate">{account.name}</span>
           <ChevronDown size={16} aria-hidden="true" className="shrink-0" />
         </button>
+        <Account id={PANEL_ID.account} open={open === 'account'} account={account} />
       </div>
-      <BellPanel id={PANEL_ID.bell} open={open === 'bell'} items={notifications} onClose={() => setOpen(null)} />
-      <Switcher
-        id={PANEL_ID.switcher}
-        open={open === 'switcher'}
-        items={switcher.items}
-        currentId={switcher.currentId}
-        isGlobal={isGlobal}
-      />
     </header>
   )
 }
