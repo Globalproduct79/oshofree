@@ -1,6 +1,14 @@
+# The one development database every developer runs: Postgres 16.15 on port 5433, with two databases,
+# `oshofree` (development, seeded) and `oshofree_test` (emptied by every test run). The app itself runs on the
+# host with `npm run dev`. `npm run docker:up` starts this and waits for the health check; `npm run setup` then
+# applies the migrations and seeds. The data lives in the named volume, so `docker compose down` keeps it and
+# only `docker compose down -v` throws it away.
+name: oshofree
+
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
+    restart: unless-stopped
     ports:
       - "5433:5432"
     environment:
@@ -9,7 +17,14 @@ services:
       POSTGRES_DB: oshofree
     volumes:
       - oshofree_pgdata:/var/lib/postgresql/data
+      # Runs once, when the volume is first created: makes `oshofree_test` beside `oshofree`.
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oshofree -d oshofree"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
 
 volumes:
   oshofree_pgdata:
